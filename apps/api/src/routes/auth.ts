@@ -34,7 +34,7 @@ export function authRoutes(app: FastifyInstance, { sql, webOrigin }: AppDeps): v
     const caller = requireSessionCaller(request);
     const { name } = parse(z.object({ name: z.string().min(1).max(100) }), request.body);
     reply.status(201);
-    return { accessToken: await issueToken(sql, caller.userId, name) };
+    return issueToken(sql, caller.userId, name);
   });
 
   app.get('/v1/me/tokens', async (request) => listTokens(sql, requireCaller(request).userId));

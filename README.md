@@ -10,6 +10,7 @@ GitHub-style version control for CAD files (SolidWorks first), hosted at gigacad
 | `apps/api` | REST API (Fastify): projects, branches with check-out locks, commits and autosaves, release requests with diff pick, approvals, releases, file uploads to R2, desktop sign-in |
 | `supabase` | Database schema and row-level security (migrations), run locally with `supabase start` |
 | `apps/web` | Next.js site: the marketing page at gigacad.site (product pages come later). Follows [docs/DESIGN.md](docs/DESIGN.md) |
+| `clients/cli` | `giga`, the command line (npm package `@gigacad/cli`): sign-in, clone, check-out locks, commits, release requests, releases. See [its README](clients/cli/README.md) |
 
 ## Development
 
@@ -35,6 +36,18 @@ cp apps/api/.env.example apps/api/.env
 pnpm --filter @gigacad/api dev      # API on localhost:8787
 pnpm test:integration               # API tests against the real local stack
 ```
+
+### CLI
+
+With the API running (and the web app, to approve sign-ins):
+
+```sh
+pnpm --filter @gigacad/cli build
+GIGA_API_URL=http://127.0.0.1:8787 node clients/cli/dist/giga.js login
+pnpm --filter @gigacad/cli smoke    # pack the npm package, install it, and run it
+```
+
+`pnpm test:integration` also runs the CLI against the local API and MinIO, including the v1→v2→v3 release scenario.
 
 ### Web sign-in
 

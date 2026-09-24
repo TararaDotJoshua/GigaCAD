@@ -103,8 +103,9 @@ export async function completeUploads(
       continue;
     }
 
+    // Skip the copy only if storage really has the bytes; a known blob whose object went missing is restored.
     const [known] = await sql`select 1 from blobs where sha256 = ${upload.sha256}`;
-    if (!known) await storage.copy(stagingKey(uploadId), blobKey(upload.sha256));
+    if (!known || !(await storage.stat(blobKey(upload.sha256)))) await storage.copy(stagingKey(uploadId), blobKey(upload.sha256));
     await sql.begin(async (tx) => {
       await tx`insert into blobs (sha256, size) values (${upload.sha256}, ${upload.size}) on conflict do nothing`;
       await tx`

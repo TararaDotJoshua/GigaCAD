@@ -54,7 +54,7 @@ export async function pendingDeviceSignIn(sql: Sql, userCode: string): Promise<{
 }
 
 /** Step 3: the polling client exchanges its device code for a long-lived token, exactly once. */
-export async function pollDeviceSignIn(sql: Sql, deviceCode: string): Promise<{ accessToken: string }> {
+export async function pollDeviceSignIn(sql: Sql, deviceCode: string): Promise<IssuedToken> {
   return sql.begin(async (tx) => {
     const [row] = await tx<{ approvedBy: string | null; consumedAt: Date | null; expired: boolean; clientName: string }[]>`
       select approved_by, consumed_at, expires_at <= now() as expired, client_name
@@ -65,14 +65,23 @@ export async function pollDeviceSignIn(sql: Sql, deviceCode: string): Promise<{ 
     if (!row.approvedBy) throw badRequest('authorization_pending', 'Waiting for approval on the website');
 
     await tx`update device_codes set consumed_at = now() where device_code_hash = ${hashSecret(deviceCode)}`;
-    return { accessToken: await issueToken(tx, row.approvedBy, row.clientName) };
+    return issueToken(tx, row.approvedBy, row.clientName);
   });
 }
 
-export async function issueToken(db: Db, userId: string, name: string): Promise<string> {
-  const token = newDeviceToken();
-  await db`insert into device_tokens (user_id, token_hash, name) values (${userId}, ${hashSecret(token)}, ${name})`;
-  return token;
+export interface IssuedToken {
+  readonly accessToken: string;
+  /** Lets the client revoke exactly this token (DELETE /v1/me/tokens/:id) when it signs out. */
+  readonly tokenId: string;
+}
+
+export async function issueToken(db: Db, userId: string, name: string): Promise<IssuedToken> {
+  const accessToken = newDeviceToken();
+  const [row] = await db<{ id: string }[]>`
+    insert into device_tokens (user_id, token_hash, name) values (${userId}, ${hashSecret(accessToken)}, ${name})
+    returning id
+  `;
+  return { accessToken, tokenId: row!.id };
 }
 
 export async function listTokens(sql: Sql, userId: string) {

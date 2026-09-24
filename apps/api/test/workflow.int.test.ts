@@ -400,6 +400,18 @@ describe('file access', () => {
     expect(stored).toHaveLength(1);
     expect(staged()).toBe(stagedBefore);
   });
+
+  it('restores a known file whose stored copy went missing when it is uploaded again', async () => {
+    const one = await newProject(asAlex);
+    const two = await newProject(asAlex);
+    const content = `lost ${randomUUID()}`;
+    await upload(harness, asAlex, one, [content]);
+    const key = [...harness.storage.objects.keys()].find((k) => k.endsWith(sha256(content)))!;
+    harness.storage.objects.delete(key);
+
+    await upload(harness, asAlex, two, [content]);
+    expect(harness.storage.objects.get(key)?.toString()).toBe(content);
+  });
 });
 
 describe('visibility', () => {
@@ -436,6 +448,7 @@ describe('desktop sign-in', () => {
     expect((await asAlex.get(`/v1/auth/device/pending/${started.body.userCode}`)).status).toBe(404);
     const granted = await anonymous.post('/v1/auth/device/token', { deviceCode: started.body.deviceCode });
     expect(granted.status).toBe(200);
+    expect(granted.body.tokenId).toMatch(/^[0-9a-f-]{36}$/);
     const device = { ...alex, token: granted.body.accessToken as string };
     const asDevice = client(harness, device);
 
@@ -449,7 +462,9 @@ describe('desktop sign-in', () => {
 
     const tokens = await asAlex.get('/v1/me/tokens');
     const tokenId = tokens.body.find((t: { name: string }) => t.name === 'GigaCAD for Windows').id;
-    expect((await asAlex.delete(`/v1/me/tokens/${tokenId}`)).status).toBe(204);
+    expect(tokenId).toBe(granted.body.tokenId);
+    // A device can sign itself out by revoking its own token.
+    expect((await asDevice.delete(`/v1/me/tokens/${tokenId}`)).status).toBe(204);
     expect((await asDevice.get('/v1/me')).status).toBe(401);
   });
 });

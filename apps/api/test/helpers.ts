@@ -53,6 +53,9 @@ export interface Harness {
   close(): Promise<void>;
 }
 
+/** Enough of a harness to make requests; lets other packages' tests reuse these helpers with their own app. */
+export type AppHarness = Pick<Harness, 'app'>;
+
 export async function createHarness(): Promise<Harness> {
   const sql = createSql(DATABASE_URL);
   const storage = new MemoryStorage();
@@ -81,7 +84,7 @@ export interface TestUser {
 }
 
 /** Creates a real Supabase user, signs in, and gives them a unique handle. */
-export async function createUser(harness: Harness, name: string): Promise<TestUser> {
+export async function createUser(harness: AppHarness, name: string): Promise<TestUser> {
   const email = `${name}-${randomUUID().slice(0, 8)}@test.gigacad.site`;
   const password = `pw-${randomUUID()}`;
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
@@ -105,7 +108,7 @@ export interface Response<T = any> {
 }
 
 export async function call<T = any>(
-  harness: Harness,
+  harness: AppHarness,
   token: string | null,
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   url: string,
@@ -120,7 +123,7 @@ export async function call<T = any>(
   return { status: response.statusCode, body: (response.body ? response.json() : undefined) as T };
 }
 
-export function client(harness: Harness, user: TestUser | null) {
+export function client(harness: AppHarness, user: TestUser | null) {
   const token = user?.token ?? null;
   return {
     get: <T = any>(url: string) => call<T>(harness, token, 'GET', url),

@@ -1,0 +1,31 @@
+{
+  "name": "@gigacad/cli",
+  "version": "0.1.0",
+  "description": "The giga command: version CAD files with GigaCAD from your terminal",
+  "license": "UNLICENSED",
+  "homepage": "https://gigacad.site",
+  "type": "module",
+  "bin": {
+    "giga": "dist/giga.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepack": "node scripts/build.mjs",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "devDependencies": {
+    "@gigacad/core": "workspace:*",
+    "commander": "^15.0.0",
+    "esbuild": "^0.28.2"
+  }
+}

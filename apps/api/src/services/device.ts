@@ -42,6 +42,17 @@ export async function approveDeviceSignIn(sql: Sql, userId: string, userCode: st
   return row;
 }
 
+/** Shows the signed-in approver which client they are authorizing. */
+export async function pendingDeviceSignIn(sql: Sql, userCode: string): Promise<{ clientName: string; expiresAt: Date }> {
+  const [row] = await sql<{ clientName: string; expiresAt: Date }[]>`
+    select client_name, expires_at from device_codes
+    where user_code = ${userCode.trim().toUpperCase()} and expires_at > now()
+      and approved_by is null and consumed_at is null
+  `;
+  if (!row) throw notFound('Sign-in code');
+  return row;
+}
+
 /** Step 3: the polling client exchanges its device code for a long-lived token, exactly once. */
 export async function pollDeviceSignIn(sql: Sql, deviceCode: string): Promise<{ accessToken: string }> {
   return sql.begin(async (tx) => {

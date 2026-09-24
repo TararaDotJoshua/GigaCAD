@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { AppDeps } from '../app.js';
 import { notFound } from '../errors.js';
 import { idParams, parse, requireCaller, requireSessionCaller } from '../http.js';
-import { approveDeviceSignIn, issueToken, listTokens, pollDeviceSignIn, revokeToken, startDeviceSignIn } from '../services/device.js';
+import { approveDeviceSignIn, issueToken, listTokens, pendingDeviceSignIn, pollDeviceSignIn, revokeToken, startDeviceSignIn } from '../services/device.js';
 
 const handleSchema = z.string().regex(/^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/, 'Use 1-39 lowercase letters, digits, or dashes');
 
@@ -17,6 +17,12 @@ export function authRoutes(app: FastifyInstance, { sql, webOrigin }: AppDeps): v
     const caller = requireSessionCaller(request);
     const { userCode } = parse(z.object({ userCode: z.string().min(4).max(20) }), request.body);
     return approveDeviceSignIn(sql, caller.userId, userCode);
+  });
+
+  app.get('/v1/auth/device/pending/:userCode', async (request) => {
+    requireSessionCaller(request);
+    const { userCode } = parse(z.object({ userCode: z.string().min(4).max(20) }), request.params);
+    return pendingDeviceSignIn(sql, userCode);
   });
 
   app.post('/v1/auth/device/token', async (request) => {

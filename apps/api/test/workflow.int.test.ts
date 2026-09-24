@@ -424,10 +424,16 @@ describe('desktop sign-in', () => {
     expect(started.status).toBe(200);
     expect(started.body.userCode).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
 
+    const details = await asAlex.get(`/v1/auth/device/pending/${started.body.userCode}`);
+    expect(details.status).toBe(200);
+    expect(details.body.clientName).toBe('GigaCAD for Windows');
+    expect((await anonymous.get(`/v1/auth/device/pending/${started.body.userCode}`)).status).toBe(401);
+
     const pending = await anonymous.post('/v1/auth/device/token', { deviceCode: started.body.deviceCode });
     expect(pending.body.error.code).toBe('authorization_pending');
 
     expect((await asAlex.post('/v1/auth/device/approve', { userCode: started.body.userCode.toLowerCase() })).status).toBe(200);
+    expect((await asAlex.get(`/v1/auth/device/pending/${started.body.userCode}`)).status).toBe(404);
     const granted = await anonymous.post('/v1/auth/device/token', { deviceCode: started.body.deviceCode });
     expect(granted.status).toBe(200);
     const device = { ...alex, token: granted.body.accessToken as string };

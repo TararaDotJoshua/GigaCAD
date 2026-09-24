@@ -36,5 +36,41 @@ pnpm --filter @gigacad/api dev      # API on localhost:8787
 pnpm test:integration               # API tests against the real local stack
 ```
 
+### Web sign-in
+
+Copy `apps/web/.env.example` to `apps/web/.env.local`. Set its Supabase URL and
+publishable key from `supabase status -o json`; the other example URLs are for
+local development. Start the API and web app together. The marketing site's Log
+in and Start a project links then open the local account pages. Confirmation and
+reset emails appear in local Mailpit at `http://127.0.0.1:54324`.
+
+The browser flow has email/password sign-in, confirmation, password recovery,
+GitHub/Google buttons when enabled, and a `/device` page for the CLI and future
+Windows client. A new account chooses its public handle on `/app`. Supabase Auth
+and the API use the same Supabase project; the API must point `WEB_ORIGIN` at the
+web app's origin.
+
+Before enabling public registration in the hosted project:
+
+1. Set the Supabase Auth Site URL to `https://app.gigacad.site`. Allow redirects
+   to `https://app.gigacad.site/auth/callback**`, `/app`, `/device**`, and
+   `/reset-password` on that origin. Enable email confirmation.
+2. Configure custom SMTP for account confirmation and password recovery. Copy
+   `supabase/templates/confirmation.html` and `recovery.html` into the hosted
+   project's corresponding Auth email templates. Local templates are configured
+   in `supabase/config.toml`; they are not automatically applied to hosted Auth.
+3. Create GitHub and Google OAuth applications with the callback URL shown in
+   each provider's Supabase Auth settings. Store provider client secrets only
+   in Supabase. Once each provider works, set its corresponding
+   `NEXT_PUBLIC_*_AUTH_ENABLED` flag to `true` in the web deployment.
+4. Set the web deployment's public Supabase URL and publishable key, API URL,
+   and `NEXT_PUBLIC_GIGACAD_APP_URL=https://app.gigacad.site`. Set the API's
+   `WEB_ORIGIN=https://app.gigacad.site`. Never put a Supabase secret or service
+   role key in a `NEXT_PUBLIC_` variable.
+
+The email links first show a confirmation screen; the token is used only after
+the recipient selects Continue. OAuth uses `/auth/callback`, while email links
+use `/auth/confirm`.
+
 If Docker image pulls fail with `docker-credential-desktop: executable file not found`, add
 `/Applications/Docker.app/Contents/Resources/bin` to your PATH.

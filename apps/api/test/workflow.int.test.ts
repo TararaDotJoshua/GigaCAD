@@ -455,6 +455,17 @@ describe('handles', () => {
   });
 });
 
+describe('browser access', () => {
+  it('lets the web app use every method the API has, and no other origin', async () => {
+    const preflight = (origin: string) =>
+      harness.app.inject({ method: 'OPTIONS', url: '/v1/me', headers: { origin, 'access-control-request-method': 'PATCH' } });
+    const allowed = await preflight('http://localhost:3000');
+    expect(allowed.headers['access-control-allow-origin']).toBe('http://localhost:3000');
+    expect(String(allowed.headers['access-control-allow-methods']).split(/,\s*/)).toEqual(expect.arrayContaining(['PUT', 'PATCH', 'DELETE']));
+    expect((await preflight('https://evil.example')).headers['access-control-allow-origin']).toBeUndefined();
+  });
+});
+
 describe('desktop sign-in', () => {
   it('exchanges an approved code for a revocable device token', async () => {
     const anonymous = client(harness, null);

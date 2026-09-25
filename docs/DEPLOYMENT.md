@@ -182,7 +182,7 @@ The workflows are in the repo. What's left is configuring GitHub:
 | 3.5 Custom email | Yes | 2026-09-24: Resend domain `send.gigacad.site` (us-east-1), DKIM and SPF records added by Resend's Cloudflare auto-configure. Supabase SMTP: `smtp.resend.com:465`, sender `no-reply@send.gigacad.site`. Both templates uploaded through the Management API and match `supabase/templates`. A test sign-up sent a confirmation email; the test user was deleted. DMARC `v=DMARC1; p=none;` at `_dmarc` added by the user |
 | 3.6 GitHub and Google OAuth | | Person-owned provider setup can wait until before public launch |
 | 3.7 Supavisor session pooler URL | Yes | 2026-09-24: `aws-0-us-east-1.pooler.supabase.com:5432`, user `postgres.gaxicutwgacxekqcsnpg`. The API ran locally against it: `/health` answered, database queries and prepared statements worked. The full URL is in the ignored `apps/api/.env.railway` with the other Railway variables; the password is in the macOS Keychain (`gigacad-supabase-prod-east-db`) |
-| 4. Railway | | `Dockerfile.api` in repo. Its build steps and `/health` checked outside Docker 2026-09-24. CI builds the image |
+| 4. Railway | Yes | 2026-09-24: service `@gigacad/api` builds from `Dockerfile.api` (Root Directory and custom build command cleared; `RAILWAY_DOCKERFILE_PATH` set). Railway's monorepo import also created web and CLI services, which were deleted. `api.gigacad.site` DNS was added by Railway and is proxied through Cloudflare. Checked live: `/health` returns `{"ok":true}`, database lookups answer, CORS allows `https://app.gigacad.site` |
 | 5. Web | | Config and scripts in repo. Build and signed-out preview checked 2026-09-24 |
 | 6. Smoke test | | |
 | 7. CLI | | |

@@ -1,9 +1,10 @@
 /**
  * Creates or updates GigaCAD's plans in Stripe: one product per paid plan, a monthly and
  * a yearly price each (found by lookup key), the customer portal, and the webhook.
- * Safe to run again. Run it once in test mode and once in live mode:
+ * Safe to run again. Run it once in a sandbox and once in live mode, with a key that can
+ * write products, prices, the customer portal, and webhook endpoints (not the API's key):
  *
- *   STRIPE_SECRET_KEY=sk_test_… pnpm --filter @gigacad/api stripe:setup https://api.gigacad.site
+ *   STRIPE_SECRET_KEY=rk_… pnpm --filter @gigacad/api stripe:setup https://api.gigacad.site
  *
  * It prints the webhook signing secret the first time; set it as STRIPE_WEBHOOK_SECRET.
  */
@@ -13,18 +14,25 @@ import Stripe from 'stripe';
 const key = process.env.STRIPE_SECRET_KEY;
 const apiUrl = process.argv[2];
 if (!key || !apiUrl) {
-  console.error('Usage: STRIPE_SECRET_KEY=sk_… pnpm --filter @gigacad/api stripe:setup <api url>');
+  console.error('Usage: STRIPE_SECRET_KEY=rk_… pnpm --filter @gigacad/api stripe:setup <api url>');
   process.exit(1);
 }
 const stripe = new Stripe(key);
 const WEB_URL = process.env.WEB_ORIGIN ?? 'https://app.gigacad.site';
+// "Software as a service (SaaS) - personal use", chosen by the owner from Stripe's list
+// (https://docs.stripe.com/tax/tax-codes). Managed Payments needs an eligible code on every product.
+const TAX_CODE = 'txcd_10103000';
 const EVENTS: Stripe.WebhookEndpointCreateParams.EnabledEvent[] = [
   'checkout.session.completed',
+  'checkout.session.async_payment_succeeded',
+  'checkout.session.async_payment_failed',
   'customer.subscription.created',
   'customer.subscription.updated',
   'customer.subscription.deleted',
   'customer.subscription.paused',
   'customer.subscription.resumed',
+  'invoice.paid',
+  'invoice.payment_failed',
 ];
 
 const portalProducts: { product: string; prices: string[] }[] = [];
@@ -34,8 +42,8 @@ for (const plan of PLANS) {
   const description = `${plan.summary} ${formatBytes(plan.storageBytes)} of storage.`;
   const product =
     found.data[0] ??
-    (await stripe.products.create({ name: `GigaCAD ${plan.name}`, description, metadata: { gigacad_plan: plan.id } }));
-  await stripe.products.update(product.id, { name: `GigaCAD ${plan.name}`, description, active: true });
+    (await stripe.products.create({ name: `GigaCAD ${plan.name}`, description, tax_code: TAX_CODE, metadata: { gigacad_plan: plan.id } }));
+  await stripe.products.update(product.id, { name: `GigaCAD ${plan.name}`, description, tax_code: TAX_CODE, active: true });
 
   const prices: string[] = [];
   for (const interval of ['monthly', 'yearly'] as BillingInterval[]) {
@@ -47,6 +55,7 @@ for (const plan of PLANS) {
       existing.unit_amount === cents &&
       existing.currency === 'usd' &&
       existing.recurring?.interval === (interval === 'monthly' ? 'month' : 'year') &&
+      existing.tax_behavior === 'exclusive' &&
       (typeof existing.product === 'string' ? existing.product : existing.product.id) === product.id;
     if (matches) {
       prices.push(existing.id);
@@ -61,6 +70,7 @@ for (const plan of PLANS) {
       recurring: { interval: interval === 'monthly' ? 'month' : 'year' },
       lookup_key: lookupKey,
       transfer_lookup_key: true,
+      // Prices are before tax; tax is added at checkout.
       tax_behavior: 'exclusive',
     });
     if (existing) await stripe.prices.update(existing.id, { active: false });

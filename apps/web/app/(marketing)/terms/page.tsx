@@ -157,14 +157,15 @@ const sections: LegalSection[] = [
         </p>
         <p>
           The Free plan costs nothing. Paid plans add storage and are billed monthly or yearly in
-          advance through Stripe, at the prices on the <a href="/pricing">pricing page</a> when you
-          subscribe. They renew automatically until you cancel.
+          advance, at the prices on the <a href="/pricing">pricing page</a> when you subscribe, plus
+          any sales tax or VAT. They renew automatically until you cancel. Stripe, through Link, is
+          the seller of record for paid plans: it takes your payment, collects the tax, and handles
+          payment questions, receipts, and refunds under its own terms.
         </p>
         <p>
           You can change or cancel your plan any time in Account settings. A change takes effect
           right away, and the difference is charged or credited for the rest of the period. If you
           cancel, your plan stays until the end of the period you paid for, then moves to Free.
-          Except where the law requires it, payments aren’t refunded.
         </p>
         <p>
           If a payment fails, we keep your plan while Stripe retries it. If it still fails, your

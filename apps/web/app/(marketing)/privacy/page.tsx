@@ -114,8 +114,9 @@ const sections: LegalSection[] = [
             generate previews.
           </li>
           <li>
-            <strong>Stripe</strong> takes payments for paid plans. We never see or store your full
-            card number; we keep your plan, billing status, and Stripe customer ID.
+            <strong>Stripe</strong> sells paid plans through Link and processes their payments under
+            its own privacy policy. We never see your full card number; we keep your plan, billing
+            status, and Stripe customer ID.
           </li>
           <li>
             <strong>GitHub and Google</strong>, only if you choose to sign in with them.

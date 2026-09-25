@@ -26,6 +26,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - run: scripts/check-secrets.sh
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test

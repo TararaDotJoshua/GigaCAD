@@ -20,6 +20,8 @@ const schema = z.object({
   /** Paid plans. Both or neither; without them the API runs with the free plan only. */
   STRIPE_SECRET_KEY: z.string().min(1).optional(),
   STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
+  /** Managed Payments (Stripe as merchant of record). On unless set to false, e.g. in a sandbox without it activated. */
+  STRIPE_MANAGED_PAYMENTS: booleanString.default(true),
 });
 
 export type Config = z.infer<typeof schema>;

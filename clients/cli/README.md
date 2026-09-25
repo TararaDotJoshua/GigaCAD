@@ -155,7 +155,7 @@ From the repository root, with Docker running:
 
 ```sh
 supabase start
-docker compose up -d                       # MinIO, the local stand-in for R2
+docker compose up -d                       # SeaweedFS, the local stand-in for R2
 cp apps/api/.env.example apps/api/.env
 pnpm --filter @gigacad/api dev             # API on http://127.0.0.1:8787
 pnpm --filter @gigacad/web dev             # web app for approving sign-ins
@@ -168,7 +168,7 @@ Tests:
 
 ```sh
 pnpm test                                   # unit tests, no services needed
-pnpm test:integration                       # CLI against the real local API and MinIO
+pnpm test:integration                       # CLI against the real local API and SeaweedFS
 pnpm --filter @gigacad/cli smoke            # pack, install, and run the npm package
 ```
 

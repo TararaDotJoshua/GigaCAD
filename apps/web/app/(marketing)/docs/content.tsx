@@ -196,7 +196,8 @@ exports/
 scratch/`}</Command>
       <p>
         <code>.gigaignore</code> is committed like any other file, so everyone working on the project gets
-        the same rules.
+        the same rules. Rules only apply to new files: a file that’s already on the branch keeps being
+        versioned even if a pattern matches it later.
       </p>
       <p>
         Two kinds of file can’t be versioned at all: symbolic links, and names Windows can’t store, such as

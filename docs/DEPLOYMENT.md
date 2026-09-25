@@ -156,7 +156,7 @@ The workflows are in the repo. What's left is configuring GitHub:
 
 ### 9. Operations
 
-- Set up uptime checks on `https://api.gigacad.site/health` and `https://app.gigacad.site`.
+- Uptime: `.github/workflows/uptime.yml` runs `scripts/check-site.sh` every 15 minutes, and the web deploy runs it after each deploy.
 - Supabase Pro takes daily backups. Upgrade before public launch.
 - Logs: Railway for the API, `wrangler tail` or the Workers dashboard for the web app.
 - Set a spending alert on R2 storage.
@@ -175,7 +175,7 @@ The workflows are in the repo. What's left is configuring GitHub:
 | 2.2 Bucket CORS | Yes | 2026-09-24: Cloudflare API confirmed origin `https://app.gigacad.site`, methods GET/PUT, and headers `content-type`/`x-amz-checksum-sha256` |
 | 2.3 Bucket-scoped API token and ignored env file | Yes | 2026-09-24: user provided credentials in ignored `apps/api/.env.r2.rtf`; converted locally to R2-only plain text `apps/api/.env.r2` with mode 600; no credential values entered in tracked files |
 | 2.4 R2 storage gate | Yes | 2026-09-24: `pnpm vitest run --config vitest.integration.config.ts apps/api/test/storage.int.test.ts` passed against R2 (1 test) |
-| 3.1 Supabase project | Yes | 2026-09-24: created `GigaCAD Production` in `us-east-1`, ref `gaxicutwgacxekqcsnpg`, URL `https://gaxicutwgacxekqcsnpg.supabase.co`. Database password stored outside the repo in macOS Keychain. Earlier empty `ewvkxsicxiigojhmttjp` project remains in `us-west-2` and is not the deployment target |
+| 3.1 Supabase project | Yes | 2026-09-24: created `GigaCAD Production` in `us-east-1`, ref `gaxicutwgacxekqcsnpg`, URL `https://gaxicutwgacxekqcsnpg.supabase.co`. Database password stored outside the repo in macOS Keychain. The earlier empty `ewvkxsicxiigojhmttjp` project in `us-west-2` was deleted on 2026-09-25 |
 | 3.2 Schema migration | Yes | 2026-09-24: CLI linked East project; pushed `20260924000000_core_schema.sql` and `20260925012709_harden_security_definer_functions.sql`. Remote migration history matches both local files; security advisor returned zero warnings |
 | 3.3 Realtime publication | Yes | 2026-09-24: queried `pg_publication_tables`; `public.project_events` is in `supabase_realtime` |
 | 3.4 Auth settings | Yes | 2026-09-24: site URL and all four redirect patterns pushed to East project; email confirmation enabled. Config diff shows no remaining declared differences |
@@ -186,5 +186,5 @@ The workflows are in the repo. What's left is configuring GitHub:
 | 5. Web | Yes | 2026-09-24: Workers Paid. First deploy from a local OpenNext build (version `9d9edd64`); `gigacad.site` and `app.gigacad.site` attached as custom domains with certificates. Checked live: marketing pages load, sign-in paths move to the app host, product pages send signed-out visitors to `/login?next=…`, `/docs` on the app host goes back to marketing. Signed-in checks happen in step 6. Note: local `wrangler dev` rewrites every Host to the first route (`gigacad.site`); use `--local-upstream app.gigacad.site` to test the app host |
 | 6. Smoke test | Yes | 2026-09-24, private project `tararajoshua/smoke-test`: signed up and chose a handle; a second account viewed a shared project; `giga login` approved in the browser; v1 and v2 released from the CLI; v3's release request picked in the web app (keep main's P1 on a conflict, take P2, replace P4 with P3), approved, and released. `giga release export 3` matched every file byte for byte, and P3 carries P4's item ID. `gigacad.site/login` redirects to the app host. 2026-09-25: live updates fixed in #13 (the browser joined Realtime before its session loaded, so row-level security hid private projects' events). On `app.gigacad.site`, a signed-in browser on a private project showed a branch created through the API without a reload |
 | 7. CLI | Yes | 2026-09-24: `@gigacad/cli@0.1.0` published to npm under the `gigacad` organization (owner `tararajosh`, 2FA with a passkey, so publishing needs a browser confirmation). `npm install -g @gigacad/cli` checked on the user's Mac |
-| 8. CI/CD | Yes | 2026-09-24: `main` protected, requiring `check`, `api-image`, and `integration`, with auto-merge on. Secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, the `NEXT_PUBLIC_*` variables, the `production` environment, and `DEPLOY_WEB=true` are set. Railway's Wait for CI is on |
-| 9. Operations | | |
+| 8. CI/CD | Yes | 2026-09-24: `main` protected, requiring `check`, `api-image`, and `integration` (and `e2e` since 2026-09-25), with auto-merge on. Secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, the `NEXT_PUBLIC_*` variables, the `production` environment, and `DEPLOY_WEB=true` are set. Railway's Wait for CI is on |
+| 9. Operations | Partly | 2026-09-25: uptime and post-deploy page checks run from GitHub Actions (`scripts/check-site.sh`). Still to do: R2 spending alert and Supabase Pro (owner) |

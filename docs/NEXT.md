@@ -9,24 +9,29 @@ Live and verified in production:
 - Marketing site at `gigacad.site`, product at `app.gigacad.site` (Cloudflare Workers), API at `api.gigacad.site` (Railway), Supabase project `gaxicutwgacxekqcsnpg`.
 - Sign-up with confirmation email through Resend (`send.gigacad.site`).
 - `@gigacad/cli` 0.1.0 on npm.
-- CI on every pull request (`check`, `api-image`, `integration`). `main` is protected. Merges deploy the web app automatically, and Railway deploys the API after CI.
+- CI on every pull request (`check`, `api-image`, `integration`, `e2e`). `main` is protected. Merges deploy the web app automatically, and Railway deploys the API after CI.
 - The release flow, end to end. On `tararajoshua/smoke-test`: v1 and v2 from the CLI, v3 picked in the web app (keep main on a conflict, take a branch file, replace a part), approved, and released. `giga release export 3` matched every file byte for byte, and the replacement kept the old part's item ID.
 - Sharing. A second account viewed a project shared with it.
 - Live updates. Project pages refresh on their own when something happens, including on private projects (fixed in #13).
-- A browser test in CI (`e2e` job, `apps/web/e2e/`): the release flow in the web app, live refresh, and the HTTP status of every page type.
+- A browser test in CI (`e2e` job, `apps/web/e2e/`): the release flow in the web app, live refresh, and the HTTP status of every page type. It's required on `main`.
+- `scripts/check-site.sh` checks the status of every page type on the live site. It runs after each web deploy and every 15 minutes (`.github/workflows/uptime.yml`). GitHub emails a failed run.
 
 ## 1. Finish the launch checklist
 
-- **GitHub and Google sign-in (deployment step 3.6).** The owner creates the two OAuth apps and puts the client secrets in Supabase. Then set `NEXT_PUBLIC_GITHUB_AUTH_ENABLED` and `NEXT_PUBLIC_GOOGLE_AUTH_ENABLED` to `true` in the GitHub repository variables and redeploy.
-- **Operations (step 9).** Add uptime checks on `https://api.gigacad.site/health` and `https://app.gigacad.site`. Set a spending alert on R2.
+These need the owner's accounts. Everything else before the next phase is done.
+
+- **GitHub and Google sign-in (deployment step 3.6).** Create the two OAuth apps with the callback URL `https://gaxicutwgacxekqcsnpg.supabase.co/auth/v1/callback`:
+  - GitHub: Settings → Developer settings → OAuth Apps → New OAuth App. Homepage `https://gigacad.site`.
+  - Google: Google Cloud console → APIs & Services → Credentials → Create OAuth client ID (Web application), after configuring the consent screen. Authorized JavaScript origin `https://app.gigacad.site`.
+
+  Then enable each provider in Supabase (Authentication → Sign In / Providers) with its client ID and secret. Or put them in the ignored `supabase/.env.oauth` and have an agent push them through the Management API. Last, set `NEXT_PUBLIC_GITHUB_AUTH_ENABLED` and `NEXT_PUBLIC_GOOGLE_AUTH_ENABLED` to `true` in the GitHub repository variables and redeploy.
+- **R2 spending alert (step 9).** Cloudflare dashboard → Notifications → Add → Usage Based Billing → R2 storage, with a monthly threshold. The API token agents can use has no notification permissions.
 - **Supabase Pro** before public sign-ups, for daily backups and no pausing.
-- **Require the `e2e` CI job on `main`.** It isn't in the branch protection rule yet. Note it runs `next start`, not the OpenNext Workers build, so a Workers-only failure (like the docs 500) still needs a check against the deployed site.
 
 ## 2. Cleanup
 
-- Delete the `tararajoshua/realtime-check` project, which is public and was only for testing. Keep or delete `tararajoshua/smoke-test`.
-- Delete the unused US West Supabase project (`ewvkxsicxiigojhmttjp`).
-- The test accounts `tararajoshua+ui-review` and `tararajoshua+rt-review` have soft-deleted projects and revoked sessions, and `tararajoshua+live-check` (from the live-update check) has a soft-deleted project. Remove them once their projects' 30-day grace period ends.
+- Keep or delete `tararajoshua/smoke-test`.
+- The test accounts `tararajoshua+ui-review`, `+rt-review`, and `+live-check` have soft-deleted projects and revoked sessions. Remove them once their projects' 30-day grace period ends (from 2026-09-25 at the latest).
 
 ## 3. Product work
 
@@ -40,7 +45,7 @@ Following the phases in `docs/PLAN.md`:
 
 ## Working notes
 
-- Every change to `main` goes through a pull request. All three CI jobs must pass, and auto-merge is on.
+- Every change to `main` goes through a pull request. All four CI jobs must pass, and auto-merge is on.
 - Check deploys by HTTP status for each kind of page (marketing, docs, product signed out and signed in), not by looking for text in the page.
 - A CLI release means bumping the version in `clients/cli/package.json`, then running `pnpm --filter @gigacad/cli publish` from `main`. npm asks for a passkey confirmation in the browser.
 - Docker isn't available on the development Mac, so integration tests and the API image build run only in CI.

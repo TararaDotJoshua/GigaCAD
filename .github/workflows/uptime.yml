@@ -1,0 +1,23 @@
+name: Uptime
+
+# Checks the live site and API every 15 minutes. GitHub emails a failed scheduled run
+# to whoever last changed the schedule. It also pauses schedules after 60 days without
+# a commit; re-enable the workflow from the Actions tab if that happens.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: uptime
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
+      - run: scripts/check-site.sh

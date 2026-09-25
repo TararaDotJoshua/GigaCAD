@@ -392,6 +392,13 @@
   margin-top: 0;
 }
 
+/* Content that follows a section directly, like the branch table under "New branch". */
+.shell .section + .table-wrap,
+.shell .section + .empty,
+.shell .section + .data-table {
+  margin-top: 40px;
+}
+
 .shell .section > h2,
 .shell .stack > section > h2 {
   margin-bottom: 12px;

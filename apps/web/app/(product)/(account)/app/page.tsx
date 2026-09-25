@@ -75,7 +75,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
                     </span>
                   </Link>
                 </td>
-                <td className="muted">{project.role ?? 'Viewer'}</td>
+                <td className="muted role">{project.role ?? 'viewer'}</td>
                 <td className="muted">{project.visibility === 'public' ? 'Public' : 'Private'}</td>
                 <td className="mono">{project.latestReleaseNumber ? `v${project.latestReleaseNumber}` : <span className="muted">None yet</span>}</td>
               </tr>

@@ -1,5 +1,6 @@
 'use client';
 
+import type { RealtimeChannel } from '@supabase/supabase-js';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { createClient } from '../../lib/supabase/client';
@@ -13,16 +14,27 @@ export function LiveRefresh({ projectId }: { projectId: string }) {
   useEffect(() => {
     const supabase = createClient();
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const channel = supabase
-      .channel(`project-${projectId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'project_events', filter: `project_id=eq.${projectId}` }, () => {
-        clearTimeout(timer);
-        timer = setTimeout(() => router.refresh(), 300);
-      })
-      .subscribe();
+    let channel: RealtimeChannel | undefined;
+    let cancelled = false;
+    void (async () => {
+      // Load the session and hand its token to Realtime before joining. Otherwise the
+      // channel joins as anonymous and row-level security hides private projects' events.
+      // The client keeps the token current on refresh from then on.
+      const { data } = await supabase.auth.getSession();
+      await supabase.realtime.setAuth(data.session?.access_token ?? null);
+      if (cancelled) return;
+      channel = supabase
+        .channel(`project-${projectId}`)
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'project_events', filter: `project_id=eq.${projectId}` }, () => {
+          clearTimeout(timer);
+          timer = setTimeout(() => router.refresh(), 300);
+        })
+        .subscribe();
+    })();
     return () => {
+      cancelled = true;
       clearTimeout(timer);
-      void supabase.removeChannel(channel);
+      if (channel) void supabase.removeChannel(channel);
     };
   }, [projectId, router]);
   return null;

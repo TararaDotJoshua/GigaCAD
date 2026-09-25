@@ -28,8 +28,25 @@ export interface Payments {
 
 export class InvalidWebhookError extends Error {}
 
-export function createStripePayments(config: { secretKey: string; webhookSecret: string }): Payments {
-  const stripe = new Stripe(config.secretKey);
+/** Tags GigaCAD's sessions in the Stripe Dashboard so checkout flows can be compared. */
+const INTEGRATION_IDENTIFIER = 'gigacad_plans_qvhtmzrk';
+
+const subscriptionId = (value: string | { id: string } | null | undefined): string | null =>
+  typeof value === 'string' ? value : (value?.id ?? null);
+
+export function createStripePayments(config: {
+  /** A restricted key (rk_) is best; see docs/DEPLOYMENT.md step 10 for its permissions. */
+  secretKey: string;
+  webhookSecret: string;
+  /**
+   * Stripe as merchant of record: it calculates, collects, and remits sales tax, VAT, and
+   * GST, and handles fraud and disputes. Must first be activated in the Dashboard.
+   */
+  managedPayments: boolean;
+  /** Tests pass a fake transport. */
+  httpClient?: ReturnType<typeof Stripe.createFetchHttpClient>;
+}): Payments {
+  const stripe = new Stripe(config.secretKey, config.httpClient ? { httpClient: config.httpClient } : {});
   return {
     async createCustomer({ userId, email }) {
       const customer = await stripe.customers.create({ ...(email ? { email } : {}), metadata: { user_id: userId } });
@@ -47,6 +64,8 @@ export function createStripePayments(config: { secretKey: string; webhookSecret:
         line_items: [{ price: price.id, quantity: 1 }],
         subscription_data: { metadata: { user_id: userId } },
         allow_promotion_codes: true,
+        ...(config.managedPayments ? { managed_payments: { enabled: true } } : {}),
+        integration_identifier: INTEGRATION_IDENTIFIER,
         success_url: successUrl,
         cancel_url: cancelUrl,
       });
@@ -66,17 +85,22 @@ export function createStripePayments(config: { secretKey: string; webhookSecret:
       } catch {
         throw new InvalidWebhookError('Invalid Stripe signature');
       }
+      // Every event that can change a subscription's plan or status resolves to that
+      // subscription; the plan is then read fresh from Stripe.
       switch (event.type) {
-        case 'checkout.session.completed': {
-          const subscription = event.data.object.subscription;
-          return typeof subscription === 'string' ? subscription : (subscription?.id ?? null);
-        }
+        case 'checkout.session.completed':
+        case 'checkout.session.async_payment_succeeded':
+        case 'checkout.session.async_payment_failed':
+          return subscriptionId(event.data.object.subscription);
         case 'customer.subscription.created':
         case 'customer.subscription.updated':
         case 'customer.subscription.deleted':
         case 'customer.subscription.paused':
         case 'customer.subscription.resumed':
           return event.data.object.id;
+        case 'invoice.paid':
+        case 'invoice.payment_failed':
+          return subscriptionId(event.data.object.parent?.subscription_details?.subscription);
         default:
           return null;
       }

@@ -13,7 +13,11 @@ const app = buildApp({
   authenticate: createAuthenticator({ sql, supabaseUrl: config.SUPABASE_URL, jwtSecret: config.SUPABASE_JWT_SECRET }),
   webOrigin: config.WEB_ORIGIN,
   ...(config.STRIPE_SECRET_KEY && config.STRIPE_WEBHOOK_SECRET
-    ? { payments: createStripePayments({ secretKey: config.STRIPE_SECRET_KEY, webhookSecret: config.STRIPE_WEBHOOK_SECRET }) }
+    ? { payments: createStripePayments({
+        secretKey: config.STRIPE_SECRET_KEY,
+        webhookSecret: config.STRIPE_WEBHOOK_SECRET,
+        managedPayments: config.STRIPE_MANAGED_PAYMENTS,
+      }) }
     : {}),
   logger: true,
 });

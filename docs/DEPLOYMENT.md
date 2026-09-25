@@ -26,7 +26,7 @@ The web app decides which site to serve from the request's host (`apps/web/lib/h
 | npm | The `@gigacad` organization | Free for public packages |
 | Email (SMTP) for Auth, e.g. Resend or Postmark | Free tier to start | $0 to start |
 | GitHub and Google OAuth apps | Free | $0 |
-| Stripe | Pay per payment | 2.9% + 30¢ per card payment in the US; no monthly fee |
+| Stripe (Managed Payments) | Pay per payment | A percentage of each sale, including tax handling; see stripe.com/pricing. No monthly fee |
 
 ## Steps
 
@@ -165,13 +165,19 @@ The workflows are in the repo. What's left is configuring GitHub:
 
 ### 10. Paid plans (Stripe)
 
-The plans are defined in `packages/core/src/plans.ts`. Storage is enforced whether or not Stripe is set up; without Stripe keys everyone is on Free and paid plans show "Opens soon".
+The plans are defined in `packages/core/src/plans.ts`. Storage limits apply whether or not Stripe is set up; without Stripe keys everyone is on Free and paid plans show "Opens soon".
 
-1. Create a Stripe account and turn on Link under Settings → Payment methods (it's on by default for Checkout).
-2. In test mode, run `STRIPE_SECRET_KEY=sk_test_… pnpm --filter @gigacad/api stripe:setup https://api.gigacad.site`. It creates a product per paid plan with monthly and yearly prices (lookup keys like `gigacad_maker_yearly`), configures the customer portal, and creates the webhook. It prints the webhook signing secret once.
-3. Set `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` on the Railway API service. Set the GitHub repository variable `NEXT_PUBLIC_BILLING_ENABLED` to `true` and run the Deploy web workflow.
-4. Test with card `4242 4242 4242 4242`: choose a plan on `/pricing`, check that Account → Plan and storage shows it, switch plans and cancel in the portal.
-5. For launch, repeat steps 2 and 3 with the live-mode key. Consider Stripe Tax before selling outside the US.
+GigaCAD sells through **Managed Payments**: Stripe (through Link) is the merchant of record. It calculates, collects, and remits sales tax, VAT, and GST, and handles fraud, disputes, and payment support. Products use tax code `txcd_10103000` (SaaS, personal use), and prices are before tax. One-off invoices aren't available with Managed Payments; subscription invoices and receipts come from Link.
+
+1. **Account.** Create the Stripe account for gigacad.site. Use a passkey or an authenticator app for two-factor sign-in, not SMS. Under Settings → Business, set the support email and the statement descriptor `GIGACAD` (statements show `LINK.COM* GIGACAD`).
+2. **Sandbox.** Create a sandbox for development (Dashboard → Sandboxes), separate from live mode. In it, activate Managed Payments (Settings → Managed Payments) and accept its terms.
+3. **Keys.** Use restricted keys (`rk_`), one per job, and never commit them. `scripts/check-secrets.sh` fails CI if one shows up in the repo.
+   - Setup key, used only on your machine: write access to Products, Prices, Customer portal, and Webhook endpoints.
+   - API key, stored in Railway: write access to Customers, Checkout Sessions, and Customer portal; read access to Prices and Subscriptions.
+4. **Catalog.** Run `STRIPE_SECRET_KEY=rk_… pnpm --filter @gigacad/api stripe:setup https://api.gigacad.site` with the setup key. It creates a product per paid plan with the tax code, monthly and yearly prices (lookup keys like `gigacad_maker_yearly`), the customer portal, and the webhook, and prints the webhook signing secret once. Safe to re-run.
+5. **API.** Set `STRIPE_SECRET_KEY` (the API key) and `STRIPE_WEBHOOK_SECRET` on the Railway service. `STRIPE_MANAGED_PAYMENTS` defaults to `true`; set it to `false` only in a sandbox where Managed Payments isn't activated. Set the GitHub variable `NEXT_PUBLIC_BILLING_ENABLED` to `true` and run the Deploy web workflow.
+6. **Test** in the sandbox with card `4242 4242 4242 4242` and a US address: choose a plan on `/pricing`, check that the checkout shows tax, and that Account → Plan and storage shows the plan. Switch plans and cancel in the portal.
+7. **Live.** Activate Managed Payments in live mode, create live restricted keys, and repeat steps 4 and 5. Go through Stripe's go-live checklist: https://docs.stripe.com/get-started/checklist/go-live
 
 To give someone a plan by hand, update their `billing_accounts.plan` and `profiles.quota_bytes` together (see `syncSubscription` in `apps/api/src/services/billing.ts`). A later Stripe webhook for that account overwrites it.
 
@@ -201,4 +207,4 @@ To give someone a plan by hand, update their `billing_accounts.plan` and `profil
 | 7. CLI | Yes | 2026-09-24: `@gigacad/cli@0.1.0` published to npm under the `gigacad` organization (owner `tararajosh`, 2FA with a passkey, so publishing needs a browser confirmation). `npm install -g @gigacad/cli` checked on the user's Mac |
 | 8. CI/CD | Yes | 2026-09-24: `main` protected, requiring `check`, `api-image`, and `integration` (and `e2e` since 2026-09-25), with auto-merge on. Secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, the `NEXT_PUBLIC_*` variables, the `production` environment, and `DEPLOY_WEB=true` are set. Railway's Wait for CI is on |
 | 9. Operations | Partly | 2026-09-25: uptime and post-deploy page checks run from GitHub Actions (`scripts/check-site.sh`). Still to do: R2 spending alert and Supabase Pro (owner) |
-| 10. Paid plans | | 2026-09-25: code shipped (storage limits enforced, Stripe Checkout, portal, webhook). Waiting on a Stripe account and keys |
+| 10. Paid plans | | 2026-09-25: code shipped (storage limits, Checkout with Managed Payments, portal, webhook). Tax code `txcd_10103000`, prices before tax, chosen by the owner. Waiting on a Stripe account, sandbox, and keys |

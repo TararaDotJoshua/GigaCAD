@@ -31,7 +31,8 @@ const PG_UNIQUE_VIOLATION = '23505';
 export function buildApp(deps: AppDeps): FastifyInstance {
   const app = Fastify({ logger: deps.logger ?? false, bodyLimit: 32 * 1024 * 1024 });
 
-  app.register(cors, { origin: [deps.webOrigin], credentials: false });
+  // @fastify/cors allows only GET, HEAD, and POST unless told otherwise; the API also uses PUT, PATCH, and DELETE.
+  app.register(cors, { origin: [deps.webOrigin], methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'], credentials: false });
   app.decorateRequest('caller', null);
   app.addHook('onRequest', async (request) => {
     request.caller = await deps.authenticate(request.headers.authorization);

@@ -2,7 +2,7 @@
 
 Where GigaCAD stands and what to do next, in order. `docs/PLAN.md` is the full product plan, and `docs/DEPLOYMENT.md` tracks each deployment step. Update this file as items finish.
 
-## Where things stand (2026-09-24)
+## Where things stand (2026-09-25)
 
 Live and verified in production:
 
@@ -12,40 +12,23 @@ Live and verified in production:
 - CI on every pull request (`check`, `api-image`, `integration`). `main` is protected. Merges deploy the web app automatically, and Railway deploys the API after CI.
 - The release flow, end to end. On `tararajoshua/smoke-test`: v1 and v2 from the CLI, v3 picked in the web app (keep main on a conflict, take a branch file, replace a part), approved, and released. `giga release export 3` matched every file byte for byte, and the replacement kept the old part's item ID.
 - Sharing. A second account viewed a project shared with it.
+- Live updates. Project pages refresh on their own when something happens, including on private projects (fixed in #13).
+- A browser test in CI (`e2e` job, `apps/web/e2e/`): the release flow in the web app, live refresh, and the HTTP status of every page type.
 
-## 1. Fix live updates on private projects
-
-Pages should refresh on their own when something happens in a project, like a checkout, an approval, or a release. Today they don't on private projects; you have to reload.
-
-What's known:
-
-- `apps/web/components/product/LiveRefresh.tsx` subscribes to Supabase Realtime inserts on `project_events` and calls `router.refresh()`.
-- The server side works. An anonymous subscriber to a public project received `branch_created` within seconds.
-- In a signed-in headless browser on a private project, the page never refreshed. The channel's join message appeared to carry no access token.
-
-Likely cause: the browser subscribes before its session has loaded, so it joins as anonymous, and row-level security (`private.can_read_project`) filters out every event.
-
-To do:
-
-1. Before subscribing, load the session and pass its token to Realtime (`supabase.auth.getSession()`, then `supabase.realtime.setAuth(token)`). Also update the token when the session refreshes.
-2. Verify in a signed-in browser on a private project: trigger an event through the API and check that the page refreshes without a reload.
-3. Mark step 6 done in `docs/DEPLOYMENT.md`.
-
-## 2. Finish the launch checklist
+## 1. Finish the launch checklist
 
 - **GitHub and Google sign-in (deployment step 3.6).** The owner creates the two OAuth apps and puts the client secrets in Supabase. Then set `NEXT_PUBLIC_GITHUB_AUTH_ENABLED` and `NEXT_PUBLIC_GOOGLE_AUTH_ENABLED` to `true` in the GitHub repository variables and redeploy.
 - **Operations (step 9).** Add uptime checks on `https://api.gigacad.site/health` and `https://app.gigacad.site`. Set a spending alert on R2.
 - **Supabase Pro** before public sign-ups, for daily backups and no pausing.
-- **A browser test in CI.** A Playwright test of pick files, then generate the candidate, approve, and release. It should also request every page type and assert its HTTP status. A 500 on every docs page once went unnoticed because a check matched page content instead of the status code.
+- **Require the `e2e` CI job on `main`.** It isn't in the branch protection rule yet. Note it runs `next start`, not the OpenNext Workers build, so a Workers-only failure (like the docs 500) still needs a check against the deployed site.
 
-## 3. Cleanup
+## 2. Cleanup
 
 - Delete the `tararajoshua/realtime-check` project, which is public and was only for testing. Keep or delete `tararajoshua/smoke-test`.
-- Delete `apps/api/.env.railway` and `apps/api/.env.r2.rtf`, local copies of secrets that Railway now holds. Keep `apps/api/.env.r2` for re-running the R2 storage test.
 - Delete the unused US West Supabase project (`ewvkxsicxiigojhmttjp`).
-- The test accounts `tararajoshua+ui-review` and `tararajoshua+rt-review` have soft-deleted projects and revoked sessions. Remove them once their projects' 30-day grace period ends.
+- The test accounts `tararajoshua+ui-review` and `tararajoshua+rt-review` have soft-deleted projects and revoked sessions, and `tararajoshua+live-check` (from the live-update check) has a soft-deleted project. Remove them once their projects' 30-day grace period ends.
 
-## 4. Product work
+## 3. Product work
 
 Following the phases in `docs/PLAN.md`:
 

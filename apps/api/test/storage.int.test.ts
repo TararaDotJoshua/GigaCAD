@@ -4,7 +4,7 @@ import { loadConfig } from '../src/config.js';
 import { createS3Storage, sha256Base64 } from '../src/storage.js';
 import { sha256 } from './helpers.js';
 
-// Runs against MinIO from `docker compose up` (the local stand-in for R2).
+// Runs against SeaweedFS from `docker compose up` (the local stand-in for R2), or R2 itself through S3_* variables.
 const storage = createS3Storage(
   loadConfig({
     DATABASE_URL: 'postgresql://unused@localhost/unused',

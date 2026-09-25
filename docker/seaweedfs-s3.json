@@ -1,0 +1,9 @@
+{
+  "identities": [
+    {
+      "name": "gigacad",
+      "credentials": [{ "accessKey": "gigacad", "secretKey": "gigacad-local-secret" }],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}

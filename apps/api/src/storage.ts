@@ -23,7 +23,7 @@ export interface StoredObject {
   readonly checksumSha256: string | undefined;
 }
 
-/** R2 in production, MinIO locally. Blobs live at a key derived from their SHA-256. */
+/** R2 in production, SeaweedFS locally. Blobs live at a key derived from their SHA-256. */
 export interface BlobStorage {
   presignUpload(key: string, sha256: string): Promise<PresignedUpload>;
   /** `filename` makes browsers save the download under that name instead of the blob key. */
@@ -54,7 +54,7 @@ export function createS3Storage(config: Config): BlobStorage {
     endpoint: config.S3_ENDPOINT,
     forcePathStyle: config.S3_FORCE_PATH_STYLE,
     credentials: { accessKeyId: config.S3_ACCESS_KEY_ID, secretAccessKey: config.S3_SECRET_ACCESS_KEY },
-    // The SDK's automatic CRC32 checksums break presigned URLs on R2 and MinIO; we sign SHA-256 ourselves.
+    // The SDK's automatic CRC32 checksums break presigned URLs on R2 and other S3 servers; we sign SHA-256 ourselves.
     requestChecksumCalculation: 'WHEN_REQUIRED',
     responseChecksumValidation: 'WHEN_REQUIRED',
   });

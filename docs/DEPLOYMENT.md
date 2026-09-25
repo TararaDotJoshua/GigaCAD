@@ -146,7 +146,7 @@ The workflows are in the repo. What's left is configuring GitHub:
 - `ci.yml` runs on pull requests and pushes to `main`:
   - `check`: `pnpm typecheck`, `pnpm test`, `pnpm build`, and `pnpm --filter @gigacad/cli smoke`.
   - `api-image`: builds `Dockerfile.api`, the image Railway deploys.
-  - `integration`: starts MinIO from `docker-compose.yml` and a local Supabase stack (`supabase start` applies the migrations), then runs `pnpm test:integration`. This is the first place those tests run automatically. There is no browser end-to-end suite yet.
+  - `integration`: starts SeaweedFS (the S3 stand-in for R2) from `docker-compose.yml` and runs the storage test. Then it starts a local Supabase stack (`supabase start` applies the migrations) and runs `pnpm test:integration`. This is the first place those tests run automatically. There is no browser end-to-end suite yet.
 - `deploy-web.yml` runs after CI succeeds on a push to `main`. It stays off until you set the repository variable `DEPLOY_WEB` to `true`. It needs:
   - Secrets `CLOUDFLARE_API_TOKEN` (the "Edit Cloudflare Workers" template) and `CLOUDFLARE_ACCOUNT_ID`.
   - The `NEXT_PUBLIC_*` values from step 5 as repository variables.

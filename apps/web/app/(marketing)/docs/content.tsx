@@ -70,6 +70,308 @@ function Concepts() {
   );
 }
 
+function Command({ children }: { children: string }) {
+  return (
+    <pre>
+      <code>{children}</code>
+    </pre>
+  );
+}
+
+function CommandList({ commands }: { commands: [string, React.ReactNode][] }) {
+  return (
+    <dl className="doc-terms doc-commands">
+      {commands.map(([command, meaning]) => (
+        <div key={command}>
+          <dt>
+            <code>{command}</code>
+          </dt>
+          <dd>{meaning}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function FirstProject() {
+  return (
+    <>
+      <p>
+        This walks through a new project from empty to its first release. The GigaCAD drive for Windows
+        isn’t out yet, so files go in with the <a href="/docs/cli">command-line tool</a> for now.
+      </p>
+
+      <h2 id="create-a-project">Create a project</h2>
+      <p>
+        Sign in at <a href="https://app.gigacad.site">app.gigacad.site</a>. The first time, choose a handle:
+        it starts every project address, like <code>app.gigacad.site/alex/robot-arm</code>. Then choose{" "}
+        <strong>New project</strong>, give it a name, and pick who can see it. Private projects are visible
+        only to their members. Public projects can be viewed by anyone, but only members can change them.
+      </p>
+      <p>From the command line, the same thing is:</p>
+      <Command>{`giga project create robot-arm --name "Robot arm"`}</Command>
+
+      <h2 id="add-your-files">Add your files</h2>
+      <p>
+        Files never go straight onto main. Start a branch, download it into a folder, check it out, and
+        copy your files in:
+      </p>
+      <Command>{`giga branch create first-upload --project alex/robot-arm
+giga clone alex/robot-arm --branch first-upload robot-arm
+cd robot-arm
+giga checkout`}</Command>
+      <p>
+        Copy your assembly, parts, and drawings into the <code>robot-arm</code> folder, keeping the folder
+        layout your assemblies expect. Then upload them as a version:
+      </p>
+      <Command>{`giga status
+giga commit -m "First upload" --label "rev A"`}</Command>
+      <p>
+        <code>giga status</code> lists what will be uploaded. Temporary and backup files are skipped
+        automatically; see <a href="/docs/ignored-files">Ignored files</a>.
+      </p>
+
+      <h2 id="make-release-v1">Make release v1</h2>
+      <p>
+        Open the branch in the web app and choose <strong>Open release request</strong>, or run{" "}
+        <code>giga rr open --title "First release"</code>. Opening a request checks the branch in and freezes
+        it until the request is released or closed.
+      </p>
+      <p>
+        On the release request, every file shows up as new on the branch, set to <strong>Add as new</strong>.
+        Choose <strong>Generate candidate</strong>, then <strong>Approve candidate</strong>. New projects
+        need one approval from an owner or maintainer, and you may approve your own request. Once the
+        approval is in, choose <strong>Release v1</strong>. Main now shows your files, locked as v1.
+      </p>
+
+      <h2 id="invite-people">Invite people</h2>
+      <p>
+        In the project’s <strong>Settings</strong>, add people by their handle and pick a role. Viewers can
+        see and download files. Contributors can also make branches, commit, and open release requests.
+        Maintainers can also change settings and approval rules, add and remove viewers and contributors,
+        and release someone else’s checkout lock. The owner can do everything, including adding maintainers
+        and deleting the project.
+      </p>
+    </>
+  );
+}
+
+function IgnoredFiles() {
+  return (
+    <>
+      <p>
+        CAD programs and operating systems write lock files, temporary files, and backups next to your real
+        files. GigaCAD never uploads them, so they don’t clutter history or use your storage.
+      </p>
+
+      <h2 id="built-in-rules">Built-in rules</h2>
+      <p>These patterns are always ignored, in every folder, regardless of letter case:</p>
+      <ul>
+        <li>
+          <code>~$*</code>, <code>*.tmp</code>, <code>*.bak</code>: SolidWorks lock and temporary files
+        </li>
+        <li>
+          <code>Backup of *</code>, <code>Backup (*) of *</code>, <code>AutoRecover of *</code>: SolidWorks
+          backups
+        </li>
+        <li>
+          <code>*.FCBak</code>, <code>.~lock.*#</code>: FreeCAD backups and LibreOffice lock files
+        </li>
+        <li>
+          <code>.DS_Store</code>, <code>Thumbs.db</code>, <code>desktop.ini</code>: files macOS and Windows
+          add to folders
+        </li>
+      </ul>
+
+      <h2 id="add-your-own-rules">Add your own rules</h2>
+      <p>
+        Put a file named <code>.gigaignore</code> in the top folder of the project. It uses the same syntax
+        as <code>.gitignore</code>, one pattern per line, and matching ignores letter case:
+      </p>
+      <Command>{`# Exported copies we regenerate from the models
+exports/
+*.STEP
+
+# Scratch work
+scratch/`}</Command>
+      <p>
+        <code>.gigaignore</code> is committed like any other file, so everyone working on the project gets
+        the same rules.
+      </p>
+      <p>
+        Two kinds of file can’t be versioned at all: symbolic links, and names Windows can’t store, such as
+        names containing <code>:</code> or <code>?</code>. <code>giga commit</code> stops and lists them.
+        Rename them or add them to <code>.gigaignore</code>.
+      </p>
+    </>
+  );
+}
+
+function Cli() {
+  return (
+    <>
+      <p>
+        <code>giga</code> does everything the web app does from a terminal: projects, branches, check out
+        and check in, versions, release requests, and exporting releases. Use it to script GigaCAD, to work
+        on macOS or Linux, or in CI.
+      </p>
+
+      <h2 id="install">Install</h2>
+      <p>
+        <code>giga</code> needs <a href="https://nodejs.org">Node.js</a> 22 or later. Install it from npm:
+      </p>
+      <Command>{`npm install -g @gigacad/cli
+giga --version`}</Command>
+
+      <h2 id="sign-in">Sign in</h2>
+      <Command>giga login</Command>
+      <p>
+        This opens <code>app.gigacad.site/device</code> in your browser with a code. Check that the code
+        matches your terminal, then approve it. <code>giga</code> saves a device token for this computer in{" "}
+        <code>~/.config/giga</code> on macOS and Linux, or <code>%APPDATA%\giga</code> on Windows. Use{" "}
+        <code>giga login --no-browser</code> to print the link instead of opening it.
+      </p>
+      <p>
+        <code>giga whoami</code> shows who you’re signed in as. <code>giga logout</code> revokes this
+        computer’s token. You can also sign devices out under <strong>Account</strong> in the web app.
+      </p>
+
+      <h2 id="workspaces">Workspaces</h2>
+      <p>
+        <code>giga clone</code> downloads one branch into a new folder, called a workspace. Commands you run
+        inside a workspace act on its project and branch, so most of them need no arguments. Outside a
+        workspace, pass <code>--project owner/project</code>. The workspace keeps its state in a{" "}
+        <code>.giga</code> folder; don’t edit or copy it.
+      </p>
+
+      <h2 id="a-typical-session">A typical session</h2>
+      <Command>{`giga branch create gripper-v2 --project alex/robot-arm
+giga clone alex/robot-arm --branch gripper-v2 gripper
+cd gripper
+giga checkout      # take the write lock, get the latest files
+# ...edit files in SolidWorks...
+giga status        # see what changed
+giga commit -m "Stiffer jaw" --label "rev B"
+giga checkin       # give the lock back`}</Command>
+      <p>
+        Only the person who has a branch checked out can commit to it. If someone else holds the lock,{" "}
+        <code>giga checkout</code> says who. <code>giga checkin</code> refuses while you have uncommitted
+        changes; <code>--force</code> checks in anyway and leaves your local files alone.
+      </p>
+      <p>
+        <code>giga pull</code> never overwrites local changes. If a newer commit touches a file you changed,
+        it stops and lists the files without changing anything.
+      </p>
+      <p>
+        To rename or move a file, use <code>giga mv old new</code> rather than your file manager. That
+        keeps the file’s identity, so its history continues and release requests treat it as the same part.
+      </p>
+
+      <h2 id="release-from-the-command-line">Release from the command line</h2>
+      <Command>{`giga rr open --title "Gripper v2"
+giga rr diff                     # what differs from main
+giga rr picks --file picks.json  # optional
+giga rr candidate
+giga rr approve
+giga rr release --notes "Stiffer jaw, new fingertip"`}</Command>
+      <p>
+        By default each changed file takes the branch’s copy. To choose differently, write a picks file.
+        Files are named by path. <code>keep_main</code> leaves main’s copy, and a replacement ships a new
+        part in place of an old one, keeping the old part’s identity:
+      </p>
+      <Command>{`{
+  "actions": {
+    "parts/jaw.SLDPRT": "take_branch",
+    "parts/base.SLDPRT": "keep_main"
+  },
+  "replacements": [
+    {
+      "branchPath": "parts/finger_v2.SLDPRT",
+      "mainPath": "parts/finger.SLDPRT"
+    }
+  ]
+}`}</Command>
+      <p>
+        Changing picks discards the candidate, so run <code>giga rr candidate</code> again.{" "}
+        <code>giga rr show</code> lists what still blocks the release, like missing approvals.
+      </p>
+
+      <h2 id="commands">Commands</h2>
+      <h3>Account</h3>
+      <CommandList
+        commands={[
+          ["giga login", "Sign in through your browser and save a device token."],
+          ["giga whoami", "Show who you’re signed in as."],
+          ["giga logout", "Revoke this computer’s token and forget it."],
+        ]}
+      />
+      <h3>Projects and branches</h3>
+      <CommandList
+        commands={[
+          ["giga project list", "Projects you’re a member of."],
+          ["giga project create <slug>", <>Create a project you own. Private unless <code>--public</code>; set <code>--name</code> and <code>--description</code>.</>],
+          ["giga project show [project]", "A project, its branches, and its latest release."],
+          ["giga branch list", "Branches of a project."],
+          ["giga branch create <name>", <>Start a branch from the latest release, or from <code>--from-release N</code>.</>],
+        ]}
+      />
+      <h3>Workspace</h3>
+      <CommandList
+        commands={[
+          ["giga clone <project> [folder]", <>Download a branch into a new folder. Choose it with <code>--branch</code>.</>],
+          ["giga checkout", "Take the branch’s write lock for this computer, then pull its latest files."],
+          ["giga pull", "Download the branch’s latest commit without losing local changes."],
+          ["giga status", "Local changes, plus who has the branch checked out and whether you’re up to date."],
+          ["giga mv <from> <to>", "Move or rename a file or folder, keeping each file’s identity."],
+          ["giga commit -m <message>", <>Upload every changed file as a version. Name it with <code>--label</code>.</>],
+          ["giga checkin", <>Give up the write lock. <code>--force</code> skips the uncommitted-changes check.</>],
+        ]}
+      />
+      <h3>Release requests</h3>
+      <p>
+        Inside a workspace these act on the branch’s open request. Elsewhere, pass the request number, like{" "}
+        <code>giga rr show 3</code>.
+      </p>
+      <CommandList
+        commands={[
+          ["giga rr open", <>Open a release request. Set <code>--title</code> and <code>--body</code>. The branch freezes until it’s released or closed.</>],
+          ["giga rr list", <>Active release requests. <code>--all</code> includes released and closed ones.</>],
+          ["giga rr show", "Status, candidate, approvals, and what blocks the release."],
+          ["giga rr diff", "Every file changed on the branch or on main since the branch started."],
+          ["giga rr picks --file <path>", <>Replace the picks with a JSON file, or <code>-</code> for standard input.</>],
+          ["giga rr candidate", "Build the release candidate from the current picks."],
+          ["giga rr rebuild-report --file <path>", "Attach the result of rebuilding the candidate in your CAD program."],
+          ["giga rr approve", "Approve the current candidate."],
+          ["giga rr unapprove", "Withdraw your approval."],
+          ["giga rr release", <>Publish the approved candidate as the next release. Add <code>--notes</code>.</>],
+          ["giga rr close", "Close without releasing. The branch unfreezes."],
+        ]}
+      />
+      <h3>Releases</h3>
+      <CommandList
+        commands={[
+          ["giga release list", "Releases, newest first."],
+          ["giga release show <number>", "A release and its files."],
+          ["giga release export <number> [folder]", "Download a release into a new folder, checking every file against its recorded hash."],
+        ]}
+      />
+
+      <h2 id="scripting">Scripting</h2>
+      <p>
+        Add <code>--json</code> to any command for machine-readable output; errors then go to standard error
+        as JSON. These environment variables change where <code>giga</code> connects and signs in:
+      </p>
+      <CommandList
+        commands={[
+          ["GIGA_TOKEN", "A device token to use instead of the saved sign-in. It’s never saved. Use it in CI."],
+          ["GIGA_API_URL", <>A different API, for example a local one. Same as <code>--api-url</code>.</>],
+          ["GIGA_CONFIG_DIR", "Where sign-ins are saved."],
+        ]}
+      />
+    </>
+  );
+}
+
 export const docs: DocSection[] = [
   {
     title: "Get started",
@@ -98,6 +400,7 @@ export const docs: DocSection[] = [
         title: "Your first project",
         summary: "Create a project, upload an existing assembly, and make your first release.",
         outline: ["Create a project", "Add your files", "Make release v1", "Invite people"],
+        body: FirstProject,
       },
     ],
   },
@@ -231,12 +534,14 @@ export const docs: DocSection[] = [
         title: "Ignored files",
         summary: "Temporary and backup files GigaCAD never uploads, and how to add your own rules.",
         outline: ["Built-in rules", "Add your own rules"],
+        body: IgnoredFiles,
       },
       {
         slug: "cli",
         title: "Command-line tool",
-        summary: "Script GigaCAD with the giga command.",
-        outline: ["Install", "Sign in", "Commands"],
+        summary: "Work with GigaCAD from a terminal, and script it, with the giga command.",
+        outline: ["Install", "Sign in", "Workspaces", "A typical session", "Release from the command line", "Commands", "Scripting"],
+        body: Cli,
       },
       {
         slug: "troubleshooting",

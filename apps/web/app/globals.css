@@ -1605,6 +1605,53 @@ button {
   text-decoration-color: var(--paper);
 }
 
+.prose code {
+  padding: 1px 5px;
+  border-radius: var(--r-xs);
+  background: var(--forest-deep);
+  color: var(--paper);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.875em;
+  overflow-wrap: break-word;
+}
+
+.prose pre {
+  margin-top: 16px;
+  padding: 16px 20px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--forest-deep);
+  color: var(--paper);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.875rem;
+  line-height: 1.65;
+}
+
+.prose pre code {
+  padding: 0;
+  background: none;
+  font-size: inherit;
+  overflow-wrap: normal;
+}
+
+.prose pre + p,
+.prose p + .doc-terms,
+.prose h3 + .doc-terms {
+  margin-top: 14px;
+}
+
+.doc-commands dd code {
+  white-space: nowrap;
+}
+
+/* Commands are too long for the term column, so each sits above its description. */
+@media (min-width: 640px) {
+  .doc-terms.doc-commands > div {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Legal */
 
 .legal-layout {

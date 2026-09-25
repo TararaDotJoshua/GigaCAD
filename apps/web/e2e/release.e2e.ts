@@ -159,7 +159,7 @@ test('refreshes a private project page when something happens in it', async ({ p
 
   const name = `live-${randomUUID().slice(0, 8)}`;
   await api(world.token, 'POST', `/v1/projects/${world.projectId}/branches`, { name });
-  await expect(page.getByText(name)).toBeVisible();
+  await expect(page.locator('#main').getByRole('link', { name })).toBeVisible();
 });
 
 test('every page type answers with the right status', async ({ page, browser }) => {

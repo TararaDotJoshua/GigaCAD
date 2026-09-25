@@ -1,6 +1,6 @@
 # Deploying GigaCAD
 
-This is the plan for taking GigaCAD live. The repo side (the API image, the Workers config, and the CI workflows) is done. None of the accounts or services exist yet. Work through the steps in order: each one depends on the ones before it. When a step is done, mark it here with the date and any values other agents need, such as the region or project ref. Never write secrets into this file.
+This is the plan for taking GigaCAD live. The repo side (the API image, the Workers config, and the CI workflows) is done. Service setup is in progress; see the status table below. Work through the steps in order: each one depends on the ones before it. When a step is done, mark it here with the date and any values other agents need, such as the region or project ref. Never write secrets into this file.
 
 ## What runs where
 
@@ -37,14 +37,13 @@ The web app decides which site to serve from the request's host (`apps/web/lib/h
 
 ### 2. R2 storage
 
-1. Create the bucket `gigacad-prod`.
-2. Create an R2 API token with Object Read & Write access to that bucket only. Note the access key ID, the secret, and the S3 endpoint, `https://<account-id>.r2.cloudflarestorage.com`.
-3. Add a CORS rule for future browser uploads: allowed origin `https://app.gigacad.site`, methods `GET` and `PUT`, allowed headers `content-type` and `x-amz-checksum-sha256`.
+1. **Person:** Enable R2 with a payment method.
+2. **Agent:** Create the bucket `gigacad-prod`. Add a CORS rule for future browser uploads: allowed origin `https://app.gigacad.site`, methods `GET` and `PUT`, allowed headers `content-type` and `x-amz-checksum-sha256`.
+3. **Person:** Create an R2 API token with Object Read & Write access to `gigacad-prod` only. Save the access key ID, secret, and account ID in a password manager, then put the S3 settings in the ignored `apps/api/.env.r2` file. Never put the credentials in this document or any tracked file.
 4. **Gate: nothing else ships until this passes.** Run the storage test against R2. It proves R2 rejects altered uploads through the signed SHA-256 checksum, and that downloads keep their file names:
 
    ```sh
-   S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com S3_REGION=auto S3_BUCKET=gigacad-prod \
-   S3_ACCESS_KEY_ID=... S3_SECRET_ACCESS_KEY=... \
+   set -a; . apps/api/.env.r2; set +a
    pnpm vitest run --config vitest.integration.config.ts apps/api/test/storage.int.test.ts
    ```
 
@@ -167,12 +166,25 @@ The workflows are in the repo. What's left is configuring GitHub:
 
 | Step | Done | Notes |
 |---|---|---|
-| 1. DNS | | |
-| 2. R2 | | |
-| 3. Supabase | | |
+| 1.1 `www` redirect | Yes | 2026-09-24: user saved the rule; a live request to `https://www.gigacad.site/deployment-check?x=1` returned 301 to `https://gigacad.site/deployment-check?x=1` |
+| 1.2 Proxied `AAAA www 100::` | Yes | 2026-09-24: Cloudflare DNS API confirmed `www.gigacad.site` points to `100::` with proxy enabled; old parking CNAME is gone |
+| 1.3 Remove imported apex and `app` address records | Yes | 2026-09-24: Cloudflare DNS API confirmed no A/AAAA/CNAME records for `gigacad.site` or `app.gigacad.site`; apex MX and TXT records remain |
+| 1.4 Cloudflare zone Active | Yes | 2026-09-24: Cloudflare Zones API reported `gigacad.site` as `active` |
+| 2.1 R2 enabled | Yes | 2026-09-24: bucket creation succeeded after user reached R2 bucket setup |
+| 2.2 Bucket `gigacad-prod` | Yes | 2026-09-24: bucket created and verified in Eastern North America, Standard storage |
+| 2.2 Bucket CORS | Yes | 2026-09-24: Cloudflare API confirmed origin `https://app.gigacad.site`, methods GET/PUT, and headers `content-type`/`x-amz-checksum-sha256` |
+| 2.3 Bucket-scoped API token and ignored env file | Yes | 2026-09-24: user provided credentials in ignored `apps/api/.env.r2.rtf`; converted locally to R2-only plain text `apps/api/.env.r2` with mode 600; no credential values entered in tracked files |
+| 2.4 R2 storage gate | Yes | 2026-09-24: `pnpm vitest run --config vitest.integration.config.ts apps/api/test/storage.int.test.ts` passed against R2 (1 test) |
+| 3.1 Supabase project | Yes | 2026-09-24: created `GigaCAD Production` in `us-east-1`, ref `gaxicutwgacxekqcsnpg`, URL `https://gaxicutwgacxekqcsnpg.supabase.co`. Database password stored outside the repo in macOS Keychain. Earlier empty `ewvkxsicxiigojhmttjp` project remains in `us-west-2` and is not the deployment target |
+| 3.2 Schema migration | Yes | 2026-09-24: CLI linked East project; pushed `20260924000000_core_schema.sql` and `20260925012709_harden_security_definer_functions.sql`. Remote migration history matches both local files; security advisor returned zero warnings |
+| 3.3 Realtime publication | Yes | 2026-09-24: queried `pg_publication_tables`; `public.project_events` is in `supabase_realtime` |
+| 3.4 Auth settings | Yes | 2026-09-24: site URL and all four redirect patterns pushed to East project; email confirmation enabled. Config diff shows no remaining declared differences |
+| 3.5 Custom email | | Provider setup and domain verification are person-owned; DNS, SMTP, and templates follow |
+| 3.6 GitHub and Google OAuth | | Person-owned provider setup can wait until before public launch |
+| 3.7 Supavisor session pooler URL | | Capture pooler host on port 5432 for Railway without storing its password in this file |
 | 4. Railway | | `Dockerfile.api` in repo. Its build steps and `/health` checked outside Docker 2026-09-24. CI builds the image |
 | 5. Web | | Config and scripts in repo. Build and signed-out preview checked 2026-09-24 |
 | 6. Smoke test | | |
 | 7. CLI | | |
-| 8. CI/CD | | Workflows in repo. GitHub secrets, variables, and branch protection not set |
+| 8. CI/CD | | Workflows in repo. 2026-09-24: `main` protected, requiring `check`, `api-image`, and `integration`. GitHub secrets, variables, and the `production` environment not set |
 | 9. Operations | | |

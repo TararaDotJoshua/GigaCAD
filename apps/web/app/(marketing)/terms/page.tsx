@@ -156,8 +156,20 @@ const sections: LegalSection[] = [
           until you free up space; your existing files stay available.
         </p>
         <p>
-          If we introduce paid plans, we’ll tell you before anything changes for your account, and we
-          won’t charge you without your agreement.
+          The Free plan costs nothing. Paid plans add storage and are billed monthly or yearly in
+          advance through Stripe, at the prices on the <a href="/pricing">pricing page</a> when you
+          subscribe. They renew automatically until you cancel.
+        </p>
+        <p>
+          You can change or cancel your plan any time in Account settings. A change takes effect
+          right away, and the difference is charged or credited for the rest of the period. If you
+          cancel, your plan stays until the end of the period you paid for, then moves to Free.
+          Except where the law requires it, payments aren’t refunded.
+        </p>
+        <p>
+          If a payment fails, we keep your plan while Stripe retries it. If it still fails, your
+          account moves to Free. We’ll tell you at least 30 days before we change the price of a plan
+          you’re on.
         </p>
       </>
     ),
@@ -236,12 +248,13 @@ export default function TermsPage() {
   return (
     <LegalPage
       title="Terms of Service"
-      updated="September 23, 2026"
+      updated="September 25, 2026"
       summary={[
         "Your files are yours. We only use them to run GigaCAD for you and the people you share with.",
         "Public projects can be viewed and forked by anyone, under the license you choose.",
         "Releases can’t be edited or deleted. Deleting the whole project removes them after 30 days.",
         "Don’t upload things you don’t have rights to, malware, or export-controlled designs.",
+        "Paid plans renew until you cancel. Canceling keeps your plan until the period you paid for ends.",
       ]}
       sections={sections}
     />

@@ -4,6 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
 import { createAuthenticator } from '../src/auth.js';
 import { createSql, type Sql } from '../src/db.js';
+import type { Payments } from '../src/payments.js';
 import type { BlobStorage, StoredObject } from '../src/storage.js';
 
 // Defaults match `supabase start`; override with env vars to point elsewhere.
@@ -56,7 +57,7 @@ export interface Harness {
 /** Enough of a harness to make requests; lets other packages' tests reuse these helpers with their own app. */
 export type AppHarness = Pick<Harness, 'app'>;
 
-export async function createHarness(): Promise<Harness> {
+export async function createHarness(options: { payments?: Payments } = {}): Promise<Harness> {
   const sql = createSql(DATABASE_URL);
   const storage = new MemoryStorage();
   const app = buildApp({
@@ -64,6 +65,7 @@ export async function createHarness(): Promise<Harness> {
     storage,
     authenticate: createAuthenticator({ sql, supabaseUrl: SUPABASE_URL, jwtSecret: JWT_SECRET }),
     webOrigin: 'http://localhost:3000',
+    ...options,
   });
   await app.ready();
   return {

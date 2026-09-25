@@ -162,13 +162,22 @@ test('refreshes a private project page when something happens in it', async ({ p
   await expect(page.locator('#main').getByRole('link', { name })).toBeVisible();
 });
 
+test('shows storage used and the plans', async ({ page }) => {
+  await logIn(page);
+  await page.goto('/settings/billing');
+  await expect(page.getByText(/^\d+ bytes of 5 GB used$/)).toBeVisible();
+  await expect(page.getByRole('row', { name: /Free/ }).getByText('Current plan')).toBeVisible();
+  // CI has no payment keys, so paid plans aren't open.
+  await expect(page.getByRole('row', { name: /Maker/ }).getByText('Opens soon')).toBeVisible();
+});
+
 test('every page type answers with the right status', async ({ page, browser }) => {
   // Marketing and sign-in pages, signed out.
   const signedOut = await browser.newContext();
   const docs = await signedOut.request.get('/docs');
   const docPage = /href="(\/docs\/[^"#]+)"/.exec(await docs.text())?.[1];
   expect(docPage, 'the docs index links to a docs page').toBeTruthy();
-  for (const path of ['/', '/docs', docPage!, '/download', '/privacy', '/terms', '/login', '/signup', '/forgot-password']) {
+  for (const path of ['/', '/docs', docPage!, '/download', '/pricing', '/privacy', '/terms', '/login', '/signup', '/forgot-password']) {
     expect((await signedOut.request.get(path, { maxRedirects: 0 })).status(), path).toBe(200);
   }
   // Product pages send signed-out visitors to sign in.
@@ -183,6 +192,7 @@ test('every page type answers with the right status', async ({ page, browser }) 
     '/app',
     '/new',
     '/settings',
+    '/settings/billing',
     projectUrl(),
     projectUrl('branches'),
     projectUrl('branches', world.branchName),

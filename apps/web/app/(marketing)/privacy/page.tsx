@@ -114,6 +114,10 @@ const sections: LegalSection[] = [
             generate previews.
           </li>
           <li>
+            <strong>Stripe</strong> takes payments for paid plans. We never see or store your full
+            card number; we keep your plan, billing status, and Stripe customer ID.
+          </li>
+          <li>
             <strong>GitHub and Google</strong>, only if you choose to sign in with them.
           </li>
         </ul>
@@ -219,7 +223,7 @@ export default function PrivacyPage() {
   return (
     <LegalPage
       title="Privacy Policy"
-      updated="September 23, 2026"
+      updated="September 25, 2026"
       summary={[
         "We collect what’s needed to run GigaCAD: your account, your projects, and a log of project activity.",
         "Private projects are visible only to their members. Public projects are visible to everyone.",

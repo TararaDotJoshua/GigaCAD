@@ -1,6 +1,6 @@
 'use server';
 
-import type { ApprovalRules, Picks, ProjectRole } from '@gigacad/core';
+import { isPlanId, type ApprovalRules, type Picks, type ProjectRole } from '@gigacad/core';
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { apiRequest, type Project, type ReleaseRequestDetail } from '../../lib/api';
@@ -48,6 +48,27 @@ const text = (form: FormData, name: string) => {
 };
 
 // Account
+
+/** Sends someone to Stripe: Checkout for a new plan, or the billing portal if they already pay. */
+export async function choosePlan(plan: string, interval: string): Promise<ActionState> {
+  if (!isPlanId(plan) || plan === 'free' || (interval !== 'monthly' && interval !== 'yearly')) return { error: 'Choose a plan.' };
+  return goToBilling('/v1/billing/checkout', { plan, interval });
+}
+
+export async function openBillingPortal(): Promise<ActionState> {
+  return goToBilling('/v1/billing/portal');
+}
+
+async function goToBilling(path: string, body?: unknown): Promise<ActionState> {
+  const token = await requireAccessToken();
+  let url: string;
+  try {
+    ({ url } = await apiRequest<{ url: string }>(token, path, json('POST', body)));
+  } catch (error) {
+    return { error: messageFor(error) };
+  }
+  redirect(url);
+}
 
 export async function saveProfile(_state: ActionState, form: FormData): Promise<ActionState> {
   const displayName = text(form, 'displayName');

@@ -3,7 +3,9 @@ import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
 import type { Authenticate, Caller } from './auth.js';
 import type { Sql } from './db.js';
 import { HttpError } from './errors.js';
+import type { Payments } from './payments.js';
 import { authRoutes } from './routes/auth.js';
+import { billingRoutes } from './routes/billing.js';
 import { blobRoutes } from './routes/blobs.js';
 import { branchRoutes } from './routes/branches.js';
 import { projectRoutes } from './routes/projects.js';
@@ -21,6 +23,8 @@ export interface AppDeps {
   readonly storage: BlobStorage;
   readonly authenticate: Authenticate;
   readonly webOrigin: string;
+  /** Unset until payment keys are configured; paid plans are then unavailable. */
+  readonly payments?: Payments;
   readonly logger?: boolean;
 }
 
@@ -61,5 +65,6 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   branchRoutes(app, deps);
   releaseRequestRoutes(app, deps);
   blobRoutes(app, deps);
+  billingRoutes(app, deps);
   return app;
 }

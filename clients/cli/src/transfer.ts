@@ -72,8 +72,9 @@ export async function uploadBlobs(
       const pathFor = new Map(plan.uploads.map((upload) => [upload.uploadId, byBlob.get(upload.sha256)?.path ?? upload.sha256]));
       const failures = completion.failed.map((failure) => ({ path: pathFor.get(failure.uploadId), reason: failure.reason }));
       throw new CliError('upload_failed', `${failures.length} upload(s) could not be verified`, {
-        hint:
-          failures.some((failure) => failure.reason === 'checksum_mismatch')
+        hint: failures.some((failure) => failure.reason === 'storage_full')
+          ? "The project owner's storage is full. Delete projects or upgrade the plan in Account settings on gigacad.site."
+          : failures.some((failure) => failure.reason === 'checksum_mismatch')
             ? 'A file changed while it was uploading. Save and close it, then commit again.'
             : 'Commit again; files that already uploaded are not sent twice.',
         details: failures,

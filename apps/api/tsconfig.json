@@ -5,5 +5,5 @@
     "types": ["node"],
     "customConditions": ["@gigacad/source"]
   },
-  "include": ["src", "test"]
+  "include": ["src", "test", "scripts"]
 }

@@ -20,7 +20,7 @@ export type Route =
 export function isMarketingPath(pathname: string): boolean {
   return (
     pathname === '/' ||
-    ['/download', '/docs', '/privacy', '/terms'].some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
+    ['/download', '/docs', '/pricing', '/privacy', '/terms'].some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
   );
 }
 

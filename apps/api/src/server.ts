@@ -2,6 +2,7 @@ import { buildApp } from './app.js';
 import { createAuthenticator } from './auth.js';
 import { loadConfig } from './config.js';
 import { createSql } from './db.js';
+import { createStripePayments } from './payments.js';
 import { createS3Storage } from './storage.js';
 
 const config = loadConfig();
@@ -11,6 +12,9 @@ const app = buildApp({
   storage: createS3Storage(config),
   authenticate: createAuthenticator({ sql, supabaseUrl: config.SUPABASE_URL, jwtSecret: config.SUPABASE_JWT_SECRET }),
   webOrigin: config.WEB_ORIGIN,
+  ...(config.STRIPE_SECRET_KEY && config.STRIPE_WEBHOOK_SECRET
+    ? { payments: createStripePayments({ secretKey: config.STRIPE_SECRET_KEY, webhookSecret: config.STRIPE_WEBHOOK_SECRET }) }
+    : {}),
   logger: true,
 });
 

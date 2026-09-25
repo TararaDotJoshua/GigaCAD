@@ -11,6 +11,7 @@ export const RESERVED_HANDLES: ReadonlySet<string> = new Set([
   'api',
   'app',
   'auth',
+  'billing',
   'device',
   'docs',
   'download',

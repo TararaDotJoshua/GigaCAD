@@ -4,6 +4,7 @@ import {
   ApiError,
   apiRequest,
   type ApprovalRules,
+  type Billing,
   type Branch,
   type BranchDetail,
   type CommitDetail,
@@ -35,6 +36,7 @@ async function orNotFound<T>(read: Promise<T>): Promise<T> {
 }
 
 export const getMe = cache(() => get<Profile>('/v1/me'));
+export const getBilling = cache(() => get<Billing>('/v1/me/billing'));
 export const getMyProjects = cache(() => get<Project[]>('/v1/projects'));
 
 export const getProject = cache((owner: string, slug: string) =>

@@ -1,6 +1,6 @@
 import { normalizePath } from '@gigacad/core';
 import type { Sql } from '../db.js';
-import { unprocessable } from '../errors.js';
+import { HttpError, unprocessable } from '../errors.js';
 import {
   blobKey,
   MAX_SINGLE_UPLOAD_BYTES,
@@ -10,6 +10,7 @@ import {
   type PresignedUpload,
 } from '../storage.js';
 import { projectAccess, requireProjectRole } from './access.js';
+import { requireStorageFor } from './billing.js';
 
 export interface BlobDescriptor {
   readonly sha256: string;
@@ -30,7 +31,7 @@ export async function planUploads(
   userId: string,
   blobs: readonly BlobDescriptor[],
 ): Promise<UploadPlan> {
-  await requireProjectRole(sql, projectId, userId, 'contributor');
+  const { project } = await requireProjectRole(sql, projectId, userId, 'contributor');
   const tooLarge = blobs.filter((blob) => blob.size > MAX_SINGLE_UPLOAD_BYTES);
   if (tooLarge.length > 0) {
     throw unprocessable('file_too_large', 'Files over 5 GB are not supported yet', { sha256s: tooLarge.map((b) => b.sha256) });
@@ -44,6 +45,7 @@ export async function planUploads(
   const present = new Set(linked.map((row) => row.sha256));
   const needed = unique.filter((blob) => !present.has(blob.sha256));
   if (needed.length === 0) return { present: [...present], uploads: [] };
+  await requireStorageFor(sql, project.ownerId, needed);
 
   const rows = await sql<{ id: string; sha256: string }[]>`
     insert into blob_uploads ${sql(needed.map((blob) => ({ projectId, sha256: blob.sha256, size: blob.size, createdBy: userId })))}
@@ -75,7 +77,7 @@ export async function completeUploads(
   userId: string,
   uploadIds: readonly string[],
 ): Promise<CompletionResult> {
-  await requireProjectRole(sql, projectId, userId, 'contributor');
+  const { project } = await requireProjectRole(sql, projectId, userId, 'contributor');
   const pending = await sql<{ id: string; sha256: string; size: number }[]>`
     select id, sha256, size::float8 as size from blob_uploads
     where project_id = ${projectId} and id = any(${[...uploadIds]}::uuid[])
@@ -100,6 +102,14 @@ export async function completeUploads(
           : undefined;
     if (reason) {
       failed.push({ uploadId, reason });
+      continue;
+    }
+    // Checked again here: uploads planned in parallel could together pass the limit.
+    try {
+      await requireStorageFor(sql, project.ownerId, [upload]);
+    } catch (error) {
+      if (!(error instanceof HttpError && error.code === 'storage_full')) throw error;
+      failed.push({ uploadId, reason: 'storage_full' });
       continue;
     }
 

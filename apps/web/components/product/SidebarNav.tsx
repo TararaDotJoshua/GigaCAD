@@ -76,7 +76,7 @@ export function SidebarNav({
         </ul>
 
         <div className="shell-account">
-          <Link href="/settings" className={pathname === '/settings' ? 'is-active' : undefined} onClick={() => setOpen(false)}>
+          <Link href="/settings" className={pathname === '/settings' || pathname.startsWith('/settings/') ? 'is-active' : undefined} onClick={() => setOpen(false)}>
             <span className="avatar">{me.handle.slice(0, 1).toUpperCase()}</span>@{me.handle}
           </Link>
           <button type="button" onClick={logOut} title="Log out">

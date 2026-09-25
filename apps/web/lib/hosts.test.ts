@@ -20,6 +20,11 @@ describe('routeRequest', () => {
     expect(routeRequest('app.gigacad.site', '/app/x', '', prod)).toEqual({ kind: 'redirect', url: 'https://app.gigacad.site/x' });
     expect(routeRequest('app.gigacad.site', '/download', '', prod)).toEqual({ kind: 'redirect', url: 'https://gigacad.site/download' });
     expect(routeRequest('app.gigacad.site', '/device', '?code=ABCD-2345', prod)).toEqual({ kind: 'next' });
+    expect(routeRequest('app.gigacad.site', '/pricing', '', prod)).toEqual({ kind: 'redirect', url: 'https://gigacad.site/pricing' });
+    expect(routeRequest('gigacad.site', '/billing/checkout', '?plan=maker&interval=yearly', prod)).toEqual({
+      kind: 'redirect',
+      url: 'https://app.gigacad.site/billing/checkout?plan=maker&interval=yearly',
+    });
   });
 
   it('does not split when both sites share a host, or on unknown hosts', () => {

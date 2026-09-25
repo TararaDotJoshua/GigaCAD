@@ -1275,3 +1275,56 @@
     transition: none !important;
   }
 }
+
+/* Plan and storage */
+
+.shell .storage-meter {
+  height: 8px;
+  max-width: 480px;
+  overflow: hidden;
+  border-radius: var(--r-xs);
+  background: var(--mist);
+}
+
+.shell .storage-meter > span {
+  display: block;
+  height: 100%;
+  background: var(--ink);
+}
+
+.shell .storage-meter.is-near > span {
+  background: var(--caution);
+}
+
+.shell .storage-meter.is-full > span {
+  background: var(--danger);
+}
+
+.shell .storage-caption {
+  margin-top: 8px;
+  color: var(--ink-muted);
+}
+
+.shell .plan-current {
+  margin-bottom: 4px;
+  font-size: 1rem;
+}
+
+.shell .plan-manage {
+  margin-top: 16px;
+}
+
+.shell .plan-summary {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-muted);
+}
+
+.shell .interval-toggle {
+  margin-bottom: 16px;
+}
+
+/* Choosing an interval isn't a state, so no Signal dot. */
+.shell .interval-toggle .segment.is-selected::before {
+  content: none;
+}

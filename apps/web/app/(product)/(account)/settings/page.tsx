@@ -1,4 +1,5 @@
-import { isPlaceholderHandle } from '@gigacad/core';
+import Link from 'next/link';
+import { formatBytes, getPlan, isPlaceholderHandle } from '@gigacad/core';
 import { saveProfile, signOutDevice } from '../../actions';
 import { ActionButton } from '../../../../components/product/ActionButton';
 import { ActionForm } from '../../../../components/product/ActionForm';
@@ -8,13 +9,13 @@ import { PageHead } from '../../../../components/product/PageHead';
 import { RelativeTime } from '../../../../components/product/RelativeTime';
 import { apiRequest, type DeviceToken } from '../../../../lib/api';
 import { dashboardPath } from '../../../../lib/hosts';
-import { getMe } from '../../../../lib/product';
+import { getBilling, getMe } from '../../../../lib/product';
 import { requireAccessToken } from '../../../../lib/session';
 
 export const metadata = { title: 'Account' };
 
 export default async function AccountSettings() {
-  const [me, devices] = await Promise.all([getMe(), apiRequest<DeviceToken[]>(await requireAccessToken(), '/v1/me/tokens')]);
+  const [me, billing, devices] = await Promise.all([getMe(), getBilling(), apiRequest<DeviceToken[]>(await requireAccessToken(), '/v1/me/tokens')]);
   return (
     <div className="page page-narrow">
       <PageHead crumbs={[{ label: 'Your projects', href: dashboardPath() }, { label: 'Account' }]} title="Account." />
@@ -28,6 +29,19 @@ export default async function AccountSettings() {
             <input name="displayName" defaultValue={me.displayName ?? ''} maxLength={100} />
           </label>
         </ActionForm>
+      </section>
+
+      <section className="section">
+        <h2>Plan and storage</h2>
+        <p className="plan-current">
+          <strong>{getPlan(billing.plan).name}</strong>
+          <span className="muted"> · {formatBytes(billing.usedBytes)} of {formatBytes(billing.quotaBytes)} used</span>
+        </p>
+        <p>
+          <Link className="btn btn-secondary" href="/settings/billing">
+            Change plan
+          </Link>
+        </p>
       </section>
 
       <section className="section">

@@ -24,7 +24,7 @@ expect() {
   fi
 }
 
-for path in / /docs /download /privacy /terms; do expect 200 "$SITE$path"; done
+for path in / /docs /download /pricing /privacy /terms; do expect 200 "$SITE$path"; done
 docs=$(curl -s --max-time 20 "$SITE/docs" | grep -o 'href="/docs/[^"#]*"' | sed 's/href="//; s/"$//' | sort -u)
 if [[ -z "$docs" ]]; then echo "FAIL $SITE/docs links to no docs pages"; failed=1; fi
 for path in $docs; do expect 200 "$SITE$path"; done

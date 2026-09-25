@@ -2,11 +2,13 @@ import type {
   AppliedReplacement,
   ApprovalEvaluation,
   ApprovalRules,
+  BillingInterval,
   CandidateError,
   CandidateWarning,
   ManifestEntry,
   PickRow,
   Picks,
+  PlanId,
   ProjectRole,
 } from '@gigacad/core';
 import { apiUrl } from './config';
@@ -59,6 +61,19 @@ export interface Profile {
   displayName: string | null;
   quotaBytes?: number;
   createdAt?: string;
+}
+
+export interface Billing {
+  plan: PlanId;
+  interval: BillingInterval | null;
+  /** Stripe's subscription status, e.g. active or past_due. */
+  status: string | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  usedBytes: number;
+  quotaBytes: number;
+  billingEnabled: boolean;
+  canManage: boolean;
 }
 
 export interface Project {

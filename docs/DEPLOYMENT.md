@@ -26,6 +26,7 @@ The web app decides which site to serve from the request's host (`apps/web/lib/h
 | npm | The `@gigacad` organization | Free for public packages |
 | Email (SMTP) for Auth, e.g. Resend or Postmark | Free tier to start | $0 to start |
 | GitHub and Google OAuth apps | Free | $0 |
+| Stripe | Pay per payment | 2.9% + 30¢ per card payment in the US; no monthly fee |
 
 ## Steps
 
@@ -162,6 +163,18 @@ The workflows are in the repo. What's left is configuring GitHub:
 - Set a spending alert on R2 storage.
 - Before opening public sign-ups, finish step 3.3: SMTP, email templates, and OAuth.
 
+### 10. Paid plans (Stripe)
+
+The plans are defined in `packages/core/src/plans.ts`. Storage is enforced whether or not Stripe is set up; without Stripe keys everyone is on Free and paid plans show "Opens soon".
+
+1. Create a Stripe account and turn on Link under Settings → Payment methods (it's on by default for Checkout).
+2. In test mode, run `STRIPE_SECRET_KEY=sk_test_… pnpm --filter @gigacad/api stripe:setup https://api.gigacad.site`. It creates a product per paid plan with monthly and yearly prices (lookup keys like `gigacad_maker_yearly`), configures the customer portal, and creates the webhook. It prints the webhook signing secret once.
+3. Set `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` on the Railway API service. Set the GitHub repository variable `NEXT_PUBLIC_BILLING_ENABLED` to `true` and run the Deploy web workflow.
+4. Test with card `4242 4242 4242 4242`: choose a plan on `/pricing`, check that Account → Plan and storage shows it, switch plans and cancel in the portal.
+5. For launch, repeat steps 2 and 3 with the live-mode key. Consider Stripe Tax before selling outside the US.
+
+To give someone a plan by hand, update their `billing_accounts.plan` and `profiles.quota_bytes` together (see `syncSubscription` in `apps/api/src/services/billing.ts`). A later Stripe webhook for that account overwrites it.
+
 ## Status
 
 | Step | Done | Notes |
@@ -188,3 +201,4 @@ The workflows are in the repo. What's left is configuring GitHub:
 | 7. CLI | Yes | 2026-09-24: `@gigacad/cli@0.1.0` published to npm under the `gigacad` organization (owner `tararajosh`, 2FA with a passkey, so publishing needs a browser confirmation). `npm install -g @gigacad/cli` checked on the user's Mac |
 | 8. CI/CD | Yes | 2026-09-24: `main` protected, requiring `check`, `api-image`, and `integration` (and `e2e` since 2026-09-25), with auto-merge on. Secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, the `NEXT_PUBLIC_*` variables, the `production` environment, and `DEPLOY_WEB=true` are set. Railway's Wait for CI is on |
 | 9. Operations | Partly | 2026-09-25: uptime and post-deploy page checks run from GitHub Actions (`scripts/check-site.sh`). Still to do: R2 spending alert and Supabase Pro (owner) |
+| 10. Paid plans | | 2026-09-25: code shipped (storage limits enforced, Stripe Checkout, portal, webhook). Waiting on a Stripe account and keys |

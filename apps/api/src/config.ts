@@ -17,6 +17,9 @@ const schema = z.object({
   S3_FORCE_PATH_STYLE: booleanString.default(false),
   /** Where people approve desktop sign-ins, e.g. https://app.gigacad.site */
   WEB_ORIGIN: z.url().default('http://localhost:3000'),
+  /** Paid plans. Both or neither; without them the API runs with the free plan only. */
+  STRIPE_SECRET_KEY: z.string().min(1).optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
 });
 
 export type Config = z.infer<typeof schema>;

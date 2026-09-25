@@ -15,6 +15,8 @@ const MESSAGES: Readonly<Record<string, string>> = {
   stale_candidate: 'The candidate changed. Refresh the page and try again.',
   release_request_finished: 'This release request is already finished.',
   forbidden: 'You don’t have permission to do that in this project.',
+  billing_unavailable: 'Paid plans aren’t available yet.',
+  no_billing_account: 'Choose a paid plan first.',
 };
 
 export function messageFor(error: unknown): string {

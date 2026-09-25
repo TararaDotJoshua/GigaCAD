@@ -12,6 +12,7 @@ export function SiteHeader() {
         <nav className="nav-links" aria-label="Main">
           <Link href="/#how">How it works</Link>
           <Link href="/#features">Features</Link>
+          <Link href="/pricing">Pricing</Link>
           <Link href="/docs">Docs</Link>
           <Link href="/download">Download</Link>
         </nav>
@@ -34,6 +35,7 @@ export function SiteFooter() {
       <div className="container footer-inner">
         <Logo />
         <nav className="footer-links" aria-label="Footer">
+          <Link href="/pricing">Pricing</Link>
           <Link href="/docs">Docs</Link>
           <Link href="/download">Download</Link>
           <a href={`${APP_URL}/login`}>Log in</a>

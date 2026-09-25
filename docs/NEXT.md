@@ -24,7 +24,8 @@ These need the owner's accounts. Everything else before the next phase is done.
   - GitHub: Settings → Developer settings → OAuth Apps → New OAuth App. Homepage `https://gigacad.site`.
   - Google: Google Cloud console → APIs & Services → Credentials → Create OAuth client ID (Web application), after configuring the consent screen. Authorized JavaScript origin `https://app.gigacad.site`.
 
-  Then enable each provider in Supabase (Authentication → Sign In / Providers) with its client ID and secret. Or put them in the ignored `supabase/.env.oauth` and have an agent push them through the Management API. Last, set `NEXT_PUBLIC_GITHUB_AUTH_ENABLED` and `NEXT_PUBLIC_GOOGLE_AUTH_ENABLED` to `true` in the GitHub repository variables and redeploy.
+  Put the client IDs and secrets in the ignored `supabase/.env.oauth` (`GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) and run `scripts/enable-oauth.sh`. It turns the providers on in Supabase, sets the `NEXT_PUBLIC_*_AUTH_ENABLED` variables, and redeploys the web app.
+- **Paid plans (deployment step 10).** The plans, storage limits, pricing page, and Stripe integration are built. Create a Stripe account, run `stripe:setup` in test mode, set the API's two Stripe variables and `NEXT_PUBLIC_BILLING_ENABLED`, and test a checkout. Then repeat in live mode.
 - **R2 spending alert (step 9).** Cloudflare dashboard → Notifications → Add → Usage Based Billing → R2 storage, with a monthly threshold. The API token agents can use has no notification permissions.
 - **Supabase Pro** before public sign-ups, for daily backups and no pausing.
 

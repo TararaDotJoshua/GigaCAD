@@ -1,26 +1,28 @@
 # Local stand-in for Cloudflare R2. Supabase runs separately via `supabase start`.
+# SeaweedFS replaced MinIO, which no longer publishes container images.
 services:
-  minio:
-    image: quay.io/minio/minio:latest
-    command: server /data --console-address :9001
-    environment:
-      MINIO_ROOT_USER: gigacad
-      MINIO_ROOT_PASSWORD: gigacad-local-secret
+  s3:
+    image: chrislusf/seaweedfs:4.47
+    command: server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "9000:8333"
     volumes:
-      - minio-data:/data
+      - ./docker/seaweedfs-s3.json:/etc/seaweedfs/s3.json:ro
+      - s3-data:/data
 
-  minio-setup:
-    image: quay.io/minio/mc:latest
+  s3-setup:
+    image: amazon/aws-cli:latest
     depends_on:
-      - minio
+      - s3
+    environment:
+      AWS_ACCESS_KEY_ID: gigacad
+      AWS_SECRET_ACCESS_KEY: gigacad-local-secret
+      AWS_DEFAULT_REGION: us-east-1
     entrypoint: >
       /bin/sh -c "
-      until mc alias set local http://minio:9000 gigacad gigacad-local-secret; do sleep 1; done;
-      mc mb --ignore-existing local/gigacad
+      until aws --endpoint-url http://s3:8333 s3api list-buckets > /dev/null 2>&1; do sleep 1; done;
+      aws --endpoint-url http://s3:8333 s3api create-bucket --bucket gigacad 2>/dev/null || true
       "
 
 volumes:
-  minio-data:
+  s3-data:

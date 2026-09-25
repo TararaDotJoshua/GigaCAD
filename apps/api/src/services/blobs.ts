@@ -126,6 +126,7 @@ export async function planDownloads(
   projectId: string,
   userId: string | null,
   sha256s: readonly string[],
+  filenames: Readonly<Record<string, string>> = {},
 ): Promise<{ downloads: readonly { sha256: string; url: string }[]; missing: readonly string[] }> {
   await projectAccess(sql, projectId, userId);
   const unique = [...new Set(sha256s)];
@@ -134,7 +135,7 @@ export async function planDownloads(
   `;
   const available = new Set(linked.map((row) => row.sha256));
   const downloads = await Promise.all(
-    unique.filter((sha) => available.has(sha)).map(async (sha256) => ({ sha256, url: await storage.presignDownload(blobKey(sha256)) })),
+    unique.filter((sha) => available.has(sha)).map(async (sha256) => ({ sha256, url: await storage.presignDownload(blobKey(sha256), filenames[sha256]) })),
   );
   return { downloads, missing: unique.filter((sha) => !available.has(sha)) };
 }

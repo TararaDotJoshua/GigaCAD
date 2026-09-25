@@ -26,8 +26,8 @@ export class MemoryStorage implements BlobStorage {
   async presignUpload(key: string, sha: string) {
     return { url: `memory://${key}`, method: 'PUT' as const, headers: { 'x-amz-checksum-sha256': Buffer.from(sha, 'hex').toString('base64') } };
   }
-  async presignDownload(key: string) {
-    return `memory://${key}`;
+  async presignDownload(key: string, filename?: string) {
+    return `memory://${key}${filename ? `?filename=${encodeURIComponent(filename)}` : ''}`;
   }
   async stat(key: string): Promise<StoredObject | null> {
     const body = this.objects.get(key);

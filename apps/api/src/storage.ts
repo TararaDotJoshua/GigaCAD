@@ -23,10 +23,11 @@ export interface StoredObject {
   readonly checksumSha256: string | undefined;
 }
 
-/** R2 in production, MinIO locally. Blobs live at a key derived from their SHA-256. */
+/** R2 in production, SeaweedFS locally. Blobs live at a key derived from their SHA-256. */
 export interface BlobStorage {
   presignUpload(key: string, sha256: string): Promise<PresignedUpload>;
-  presignDownload(key: string): Promise<string>;
+  /** `filename` makes browsers save the download under that name instead of the blob key. */
+  presignDownload(key: string, filename?: string): Promise<string>;
   stat(key: string): Promise<StoredObject | null>;
   copy(fromKey: string, toKey: string): Promise<void>;
   remove(key: string): Promise<void>;
@@ -39,6 +40,13 @@ export const blobKey = (sha256: string) => `blobs/${sha256.slice(0, 2)}/${sha256
 export const stagingKey = (uploadId: string) => `uploads/${uploadId}`;
 export const sha256Base64 = (sha256: string) => Buffer.from(sha256, 'hex').toString('base64');
 
+/** An attachment header that survives any file name: an ASCII fallback plus the exact UTF-8 name (RFC 6266). */
+export function contentDisposition(filename: string): string {
+  const fallback = filename.replace(/[^\x20-\x7e]|["\\]/g, '_');
+  const encoded = encodeURIComponent(filename).replace(/['()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`;
+}
+
 export function createS3Storage(config: Config): BlobStorage {
   const bucket = config.S3_BUCKET;
   const client = new S3Client({
@@ -46,7 +54,7 @@ export function createS3Storage(config: Config): BlobStorage {
     endpoint: config.S3_ENDPOINT,
     forcePathStyle: config.S3_FORCE_PATH_STYLE,
     credentials: { accessKeyId: config.S3_ACCESS_KEY_ID, secretAccessKey: config.S3_SECRET_ACCESS_KEY },
-    // The SDK's automatic CRC32 checksums break presigned URLs on R2 and MinIO; we sign SHA-256 ourselves.
+    // The SDK's automatic CRC32 checksums break presigned URLs on R2 and other S3 servers; we sign SHA-256 ourselves.
     requestChecksumCalculation: 'WHEN_REQUIRED',
     responseChecksumValidation: 'WHEN_REQUIRED',
   });
@@ -61,8 +69,11 @@ export function createS3Storage(config: Config): BlobStorage {
       return { url, method: 'PUT', headers: { 'x-amz-checksum-sha256': checksum } };
     },
 
-    presignDownload(key) {
-      return getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn: URL_LIFETIME_SECONDS });
+    presignDownload(key, filename) {
+      const disposition = filename ? contentDisposition(filename) : undefined;
+      return getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key, ResponseContentDisposition: disposition }), {
+        expiresIn: URL_LIFETIME_SECONDS,
+      });
     },
 
     async stat(key) {

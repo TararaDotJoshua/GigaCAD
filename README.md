@@ -27,11 +27,11 @@ pnpm --filter @gigacad/web dev   # marketing site on localhost:3000
 
 ### API
 
-The API needs the local Supabase stack and MinIO (the local stand-in for Cloudflare R2), both in Docker:
+The API needs the local Supabase stack and SeaweedFS (the local stand-in for Cloudflare R2), both in Docker:
 
 ```sh
 supabase start                      # database, logins, live updates; applies supabase/migrations
-docker compose up -d                # MinIO on :9000 with a `gigacad` bucket
+docker compose up -d                # SeaweedFS S3 on :9000 with a `gigacad` bucket
 cp apps/api/.env.example apps/api/.env
 pnpm --filter @gigacad/api dev      # API on localhost:8787
 pnpm test:integration               # API tests against the real local stack
@@ -47,7 +47,7 @@ GIGA_API_URL=http://127.0.0.1:8787 node clients/cli/dist/giga.js login
 pnpm --filter @gigacad/cli smoke    # pack the npm package, install it, and run it
 ```
 
-`pnpm test:integration` also runs the CLI against the local API and MinIO, including the v1→v2→v3 release scenario.
+`pnpm test:integration` also runs the CLI against the local API and SeaweedFS, including the v1→v2→v3 release scenario.
 
 ### Web sign-in
 

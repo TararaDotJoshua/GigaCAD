@@ -1,3 +1,4 @@
+import { HANDLE_PATTERN, isPlaceholderHandle, isReservedHandle } from '@gigacad/core';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
@@ -5,7 +6,11 @@ import { notFound } from '../errors.js';
 import { idParams, parse, requireCaller, requireSessionCaller } from '../http.js';
 import { approveDeviceSignIn, issueToken, listTokens, pendingDeviceSignIn, pollDeviceSignIn, revokeToken, startDeviceSignIn } from '../services/device.js';
 
-const handleSchema = z.string().regex(/^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/, 'Use 1-39 lowercase letters, digits, or dashes');
+const handleSchema = z
+  .string()
+  .regex(HANDLE_PATTERN, 'Use 1-39 lowercase letters, digits, or dashes')
+  .refine((handle) => !isReservedHandle(handle), 'That handle is reserved')
+  .refine((handle) => !isPlaceholderHandle(handle), 'Choose a handle of your own');
 
 export function authRoutes(app: FastifyInstance, { sql, webOrigin }: AppDeps): void {
   app.post('/v1/auth/device/code', async (request) => {

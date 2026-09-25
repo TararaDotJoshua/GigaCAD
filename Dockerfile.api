@@ -1,0 +1,12 @@
+FROM node:22-bookworm-slim
+WORKDIR /app
+RUN corepack enable
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY packages/core/package.json packages/core/package.json
+COPY apps/api/package.json apps/api/package.json
+RUN pnpm install --frozen-lockfile --filter "@gigacad/api..."
+COPY packages/core packages/core
+COPY apps/api apps/api
+RUN pnpm --filter "@gigacad/api..." build
+ENV NODE_ENV=production HOST=0.0.0.0
+CMD ["node", "apps/api/dist/server.js"]

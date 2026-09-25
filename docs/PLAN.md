@@ -69,7 +69,7 @@ The directory `/Users/joshtarara/Documents/GigaCAD` is empty, so this is a new b
 gigacad/                         (pnpm monorepo, domain: gigacad.site)
   packages/core/        types, manifest diff, pick → candidate builder, approval evaluation, ignore rules
   packages/parsers/     neutral-format previews (STL/3MF/OBJ/STEP); SolidWorks metadata ingest from add-in
-  apps/api/             Fastify on Fly.io/Railway; Supabase Postgres via postgres.js (schema lives in supabase/migrations); Supabase Auth JWT verification; Cloudflare R2 presigned URLs (MinIO locally)
+  apps/api/             Fastify on Fly.io/Railway; Supabase Postgres via postgres.js (schema lives in supabase/migrations); Supabase Auth JWT verification; Cloudflare R2 presigned URLs (SeaweedFS locally)
   apps/worker/          pg-boss jobs: glTF/thumbnail generation, blob GC, stale-lock notices
   apps/web/             One Next.js app on Cloudflare Workers (@opennextjs/cloudflare): marketing pages (static) at gigacad.site, product at app.gigacad.site; three.js viewer; Supabase Auth UI
   clients/cli/          `giga` TS CLI (power users + E2E tests)
@@ -77,7 +77,7 @@ gigacad/                         (pnpm monorepo, domain: gigacad.site)
   clients/solidworks/   .NET Framework 4.8 COM add-in (SolidWorks API) with Task Pane; talks to Sync service over a named pipe
   clients/macos/        (later) File Provider extension, same folder layout
   supabase/             Supabase CLI project: migrations, RLS policies, local stack (`supabase start`)
-  docker-compose.yml    MinIO (R2 stand-in for local dev)
+  docker-compose.yml    SeaweedFS (R2 stand-in for local dev)
 ```
 
 ### Hosting
@@ -176,7 +176,7 @@ gigacad/                         (pnpm monorepo, domain: gigacad.site)
   - Approval evaluator: N of M approvers, self-approval flag, approvals invalidated when the candidate manifest changes, clean-rebuild requirement.
   - Autosave pruning selector.
   - Ignore rules for SolidWorks temp files.
-- **API integration** (local Supabase via `supabase start` + MinIO):
+- **API integration** (local Supabase via `supabase start` + SeaweedFS):
   - A second user's checkout gets 409, and commits without the checkout are rejected.
   - A force-release is recorded in the audit log.
   - Committing a version deletes earlier autosaves and GC removes the orphaned blobs.

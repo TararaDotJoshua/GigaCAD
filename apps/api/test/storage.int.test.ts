@@ -10,11 +10,11 @@ const storage = createS3Storage(
     DATABASE_URL: 'postgresql://unused@localhost/unused',
     SUPABASE_URL: 'http://127.0.0.1:54321',
     S3_ENDPOINT: process.env.S3_ENDPOINT ?? 'http://127.0.0.1:9000',
-    S3_REGION: 'us-east-1',
+    S3_REGION: process.env.S3_REGION ?? 'us-east-1',
     S3_BUCKET: process.env.S3_BUCKET ?? 'gigacad',
     S3_ACCESS_KEY_ID: process.env.S3_ACCESS_KEY_ID ?? 'gigacad',
     S3_SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY ?? 'gigacad-local-secret',
-    S3_FORCE_PATH_STYLE: 'true',
+    S3_FORCE_PATH_STYLE: process.env.S3_FORCE_PATH_STYLE ?? 'true',
   }),
 );
 
@@ -43,6 +43,11 @@ describe('S3 blob storage', () => {
 
     const download = await fetch(await storage.presignDownload(blob));
     expect(await download.text()).toBe(content);
+
+    const named = await fetch(await storage.presignDownload(blob, 'Rear arm (v2) ü.SLDPRT'));
+    expect(named.headers.get('content-disposition')).toBe(
+      `attachment; filename="Rear arm (v2) _.SLDPRT"; filename*=UTF-8''Rear%20arm%20%28v2%29%20%C3%BC.SLDPRT`,
+    );
     await storage.remove(blob);
   });
 });

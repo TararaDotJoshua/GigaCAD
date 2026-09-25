@@ -179,11 +179,11 @@ export async function setApprovalRules(sql: Sql, projectId: string, userId: stri
   });
 }
 
-export async function listEvents(sql: Sql, projectId: string, userId: string | null, after: number, limit: number) {
+export async function listEvents(sql: Sql, projectId: string, userId: string | null, after: number, limit: number, order: 'asc' | 'desc' = 'asc') {
   await projectAccess(sql, projectId, userId);
   return sql<{ id: string; kind: string; actorId: string | null; subjectId: string | null; payload: unknown; createdAt: Date }[]>`
     select id::text, kind, actor_id, subject_id, payload, created_at
     from project_events where project_id = ${projectId} and id > ${after}
-    order by id limit ${limit}
+    order by id ${order === 'desc' ? sql`desc` : sql`asc`} limit ${limit}
   `;
 }

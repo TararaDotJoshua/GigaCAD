@@ -236,6 +236,9 @@ describe('check-out locks', () => {
     const events = await asBea.get(`/v1/projects/${projectId}/events`);
     const forced = events.body.find((event: { kind: string }) => event.kind === 'branch_lock_force_released');
     expect(forced).toMatchObject({ actorId: bea.id, subjectId: branch, payload: { previousHolder: alex.id, machine: MACHINE } });
+
+    const newest = await asBea.get(`/v1/projects/${projectId}/events?order=desc&limit=1`);
+    expect(newest.body).toEqual([forced]);
   });
 });
 
@@ -401,6 +404,15 @@ describe('file access', () => {
     expect(staged()).toBe(stagedBefore);
   });
 
+  it('names downloads when asked, and refuses paths as names', async () => {
+    const projectId = await newProject(asAlex);
+    const blob = (await upload(harness, asAlex, projectId, [`named ${randomUUID()}`]))[0]!;
+    const named = await asAlex.post(`/v1/projects/${projectId}/blobs/downloads`, { sha256s: [blob], filenames: { [blob]: 'P1.SLDPRT' } });
+    expect(named.body.downloads[0].url).toContain('filename=P1.SLDPRT');
+    const path = await asAlex.post(`/v1/projects/${projectId}/blobs/downloads`, { sha256s: [blob], filenames: { [blob]: 'parts/P1.SLDPRT' } });
+    expect(path.status).toBe(400);
+  });
+
   it('restores a known file whose stored copy went missing when it is uploaded again', async () => {
     const one = await newProject(asAlex);
     const two = await newProject(asAlex);
@@ -426,6 +438,20 @@ describe('visibility', () => {
     expect(anonymous.status).toBe(200);
     expect(anonymous.body.role).toBeNull();
     expect((await asOutsider.post(`/v1/projects/${publicId}/branches`, { name: 'nope' })).status).toBe(403);
+  });
+});
+
+describe('handles', () => {
+  it('rejects handles that would collide with top-level pages', async () => {
+    const taken = await asOutsider.patch('/v1/me', { handle: 'settings' });
+    expect(taken.status).toBe(400);
+    expect(taken.body.error.details).toEqual([{ path: 'handle', message: 'That handle is reserved' }]);
+  });
+
+  it('rejects handles that look like the placeholder new accounts start with', async () => {
+    const placeholder = await asOutsider.patch('/v1/me', { handle: 'user-0a1b2c3d4e5f' });
+    expect(placeholder.status).toBe(400);
+    expect(placeholder.body.error.details).toEqual([{ path: 'handle', message: 'Choose a handle of your own' }]);
   });
 });
 

@@ -1,31 +1,213 @@
+import type {
+  AppliedReplacement,
+  ApprovalEvaluation,
+  ApprovalRules,
+  CandidateError,
+  CandidateWarning,
+  ManifestEntry,
+  PickRow,
+  Picks,
+  ProjectRole,
+} from '@gigacad/core';
 import { apiUrl } from './config';
 
-export interface Project {
-  id: string;
-  slug: string;
-  name: string;
-  description: string;
-  visibility: 'public' | 'private';
-  ownerHandle: string;
-  role: string | null;
-  latestReleaseNumber: number | null;
+/** An error response from the GigaCAD API, with its stable `code`. */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+    readonly details?: unknown,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
 }
+
+export async function apiRequest<T>(token: string | null, path: string, init?: RequestInit): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(new URL(path, apiUrl()), {
+      ...init,
+      cache: 'no-store',
+      headers: {
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+        ...(init?.body ? { 'content-type': 'application/json' } : {}),
+        ...init?.headers,
+      },
+    });
+  } catch {
+    throw new ApiError(0, 'network', 'The GigaCAD API is unreachable. Try again in a moment.');
+  }
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { error?: { code?: string; message?: string; details?: unknown } } | null;
+    throw new ApiError(
+      response.status,
+      payload?.error?.code ?? `http_${response.status}`,
+      payload?.error?.message ?? `Request failed (${response.status})`,
+      payload?.error?.details,
+    );
+  }
+  return response.status === 204 ? (undefined as T) : (response.json() as Promise<T>);
+}
+
+// Response shapes. Dates arrive as ISO strings.
 
 export interface Profile {
   id: string;
   handle: string;
   displayName: string | null;
+  quotaBytes?: number;
+  createdAt?: string;
 }
 
-export async function apiRequest<T>(token: string, path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(new URL(path, apiUrl()), {
-    ...init,
-    cache: 'no-store',
-    headers: { authorization: `Bearer ${token}`, ...(init?.body ? { 'content-type': 'application/json' } : {}), ...init?.headers },
-  });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null);
-    throw new Error(payload?.error?.message ?? `Request failed (${response.status})`);
-  }
-  return response.status === 204 ? undefined as T : response.json() as Promise<T>;
+export interface Project {
+  id: string;
+  ownerId: string;
+  ownerHandle: string;
+  slug: string;
+  name: string;
+  description: string;
+  visibility: 'public' | 'private';
+  license: string | null;
+  role: ProjectRole | null;
+  latestReleaseNumber: number | null;
+  createdAt: string;
+}
+
+export interface Member {
+  userId: string;
+  handle: string;
+  displayName: string | null;
+  role: ProjectRole;
+}
+
+export type BranchStatus = 'open' | 'frozen' | 'released' | 'archived';
+
+export interface Branch {
+  id: string;
+  projectId: string;
+  name: string;
+  status: BranchStatus;
+  baseReleaseId: string | null;
+  baseReleaseNumber: number | null;
+  headCommitId: string;
+  checkedOutBy: string | null;
+  checkedOutByHandle: string | null;
+  checkedOutMachine: string | null;
+  checkedOutAt: string | null;
+  createdAt: string;
+}
+
+export interface Commit {
+  id: string;
+  branchId: string;
+  parentId: string | null;
+  manifestId: string;
+  kind: 'autosave' | 'version';
+  message: string;
+  versionLabel: string | null;
+  authorId: string | null;
+  authorHandle: string | null;
+  createdAt: string;
+}
+
+export interface BranchDetail {
+  branch: Branch;
+  head: Commit;
+  files: ManifestEntry[];
+}
+
+export interface CommitDetail {
+  commit: Commit;
+  files: ManifestEntry[];
+}
+
+export interface Release {
+  id: string;
+  number: number;
+  manifestId: string;
+  notes: string;
+  releaseRequestId: string | null;
+  createdBy: string | null;
+  createdByHandle: string | null;
+  createdAt: string;
+}
+
+export interface ReleaseDetail {
+  release: Release;
+  files: ManifestEntry[];
+}
+
+export type ReleaseRequestStatus = 'open' | 'candidate' | 'released' | 'closed';
+
+export interface ReleaseRequestSummary {
+  id: string;
+  number: number;
+  title: string;
+  status: ReleaseRequestStatus;
+  branchName: string;
+  requesterHandle: string | null;
+  updatedAt: string;
+}
+
+export interface RebuildMessage {
+  level: 'info' | 'warning' | 'error';
+  message: string;
+  path?: string;
+}
+
+export interface ReleaseRequestDetail {
+  releaseRequest: {
+    id: string;
+    projectId: string;
+    number: number;
+    branchId: string;
+    branchName: string;
+    requesterId: string | null;
+    requesterHandle: string | null;
+    title: string;
+    body: string;
+    status: ReleaseRequestStatus;
+    picks: Picks;
+    targetReleaseId: string | null;
+    candidateManifestId: string | null;
+    rebuildManifestId: string | null;
+    rebuildStatus: 'passed' | 'passed_with_warnings' | 'failed' | null;
+    rebuildReport: { messages: RebuildMessage[] } | null;
+    releasedReleaseId: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+  latestRelease: { id: string; number: number } | null;
+  preview: {
+    rows: PickRow[];
+    replacements: AppliedReplacement[];
+    warnings: CandidateWarning[];
+    errors: CandidateError[];
+    ok: boolean;
+  };
+  candidate: { manifestId: string; files: ManifestEntry[]; upToDate: boolean } | null;
+  approvals: {
+    given: { userId: string; handle: string; candidateManifestId: string; createdAt: string }[];
+    evaluation: ApprovalEvaluation | null;
+  };
+}
+
+export type { ApprovalRules };
+
+export interface ProjectEvent {
+  id: string;
+  kind: string;
+  actorId: string | null;
+  subjectId: string | null;
+  payload: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface DeviceToken {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastUsedAt: string | null;
 }

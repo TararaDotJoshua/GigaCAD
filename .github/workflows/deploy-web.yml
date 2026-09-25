@@ -1,0 +1,43 @@
+name: Deploy web
+
+# Deploys marketing and the product app to Cloudflare Workers after CI passes on main.
+# Inert until the repository variable DEPLOY_WEB is "true" (docs/DEPLOYMENT.md step 5).
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: deploy-web
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: vars.DEPLOY_WEB == 'true' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+      NEXT_PUBLIC_GIGACAD_API_URL: ${{ vars.NEXT_PUBLIC_GIGACAD_API_URL }}
+      NEXT_PUBLIC_GIGACAD_APP_URL: ${{ vars.NEXT_PUBLIC_GIGACAD_APP_URL }}
+      NEXT_PUBLIC_GIGACAD_SITE_URL: ${{ vars.NEXT_PUBLIC_GIGACAD_SITE_URL }}
+      NEXT_PUBLIC_GITHUB_AUTH_ENABLED: ${{ vars.NEXT_PUBLIC_GITHUB_AUTH_ENABLED }}
+      NEXT_PUBLIC_GOOGLE_AUTH_ENABLED: ${{ vars.NEXT_PUBLIC_GOOGLE_AUTH_ENABLED }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Next bundles @gigacad/core from its build output.
+      - run: pnpm --filter @gigacad/core build
+      # `run` matters: bare `pnpm deploy` is a built-in pnpm command.
+      - run: pnpm --filter @gigacad/web run deploy

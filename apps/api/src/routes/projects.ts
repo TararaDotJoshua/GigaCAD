@@ -107,10 +107,15 @@ export function projectRoutes(app: FastifyInstance, { sql }: AppDeps): void {
   app.get('/v1/projects/:id/events', async (request) => {
     const { id } = parse(idParams, request.params);
     const query = parse(
-      z.object({ after: z.coerce.number().int().min(0).default(0), limit: z.coerce.number().int().min(1).max(500).default(200) }),
+      z.object({
+        after: z.coerce.number().int().min(0).default(0),
+        limit: z.coerce.number().int().min(1).max(500).default(200),
+        /** `desc` lists the newest first, for activity feeds; `asc` (default) is for catching up. */
+        order: z.enum(['asc', 'desc']).default('asc'),
+      }),
       request.query,
     );
-    return listEvents(sql, id, viewerId(request), query.after, query.limit);
+    return listEvents(sql, id, viewerId(request), query.after, query.limit, query.order);
   });
 
   app.get('/v1/projects/:id/releases', async (request) => {

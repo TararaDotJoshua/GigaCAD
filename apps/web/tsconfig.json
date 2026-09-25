@@ -22,7 +22,10 @@
       }
     ],
     "allowJs": true,
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "customConditions": [
+      "@gigacad/source"
+    ]
   },
   "include": [
     "next-env.d.ts",

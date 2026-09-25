@@ -22,8 +22,15 @@ export function blobRoutes(app: FastifyInstance, { sql, storage }: AppDeps): voi
 
   app.post('/v1/projects/:id/blobs/downloads', async (request) => {
     const { id } = parse(idParams, request.params);
-    const { sha256s } = parse(z.object({ sha256s: z.array(sha256Schema).min(1).max(1000) }), request.body);
-    return planDownloads(sql, storage, id, viewerId(request), sha256s);
+    const { sha256s, filenames } = parse(
+      z.object({
+        sha256s: z.array(sha256Schema).min(1).max(1000),
+        /** Optional download names, e.g. from the web app, so browsers save `P1.SLDPRT` rather than a hash. */
+        filenames: z.record(sha256Schema, z.string().min(1).max(255).regex(/^[^/\\\x00-\x1f]+$/, 'A file name, not a path')).optional(),
+      }),
+      request.body,
+    );
+    return planDownloads(sql, storage, id, viewerId(request), sha256s, filenames);
   });
 
   app.put('/v1/projects/:id/blobs/:sha256/references', async (request) => {

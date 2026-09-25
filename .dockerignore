@@ -1,0 +1,8 @@
+**/node_modules
+**/dist
+**/.next
+**/.open-next
+.git
+.env
+**/.env.local
+coverage

@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# The web build needs these at compile time; any well-formed values work for CI.
+env:
+  NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-placeholder
+  NEXT_PUBLIC_GIGACAD_API_URL: http://127.0.0.1:8787
+  NEXT_PUBLIC_GIGACAD_APP_URL: http://localhost:3000
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm --filter @gigacad/cli smoke
+
+  # The image Railway deploys. Building it catches files missing from its COPY lines.
+  api-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f Dockerfile.api -t gigacad-api .
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - run: pnpm install --frozen-lockfile
+      # MinIO stands in for R2 (docker-compose.yml also creates the bucket).
+      - run: docker compose up -d --wait minio && docker compose run --rm minio-setup
+      # Applies supabase/migrations to a fresh local stack.
+      - run: supabase start
+      - run: pnpm test:integration

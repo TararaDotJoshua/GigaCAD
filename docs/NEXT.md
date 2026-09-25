@@ -14,6 +14,7 @@ Live and verified in production:
 - Sharing. A second account viewed a project shared with it.
 - Live updates. Project pages refresh on their own when something happens, including on private projects (fixed in #13).
 - A browser test in CI (`e2e` job, `apps/web/e2e/`): the release flow in the web app, live refresh, and the HTTP status of every page type. It's required on `main`.
+- Paid plans (Maker, Builder, Workshop, Studio) on sale through Stripe Managed Payments, with storage limits enforced.
 - `scripts/check-site.sh` checks the status of every page type on the live site. It runs after each web deploy and every 15 minutes (`.github/workflows/uptime.yml`). GitHub emails a failed run.
 
 ## 1. Finish the launch checklist
@@ -25,7 +26,7 @@ These need the owner's accounts. Everything else before the next phase is done.
   - Google: Google Cloud console → APIs & Services → Credentials → Create OAuth client ID (Web application), after configuring the consent screen. Authorized JavaScript origin `https://app.gigacad.site`.
 
   Put the client IDs and secrets in the ignored `supabase/.env.oauth` (`GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) and run `scripts/enable-oauth.sh`. It turns the providers on in Supabase, sets the `NEXT_PUBLIC_*_AUTH_ENABLED` variables, and redeploys the web app.
-- **Paid plans (deployment step 10).** Built on Managed Payments (Stripe is merchant of record and handles tax). Create the Stripe account and a sandbox, activate Managed Payments, make the two restricted keys, run `stripe:setup`, set the API variables and `NEXT_PUBLIC_BILLING_ENABLED`, and test a checkout. Then repeat in live mode.
+- **Stripe follow-ups.** Paid plans are live. Set a support email in Stripe (Managed Payments forwards customer questions there), delete the sandbox's webhook to `api.gigacad.site`, and move the API to a restricted live key (`rk_live_`) with the permissions in deployment step 10.
 - **R2 spending alert (step 9).** Cloudflare dashboard → Notifications → Add → Usage Based Billing → R2 storage, with a monthly threshold. The API token agents can use has no notification permissions.
 - **Supabase Pro** before public sign-ups, for daily backups and no pausing.
 

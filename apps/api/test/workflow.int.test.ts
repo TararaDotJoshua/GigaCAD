@@ -461,7 +461,7 @@ describe('browser access', () => {
       harness.app.inject({ method: 'OPTIONS', url: '/v1/me', headers: { origin, 'access-control-request-method': 'PATCH' } });
     const allowed = await preflight('http://localhost:3000');
     expect(allowed.headers['access-control-allow-origin']).toBe('http://localhost:3000');
-    expect(String(allowed.headers['access-control-allow-methods']).split(',')).toEqual(expect.arrayContaining(['PUT', 'PATCH', 'DELETE']));
+    expect(String(allowed.headers['access-control-allow-methods']).split(/,\s*/)).toEqual(expect.arrayContaining(['PUT', 'PATCH', 'DELETE']));
     expect((await preflight('https://evil.example')).headers['access-control-allow-origin']).toBeUndefined();
   });
 });

@@ -39,10 +39,23 @@ export async function purgeDeletedProjects(sql: Sql, options: JobOptions = {}): 
     order by deleted_at limit ${batch}
   `;
   for (const { id } of due) {
+    // Postgres checks foreign keys after each cascaded table, so the history is removed
+    // explicitly, children before the rows they point at.
     await sql.begin(async (tx) => {
       await tx`select set_config('gigacad.purge', 'on', true)`;
-      // Branch heads point at commits and commits at manifests; clear the cycle first.
-      await tx`update branches set head_commit_id = null where project_id = ${id}`;
+      await tx`update branches set head_commit_id = null, base_release_id = null where project_id = ${id}`;
+      await tx`delete from approvals where release_request_id in (select id from release_requests where project_id = ${id})`;
+      await tx`
+        update release_requests
+        set target_release_id = null, candidate_manifest_id = null, rebuild_manifest_id = null, released_release_id = null
+        where project_id = ${id}
+      `;
+      await tx`delete from releases where project_id = ${id}`;
+      await tx`delete from release_requests where project_id = ${id}`;
+      await tx`delete from commits where branch_id in (select id from branches where project_id = ${id})`;
+      await tx`delete from branches where project_id = ${id}`;
+      await tx`delete from manifest_entries where manifest_id in (select id from manifests where project_id = ${id})`;
+      await tx`delete from manifests where project_id = ${id}`;
       await tx`delete from projects where id = ${id}`;
     });
   }
@@ -114,8 +127,8 @@ export async function clearAbandonedUploads(sql: Sql, storage: BlobStorage, opti
  */
 export async function notifyStaleCheckouts(sql: Sql, mailer: Mailer, webOrigin: string, options: JobOptions = {}): Promise<number> {
   const { staleCheckoutDays, batch } = { ...DEFAULTS, ...options };
-  const stale = await sql<{ branchId: string; branchName: string; checkedOutAt: Date; ownerHandle: string; slug: string; projectName: string; email: string | null; days: number }[]>`
-    select b.id as branch_id, b.name as branch_name, b.checked_out_at, o.handle as owner_handle, p.slug, p.name as project_name,
+  const stale = await sql<{ branchId: string; branchName: string; ownerHandle: string; slug: string; projectName: string; email: string | null; days: number }[]>`
+    select b.id as branch_id, b.name as branch_name, o.handle as owner_handle, p.slug, p.name as project_name,
       u.email, floor(extract(epoch from now() - b.checked_out_at) / 86400)::int as days
     from branches b
     join projects p on p.id = b.project_id and p.deleted_at is null
@@ -133,7 +146,7 @@ export async function notifyStaleCheckouts(sql: Sql, mailer: Mailer, webOrigin: 
     // Claim the notice first, so two runs never both send it.
     const [claimed] = await sql`
       update branches set stale_notice_for = checked_out_at
-      where id = ${branch.branchId} and checked_out_at = ${branch.checkedOutAt} and stale_notice_for is distinct from checked_out_at
+      where id = ${branch.branchId} and checked_out_at is not null and stale_notice_for is distinct from checked_out_at
       returning id
     `;
     if (!claimed || !branch.email) continue;

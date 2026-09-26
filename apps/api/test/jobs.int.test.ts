@@ -118,7 +118,7 @@ describe('purging deleted projects', () => {
     await api.post(`/v1/release-requests/${requestId}/approvals`);
     expect((await api.post(`/v1/release-requests/${requestId}/release`)).status).toBe(201);
 
-    // A second project forked from nothing, deleted recently, must survive.
+    // A project deleted only yesterday must survive.
     const recent = await newProject();
     expect((await api.delete(`/v1/projects/${recent}`)).status).toBe(204);
     expect((await api.delete(`/v1/projects/${projectId}`)).status).toBe(204);

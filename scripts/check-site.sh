@@ -11,8 +11,8 @@ set -uo pipefail
 SITE="${SITE:-https://gigacad.site}"
 APP="${APP:-https://app.gigacad.site}"
 API="${API:-https://api.gigacad.site}"
-# A user whose page should always exist, for the public profile check.
-PROFILE="${PROFILE:-tararajoshua}"
+# A user page to check. Handles can be renamed, so take the owner of a public project from Explore.
+PROFILE="${PROFILE:-$(curl -s --max-time 20 "$API/v1/explore?sort=recent&limit=1" | grep -o '"ownerHandle":"[^"]*"' | head -1 | cut -d'"' -f4)}"
 failed=0
 
 # expect <status> <url> [<redirect prefix>]
@@ -36,8 +36,12 @@ expect 200 "$APP/login"
 expect 200 "$APP/signup"
 expect 307 "$APP/" "$APP/login"
 expect 200 "$APP/explore"
-expect 200 "$APP/$PROFILE"
-expect 200 "$APP/$PROFILE?tab=starred"
+if [[ -n "$PROFILE" ]]; then
+  expect 200 "$APP/$PROFILE"
+  expect 200 "$APP/$PROFILE?tab=starred"
+else
+  echo "skip user page: Explore lists no public projects"
+fi
 expect 308 "$SITE/login" "$APP/login"
 expect 308 "$APP/docs" "$SITE/docs"
 

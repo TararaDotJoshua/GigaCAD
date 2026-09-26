@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { projectPath } from '../../lib/paths';
 import { createClient } from '../../lib/supabase/client';
-import { BranchIcon, LockIcon, LogOutIcon, MenuIcon, SearchIcon, SettingsIcon, StarIcon } from '../icons';
+import { BranchIcon, LockIcon, LogOutIcon, MenuIcon, SearchIcon, StarIcon } from '../icons';
 import { Logo } from '../Logo';
 import { Avatar } from './Avatar';
 
@@ -87,21 +87,10 @@ export function SidebarNav({
             <Link href={`/${me.handle}`} className={pathname === `/${me.handle}` ? 'is-active' : undefined} onClick={() => setOpen(false)}>
               <Avatar handle={me.handle} url={me.avatarUrl} />@{me.handle}
             </Link>
-            <div className="shell-account-actions">
-              <Link
-                href="/settings"
-                className={`shell-account-icon${pathname === '/settings' || pathname.startsWith('/settings/') ? ' is-active' : ''}`}
-                title="Account settings"
-                onClick={() => setOpen(false)}
-              >
-                <SettingsIcon className="icon" />
-                <span className="sr-only">Account settings</span>
-              </Link>
-              <button type="button" onClick={logOut} title="Log out">
-                <LogOutIcon className="icon" />
-                <span className="sr-only">Log out</span>
-              </button>
-            </div>
+            <button type="button" onClick={logOut} title="Log out">
+              <LogOutIcon className="icon" />
+              <span className="sr-only">Log out</span>
+            </button>
           </div>
         ) : (
           <div className="shell-account shell-signed-out">

@@ -19,6 +19,8 @@ export interface ThumbnailDeps {
   readonly sql: Sql;
   readonly storage: BlobStorage;
   readonly renderer: ThumbnailRenderer;
+  /** Told about errors that leave a thumbnail to be tried again, like storage being unreachable. */
+  readonly onError?: (error: unknown, sha256: string) => void;
 }
 
 /**
@@ -64,9 +66,10 @@ export async function generateThumbnails(deps: ThumbnailDeps, options: { budgetM
             await storage.write(thumbnailKey(job.sha256), png, 'image/png');
             await settle('ready');
           } catch (error) {
-            // Unreadable files fail for good; anything else (like storage) is tried again next run.
-            if (!(error instanceof UnreadableFile)) throw error;
-            await settle('failed', error.message);
+            // Unreadable files fail for good. Anything else (like storage) leaves the thumbnail
+            // pending for the next run, up to MAX_ATTEMPTS, without holding up the rest of the queue.
+            if (error instanceof UnreadableFile) await settle('failed', error.message);
+            else deps.onError?.(error, job.sha256);
           }
         }
         finished++;

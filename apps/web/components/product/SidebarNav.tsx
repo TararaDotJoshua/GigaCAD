@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { projectPath } from '../../lib/paths';
 import { createClient } from '../../lib/supabase/client';
-import { BranchIcon, LockIcon, LogOutIcon, MenuIcon, SearchIcon } from '../icons';
+import { BranchIcon, LockIcon, LogOutIcon, MenuIcon, SearchIcon, StarIcon } from '../icons';
 import { Logo } from '../Logo';
 
 export interface NavProject {
@@ -24,7 +24,8 @@ export function SidebarNav({
   projects,
   current,
 }: {
-  me: { handle: string };
+  /** Null for a signed-out visitor to a public page. */
+  me: { handle: string } | null;
   /** The dashboard's path: `/` on the app host, `/app` in local development. */
   home: string;
   projects: readonly NavProject[];
@@ -62,7 +63,12 @@ export function SidebarNav({
           <input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Jump to a project" />
         </label>
 
-        <p className="app-sidebar-heading">Projects</p>
+        <Link href="/explore" className={`shell-explore${pathname === '/explore' ? ' is-active' : ''}`} onClick={() => setOpen(false)}>
+          <StarIcon className="icon" />
+          Explore public projects
+        </Link>
+
+        <p className="app-sidebar-heading">{me ? 'Projects' : 'This project'}</p>
         <ul className="app-nav">
           {shown.map((p) => (
             <li key={`${p.owner}/${p.slug}`} className={isCurrent(p) ? 'is-current' : undefined}>
@@ -72,18 +78,27 @@ export function SidebarNav({
               {isCurrent(p) && current && <ProjectSections project={current} pathname={pathname} onNavigate={() => setOpen(false)} />}
             </li>
           ))}
-          {shown.length === 0 && <li className="app-nav-empty">{filter ? 'No matches' : 'No projects yet'}</li>}
+          {shown.length === 0 && <li className="app-nav-empty">{filter ? 'No matches' : me ? 'No projects yet' : 'Log in to see your projects'}</li>}
         </ul>
 
-        <div className="shell-account">
-          <Link href="/settings" className={pathname === '/settings' || pathname.startsWith('/settings/') ? 'is-active' : undefined} onClick={() => setOpen(false)}>
-            <span className="avatar">{me.handle.slice(0, 1).toUpperCase()}</span>@{me.handle}
-          </Link>
-          <button type="button" onClick={logOut} title="Log out">
-            <LogOutIcon className="icon" />
-            <span className="sr-only">Log out</span>
-          </button>
-        </div>
+        {me ? (
+          <div className="shell-account">
+            <Link href="/settings" className={pathname === '/settings' || pathname.startsWith('/settings/') ? 'is-active' : undefined} onClick={() => setOpen(false)}>
+              <span className="avatar">{me.handle.slice(0, 1).toUpperCase()}</span>@{me.handle}
+            </Link>
+            <button type="button" onClick={logOut} title="Log out">
+              <LogOutIcon className="icon" />
+              <span className="sr-only">Log out</span>
+            </button>
+          </div>
+        ) : (
+          <div className="shell-account shell-signed-out">
+            <Link href={`/login?next=${encodeURIComponent(pathname)}`}>Log in</Link>
+            <Link href="/signup" className="btn btn-primary btn-small">
+              Sign up
+            </Link>
+          </div>
+        )}
       </div>
     </aside>
   );

@@ -4,10 +4,11 @@ import { FileTable } from '../../../../components/product/FileTable';
 import { PageHead } from '../../../../components/product/PageHead';
 import { RelativeTime } from '../../../../components/product/RelativeTime';
 import { StatusBadge } from '../../../../components/product/StatusBadge';
-import { LockIcon } from '../../../../components/icons';
+import { ForkIcon, LockIcon } from '../../../../components/icons';
+import { StarButton } from '../../../../components/product/StarButton';
 import { describeEvent } from '../../../../lib/describe';
 import { projectPath, releasePath } from '../../../../lib/paths';
-import { getBranches, getEvents, getMembers, getProject, getRelease, getReleases, parseNumber } from '../../../../lib/product';
+import { getBranches, getEvents, getMembers, getProject, getRelease, getReleases, getViewer, parseNumber } from '../../../../lib/product';
 import type { ProjectParams } from './layout';
 
 export async function generateMetadata({ params }: { params: Promise<ProjectParams> }) {
@@ -18,12 +19,13 @@ export async function generateMetadata({ params }: { params: Promise<ProjectPara
 export default async function ProjectFiles({ params, searchParams }: { params: Promise<ProjectParams>; searchParams: Promise<{ release?: string }> }) {
   const { owner, project: slug } = await params;
   const project = await getProject(owner, slug);
-  const [releases, events, members, branches, query] = await Promise.all([
+  const [releases, events, members, branches, query, viewer] = await Promise.all([
     getReleases(project.id),
     getEvents(project.id),
     getMembers(project.id),
     getBranches(project.id),
     searchParams,
+    getViewer(),
   ]);
   const number = query.release ? parseNumber(query.release) : releases[0]?.number;
   const release = number ? await getRelease(project.id, number) : undefined;
@@ -50,7 +52,26 @@ export default async function ProjectFiles({ params, searchParams }: { params: P
             <span className="mono">
               {project.ownerHandle}/{project.slug}
             </span>
+            {project.forkedFrom && (
+              <span>
+                Forked from{' '}
+                <Link className="mono" href={releasePath(project.forkedFrom.ownerHandle, project.forkedFrom.slug, project.forkedFrom.releaseNumber)}>
+                  {project.forkedFrom.ownerHandle}/{project.forkedFrom.slug} v{project.forkedFrom.releaseNumber}
+                </Link>
+              </span>
+            )}
             {project.description && <span>{project.description}</span>}
+          </>
+        }
+        actions={
+          <>
+            <StarButton projectId={project.id} starred={project.starred} count={project.starCount} signedIn={!!viewer} next={projectPath(owner, slug)} />
+            {project.latestReleaseNumber && (
+              <Link href={projectPath(owner, slug, 'fork')} className="btn btn-secondary" title={project.forkCount ? `${project.forkCount} public ${project.forkCount === 1 ? 'fork' : 'forks'}` : undefined}>
+                <ForkIcon className="icon" />
+                Fork{project.forkCount ? ` ${project.forkCount}` : ''}
+              </Link>
+            )}
           </>
         }
       />

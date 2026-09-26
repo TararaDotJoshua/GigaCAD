@@ -111,6 +111,21 @@ export const DownloadIcon = ({ className }: IconProps) => (
   </svg>
 );
 
+export const StarIcon = ({ className }: IconProps) => (
+  <svg className={className} {...base}>
+    <path d="m8 1.9 1.8 3.9 4.2.4-3.2 2.8 1 4.1L8 11l-3.8 2.1 1-4.1L2 6.2l4.2-.4L8 1.9Z" />
+  </svg>
+);
+
+export const ForkIcon = ({ className }: IconProps) => (
+  <svg className={className} {...base}>
+    <circle cx="4.5" cy="3.2" r="1.4" />
+    <circle cx="11.5" cy="3.2" r="1.4" />
+    <circle cx="8" cy="12.8" r="1.4" />
+    <path d="M4.5 4.6v1.2c0 1.2 1 2.2 2.2 2.2h2.6c1.2 0 2.2-1 2.2-2.2V4.6M8 8v3.4" />
+  </svg>
+);
+
 /** An isometric cube, drawn like the part line art. */
 export const CubeIcon = ({ className }: IconProps) => (
   <svg className={className} {...base}>

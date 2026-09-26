@@ -172,6 +172,33 @@ export async function downloadLink(projectId: string, sha256: string, filename: 
 
 // Branches
 
+// Sharing
+
+export async function setStar(projectId: string, starred: boolean): Promise<ActionState> {
+  return mutate((token) => apiRequest(token, `/v1/projects/${id(projectId)}/star`, json(starred ? 'PUT' : 'DELETE')));
+}
+
+export async function forkProject(sourceId: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  const token = await requireAccessToken();
+  const release = Number(text(form, 'releaseNumber'));
+  let project: Project;
+  try {
+    project = await apiRequest<Project>(
+      token,
+      `/v1/projects/${id(sourceId)}/forks`,
+      json('POST', {
+        name: text(form, 'name'),
+        slug: text(form, 'slug'),
+        visibility: text(form, 'visibility') === 'public' ? 'public' : 'private',
+        ...(release > 0 ? { releaseNumber: release } : {}),
+      }),
+    );
+  } catch (error) {
+    return { error: messageFor(error) };
+  }
+  redirect(projectPath(project.ownerHandle, project.slug));
+}
+
 export async function createBranch(projectId: string, owner: string, slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
   const name = text(form, 'name');
   const from = Number(text(form, 'fromRelease'));

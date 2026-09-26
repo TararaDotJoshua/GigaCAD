@@ -1,3 +1,5 @@
+import { isReservedHandle } from '@gigacad/core';
+
 /**
  * One Next.js app serves two sites: marketing at gigacad.site and the product at
  * app.gigacad.site. The request's host decides which pages it may see. When both
@@ -22,6 +24,17 @@ export function isMarketingPath(pathname: string): boolean {
     pathname === '/' ||
     ['/download', '/docs', '/pricing', '/privacy', '/terms'].some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
   );
+}
+
+/**
+ * Pages anyone may browse signed out: Explore, profiles, and projects (whose pages send
+ * visitors to log in when the project turns out to be private). Account pages all live
+ * under reserved handles, so a first segment that isn't reserved is a user.
+ */
+export function isPublicBrowsePath(pathname: string): boolean {
+  if (pathname === '/explore') return true;
+  const first = pathname.split('/')[1];
+  return !!first && !isReservedHandle(first);
 }
 
 /** Sign-in pages that work without a session. */

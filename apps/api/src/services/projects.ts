@@ -14,11 +14,13 @@ export interface ProjectSummary extends ProjectRow {
   readonly forkCount: number;
   /** The release this project was forked from, if it still exists and the viewer can see it. */
   readonly forkedFrom: { readonly ownerHandle: string; readonly slug: string; readonly releaseNumber: number } | null;
+  /** A fork of a private project, which can't be made public. */
+  readonly mustStayPrivate: boolean;
 }
 
 export async function summarize(db: Db, projectId: string, role: ProjectRole | null, viewerId: string | null): Promise<ProjectSummary> {
   const [row] = await db<(Omit<ProjectSummary, 'role' | 'forkedFrom'> & { forkOwner: string | null; forkSlug: string | null; forkNumber: number | null })[]>`
-    select p.id, p.owner_id, p.slug, p.name, p.description, p.visibility, p.license, p.created_at,
+    select p.id, p.owner_id, p.slug, p.name, p.description, p.visibility, p.license, p.created_at, p.must_stay_private,
            o.handle as owner_handle,
            (select max(number) from releases r where r.project_id = p.id) as latest_release_number,
            (select count(*)::int from stars s where s.project_id = p.id) as star_count,
@@ -97,6 +99,10 @@ export async function updateProject(
   return sql.begin(async (tx) => {
     const { role } = await requireProjectRole(tx, projectId, userId, 'maintainer', { lock: true });
     const defined = Object.fromEntries(Object.entries(changes).filter(([, value]) => value !== undefined));
+    if (changes.visibility === 'public') {
+      const [row] = await tx<{ mustStayPrivate: boolean }[]>`select must_stay_private from projects where id = ${projectId}`;
+      if (row?.mustStayPrivate) throw forbidden('A fork of a private project must stay private');
+    }
     if (Object.keys(defined).length > 0) {
       await tx`update projects set ${tx(defined)} where id = ${projectId}`;
       await recordEvent(tx, { projectId, actorId: userId, kind: 'project_updated', subjectId: projectId, payload: defined });

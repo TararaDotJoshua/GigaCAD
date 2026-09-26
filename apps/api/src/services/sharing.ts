@@ -95,8 +95,8 @@ export async function forkProject(
   return sql.begin(async (tx) => {
     await requireStorageFor(tx, userId, blobs);
     const [project] = await tx<{ id: string }[]>`
-      insert into projects (owner_id, slug, name, description, visibility, license, forked_from_release_id)
-      values (${userId}, ${input.slug}, ${input.name}, ${source.description}, ${visibility}, ${source.license}, ${release.id})
+      insert into projects (owner_id, slug, name, description, visibility, license, forked_from_release_id, must_stay_private)
+      values (${userId}, ${input.slug}, ${input.name}, ${source.description}, ${visibility}, ${source.license}, ${release.id}, ${source.visibility === 'private'})
       returning id
     `;
     const projectId = project!.id;

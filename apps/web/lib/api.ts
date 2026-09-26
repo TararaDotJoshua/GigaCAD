@@ -91,6 +91,8 @@ export interface Project {
   starred: boolean;
   forkCount: number;
   forkedFrom: { ownerHandle: string; slug: string; releaseNumber: number } | null;
+  /** A fork of a private project, which can't be made public. */
+  mustStayPrivate: boolean;
   createdAt: string;
 }
 

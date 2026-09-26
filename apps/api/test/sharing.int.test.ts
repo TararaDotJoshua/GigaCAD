@@ -121,6 +121,12 @@ describe('forks', () => {
     const kept = await asMaker.post(`/v1/projects/${privateId}/forks`, { slug: `copy-${word}`, name: 'Copy' });
     expect(kept.status).toBe(201);
     expect(kept.body.visibility).toBe('private');
+    expect(kept.body.mustStayPrivate).toBe(true);
+    // Not later, either, and not once the original is deleted.
+    expect((await asMaker.patch(`/v1/projects/${kept.body.id}`, { visibility: 'public' })).status).toBe(403);
+    expect((await asMaker.patch(`/v1/projects/${kept.body.id}`, { name: 'Renamed copy' })).status).toBe(200);
+    await harness.sql`update projects set forked_from_release_id = null where id = ${kept.body.id}`;
+    expect((await asMaker.patch(`/v1/projects/${kept.body.id}`, { visibility: 'public' })).status).toBe(403);
   });
 
   it('needs a release to fork, and a free slug', async () => {

@@ -49,7 +49,12 @@ const thumbnails = async () => {
   if (rendering) return;
   rendering = true;
   try {
-    const finished = await generateThumbnails({ sql, storage, renderer });
+    const finished = await generateThumbnails({
+      sql,
+      storage,
+      renderer,
+      onError: (error, sha256) => app.log.warn({ err: error, sha256 }, 'thumbnail will be retried'),
+    });
     if (finished) app.log.info({ thumbnails: finished }, 'thumbnails');
   } catch (error) {
     app.log.error(error, 'thumbnails failed');

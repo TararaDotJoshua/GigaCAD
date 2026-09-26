@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { previewFormat } from './preview';
+import { exportFilename, isSolidWorks, previewFormat } from './preview';
 
 describe('previewFormat', () => {
   it('knows the formats the browser can read', () => {
@@ -15,5 +15,14 @@ describe('previewFormat', () => {
     expect(previewFormat('Robot.SLDASM')).toBeNull();
     expect(previewFormat('P1.SLDPRT')).toBeNull();
     expect(previewFormat('notes.stl.txt')).toBeNull();
+  });
+});
+
+describe('exportFilename', () => {
+  it('names an export after its SolidWorks file', () => {
+    expect(exportFilename('parts/Bracket.SLDPRT', 'step')).toBe('Bracket.step');
+    expect(exportFilename('Robot.v2.SLDASM', 'stl')).toBe('Robot.v2.stl');
+    expect(isSolidWorks('a/Sheet.slddrw')).toBe(true);
+    expect(isSolidWorks('a/part.step')).toBe(false);
   });
 });

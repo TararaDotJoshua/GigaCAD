@@ -45,9 +45,12 @@ describe('thumbnails', () => {
   it('are queued for 3D files when committed, rendered, and linked for people who can see the project', async () => {
     const stl = tetrahedron();
     const part = `part ${randomUUID()}`;
-    const projectId = await projectWith({ 'parts/bracket.stl': stl, 'parts/Bracket.SLDPRT': part });
+    const notes = `notes ${randomUUID()}`;
+    const projectId = await projectWith({ 'parts/bracket.stl': stl, 'parts/Bracket.SLDPRT': part, 'Notes.txt': notes });
     expect(await statusOf(stl)).toMatchObject({ status: 'pending' });
-    expect(await statusOf(part)).toBeUndefined();
+    // SolidWorks files are queued too, for the preview picture inside them; other files aren't.
+    expect(await statusOf(part)).toMatchObject({ status: 'pending' });
+    expect(await statusOf(notes)).toBeUndefined();
 
     const waiting = await api.post(`/v1/projects/${projectId}/thumbnails`, { sha256s: [sha256(stl)] });
     expect(waiting.body).toEqual({ thumbnails: {}, pending: [sha256(stl)] });

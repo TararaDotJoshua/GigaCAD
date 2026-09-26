@@ -68,7 +68,7 @@ The directory `/Users/joshtarara/Documents/GigaCAD` is empty, so this is a new b
 ```
 gigacad/                         (pnpm monorepo, domain: gigacad.site)
   packages/core/        types, manifest diff, pick → candidate builder, approval evaluation, ignore rules
-  packages/parsers/     neutral-format previews (STL/3MF/OBJ/STEP); SolidWorks metadata ingest from add-in
+  packages/parsers/     (folded into apps/api/src/thumbnails) neutral-format parsing (STL/3MF/OBJ/STEP/IGES) and SolidWorks preview pictures
   apps/api/             Fastify on Fly.io/Railway; Supabase Postgres via postgres.js (schema lives in supabase/migrations); Supabase Auth JWT verification; Cloudflare R2 presigned URLs (SeaweedFS locally)
   apps/worker/          pg-boss jobs: glTF/thumbnail generation, blob GC, stale-lock notices
   apps/web/             One Next.js app on Cloudflare Workers (@opennextjs/cloudflare): marketing pages (static) at gigacad.site, product at app.gigacad.site; three.js viewer; Supabase Auth UI
@@ -103,7 +103,8 @@ gigacad/                         (pnpm monorepo, domain: gigacad.site)
 - `approval_rules`: project_id, required_count, allow_self_approval, require_clean_rebuild. `approval_rule_approvers`: user_id or role.
 - `approvals`: rr_id, user_id, candidate_manifest_id (the approval is only valid for that manifest)
 - `file_refs`: blob_sha256, referenced_path, ref_type. For SolidWorks these are supplied by the add-in via `GetDependencies2`.
-- `derived_assets`: blob_sha256, kind (thumbnail_png/gltf/stl), storage_key
+- `thumbnails`: blob_sha256, format, status (pending/ready/failed/skipped), and an optional `model_sha256` when the thumbnail is drawn from an export. Images live at `thumbnails/<sha>.png` in R2.
+- `file_exports`: project_id, source_sha256 (a SolidWorks part or assembly), format (stl/step), blob_sha256. Exports are ordinary uploaded blobs in the project, so they count toward storage, fork with their source, and are cleaned up when their source is.
 - `audit_log`: checkouts, force-releases, approvals, releases
 
 ### API highlights
@@ -113,6 +114,7 @@ gigacad/                         (pnpm monorepo, domain: gigacad.site)
 - RR flow: `POST /rr` (freezes the branch) → `GET /rr/:id/diff` → `PUT /rr/:id/picks` → `POST /rr/:id/candidate` → `POST /rr/:id/rebuild-report` → `POST /rr/:id/approve` → `POST /rr/:id/release`
 - `GET/PUT /projects/:id/approval-rules`
 - Change feed `GET /projects/:id/changes?since=` for the drive clients (catch-up after offline)
+- `PUT /projects/:id/exports` attaches an uploaded STEP or STL to a SolidWorks file (contributors and up). `POST /projects/:id/exports/lookup` lists a file's exports; `POST /projects/:id/thumbnails` returns thumbnail links.
 - Live updates: Supabase Realtime (Postgres changes on `branches`, `release_requests`, `approvals`) push checkout locks, RR status, and approvals to the web app, tray app, and add-in
 
 ### Windows drive (`clients/windows`)
@@ -144,11 +146,13 @@ gigacad/                         (pnpm monorepo, domain: gigacad.site)
 - **On open:** if the file is on a branch you don't hold, it opens read-only with a banner.
 - **On version commit:**
   - Sends references from `GetDependencies2` for every assembly and drawing.
-  - Exports a preview PNG and a lightweight STL (glTF on the server) for each changed part and assembly, so the web viewer works without SolidWorks on the server.
-- Handles the rebuild step for Release Candidates (see workflow rule 7).
+  - Exports a coarse STL of each changed part and assembly (`SaveAs3`, the document active and the selection cleared), uploads it next to the file, and attaches it with `PUT /projects/:id/exports`. The server can't read SolidWorks geometry, so this STL is what the web viewer shows and what thumbnails are drawn from.
+  - Autosaves don't export: exporting blocks SolidWorks while it runs.
+- **On release candidate rebuild** (workflow rule 7): the add-in already has every file of the candidate open, so it also exports a STEP (AP242) and a fine STL of each part and assembly and attaches them. Every release can then be downloaded as STEP or STL from the web.
+- Exports are optional. Files committed without the add-in (the CLI, macOS) show the preview picture SolidWorks saved inside them, and `giga export <file> <export>` attaches a STEP or STL by hand.
 
 ### Web (gigacad.site)
-- **Project page:** release selector, file tree with thumbnails, 3D viewer, README.
+- **Project page:** release selector, file tree with thumbnails, 3D viewer, README. SolidWorks files preview from their STL export and offer STEP and STL downloads when they have them.
 - **Branches page:** checkout badges ("checked out by @alex, 2h") and each branch's version timeline. Autosaves appear as a collapsible "unsaved work" group.
 - **Release Request:**
   - diff-pick table with before/after 3D previews, per-file pick controls, and a replace-item picker
@@ -165,8 +169,8 @@ gigacad/                         (pnpm monorepo, domain: gigacad.site)
    - `giga` CLI covering all of it.
 2. **Web UI and marketing site:** every page above plus landing, pricing, and docs pages. Deploy per the Hosting section.
 3. **Windows Sync client:** sync root, hydration, save pipeline, read-only enforcement, context menu, tray app.
-4. **SolidWorks add-in:** Task Pane, read-only banner, reference and preview export, candidate rebuild.
-5. **Worker:** STL/STEP→glTF, thumbnails, blob GC, stale-lock notifications.
+4. **SolidWorks add-in:** Task Pane, read-only banner, references, STL export on version commits, STEP and STL export on candidate rebuilds, candidate rebuild.
+5. **Worker (done in the API):** thumbnails (rendered from STL/OBJ/3MF/STEP/IGES and from SolidWorks exports, or the preview picture saved in SolidWorks files), blob GC, stale-lock notifications. The server stores and serves exports (`file_exports`) for downloads and previews.
 6. **Public sharing:** explore, fork, stars.
 7. **macOS File Provider client**, plus other CAD packages (Fusion, FreeCAD, Onshape exports) through generic parsers.
 
@@ -196,3 +200,4 @@ gigacad/                         (pnpm monorepo, domain: gigacad.site)
   4. Commit a version and confirm the autosaves are gone.
   5. Open an RR with a replace pick and run Rebuild candidate in SolidWorks. Confirm the assembly loads the new part and the rebuild report reads clean.
   6. Approve and release, then confirm `main\` is read-only and shows vN.
+  7. Confirm each committed part and assembly has an STL export: its thumbnail is drawn from it and the web viewer opens it. Confirm the released vN offers STEP and STL downloads, and that the STEP opens in another CAD program.

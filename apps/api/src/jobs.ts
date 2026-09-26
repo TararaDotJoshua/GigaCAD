@@ -85,6 +85,8 @@ export async function unlinkUnusedBlobs(sql: Sql, options: JobOptions = {}): Pro
           select 1 from manifest_entries me join manifests m on m.id = me.manifest_id
           where m.project_id = pb.project_id and me.blob_sha256 = pb.sha256
         )
+        -- Exports stay while their source file does; unlinking the source removes the export row.
+        and not exists (select 1 from file_exports x where x.project_id = pb.project_id and x.blob_sha256 = pb.sha256)
       limit ${batch}
     ),
     refs as (

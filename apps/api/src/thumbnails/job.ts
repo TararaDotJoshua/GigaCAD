@@ -9,6 +9,8 @@ export const MAX_THUMBNAIL_BYTES: Record<ThumbnailFormat, number> = {
   '3mf': 100 * 1024 ** 2,
   step: 25 * 1024 ** 2,
   iges: 25 * 1024 ** 2,
+  // Only the preview is unpacked, so size matters little; the whole file is still read into memory.
+  solidworks: 500 * 1024 ** 2,
 };
 /** A thumbnail whose attempts keep ending without a result (storage errors, restarts) gives up after this many. */
 const MAX_ATTEMPTS = 3;
@@ -17,6 +19,8 @@ export interface ThumbnailDeps {
   readonly sql: Sql;
   readonly storage: BlobStorage;
   readonly renderer: ThumbnailRenderer;
+  /** Told about errors that leave a thumbnail to be tried again, like storage being unreachable. */
+  readonly onError?: (error: unknown, sha256: string) => void;
 }
 
 /**
@@ -35,16 +39,17 @@ export async function generateThumbnails(deps: ThumbnailDeps, options: { budgetM
     const tried = new Set<string>();
     try {
       while (Date.now() < deadline) {
-        const [job] = await sql<{ sha256: string; format: ThumbnailFormat; size: number; attempts: number }[]>`
+        // A file with an export (a SolidWorks part's STL, say) is drawn from the export.
+        const [job] = await sql<{ sha256: string; source: string; format: ThumbnailFormat; size: number; attempts: number }[]>`
           update thumbnails t set attempts = t.attempts + 1, updated_at = now()
           from blobs b
-          where b.sha256 = t.blob_sha256
+          where b.sha256 = coalesce(t.model_sha256, t.blob_sha256)
             and t.blob_sha256 = (
               select blob_sha256 from thumbnails
               where status = 'pending' and not (blob_sha256 = any(${[...tried]}::text[]))
               order by created_at limit 1
             )
-          returning t.blob_sha256 as sha256, t.format, b.size::float8 as size, t.attempts
+          returning t.blob_sha256 as sha256, b.sha256 as source, coalesce(t.model_format, t.format) as format, b.size::float8 as size, t.attempts
         `;
         if (!job) break;
         tried.add(job.sha256);
@@ -57,13 +62,14 @@ export async function generateThumbnails(deps: ThumbnailDeps, options: { budgetM
           await settle('skipped', 'This file is too large to preview.');
         } else {
           try {
-            const png = await renderer.render(await storage.read(blobKey(job.sha256)), job.format);
+            const png = await renderer.render(await storage.read(blobKey(job.source)), job.format);
             await storage.write(thumbnailKey(job.sha256), png, 'image/png');
             await settle('ready');
           } catch (error) {
-            // Unreadable files fail for good; anything else (like storage) is tried again next run.
-            if (!(error instanceof UnreadableFile)) throw error;
-            await settle('failed', error.message);
+            // Unreadable files fail for good. Anything else (like storage) leaves the thumbnail
+            // pending for the next run, up to MAX_ATTEMPTS, without holding up the rest of the queue.
+            if (error instanceof UnreadableFile) await settle('failed', error.message);
+            else deps.onError?.(error, job.sha256);
           }
         }
         finished++;

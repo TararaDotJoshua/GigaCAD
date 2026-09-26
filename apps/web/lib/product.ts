@@ -19,6 +19,7 @@ import {
   type ReleaseRequestDetail,
   type ReleaseRequestSummary,
   type ThumbnailLinks,
+  type FileExport,
   type UserPage,
 } from './api';
 import { getAccessToken } from './session';
@@ -58,6 +59,19 @@ export async function getThumbnails(projectId: string, sha256s: readonly string[
       body: JSON.stringify({ sha256s: [...new Set(sha256s)].slice(0, 1000) }),
     });
     return links.thumbnails;
+  } catch {
+    return {};
+  }
+}
+/** STEP and STL exports of a project's SolidWorks files, by file hash. Like thumbnails, a failure just leaves them out. */
+export async function getFileExports(projectId: string, sha256s: readonly string[]): Promise<Record<string, FileExport[]>> {
+  if (sha256s.length === 0) return {};
+  try {
+    const result = await apiRequest<{ exports: Record<string, FileExport[]> }>(await getAccessToken(), `/v1/projects/${projectId}/exports/lookup`, {
+      method: 'POST',
+      body: JSON.stringify({ sha256s: [...new Set(sha256s)].slice(0, 1000) }),
+    });
+    return result.exports;
   } catch {
     return {};
   }

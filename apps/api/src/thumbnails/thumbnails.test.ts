@@ -1,12 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
-import { inflateSync } from 'node:zlib';
+import { deflateRawSync, inflateSync } from 'node:zlib';
+import CFB from 'cfb';
 import { strToU8, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import { makeThumbnail, THUMBNAIL_SIZE } from './index.js';
 import { parse3mf, parseModel, parseObj, parseStl, UnreadableFile, type TriangleMesh } from './parse.js';
+import { decodePng, encodePng } from './png.js';
 import { renderMesh } from './render.js';
+import { readSolidWorksPreview } from './solidworks.js';
 
 const CUBE_CORNERS = [
   [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
@@ -27,7 +30,7 @@ function binaryStl(triangles: number[][][]): Uint8Array {
 const cubeTriangles = () => CUBE_FACES.map((face) => face.map((index) => CUBE_CORNERS[index]!));
 
 /** Reads back a PNG's size and RGBA pixels (it's our own encoder: filter 0 on every row). */
-function decodePng(png: Uint8Array) {
+function readPng(png: Uint8Array) {
   const buffer = Buffer.from(png);
   expect(buffer.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
   const width = buffer.readUInt32BE(16);
@@ -93,7 +96,7 @@ describe('parsing model files', () => {
 
 describe('rendering thumbnails', () => {
   it('draws the model in the middle on a transparent background', async () => {
-    const { width, height, alphaAt } = decodePng(await makeThumbnail(binaryStl(cubeTriangles()), 'stl'));
+    const { width, height, alphaAt } = readPng(await makeThumbnail(binaryStl(cubeTriangles()), 'stl'));
     expect([width, height]).toEqual([THUMBNAIL_SIZE, THUMBNAIL_SIZE]);
     expect(alphaAt(THUMBNAIL_SIZE / 2, THUMBNAIL_SIZE / 2)).toBe(255);
     expect(alphaAt(2, 2)).toBe(0);
@@ -124,3 +127,75 @@ describe('rendering thumbnails', () => {
     expect(lightest).toBeGreaterThan(200);
   });
 });
+
+describe('SolidWorks previews', () => {
+  /** A gray square with a white hole in it, on a white background. */
+  function preview(): Uint8Array {
+    const [width, height] = [80, 60];
+    const rgba = new Uint8Array(width * height * 4).fill(255);
+    for (let y = 20; y < 40; y++) {
+      for (let x = 30; x < 50; x++) {
+        const hole = x >= 38 && x < 42 && y >= 28 && y < 32;
+        if (!hole) rgba.fill(90, (y * width + x) * 4, (y * width + x) * 4 + 3);
+      }
+    }
+    return encodePng(width, height, rgba);
+  }
+
+  /** A 2015+ file: chunks with rotated names and raw-deflated data, as openswx documents them. */
+  function modernFile(streams: Record<string, Uint8Array>): Uint8Array {
+    const key = 3;
+    const rotateRight = (byte: number) => ((byte >> key) | (byte << (8 - key))) & 0xff;
+    const parts = [Buffer.from([0x11, 0x22, 0x33, 0x44, 0, 0, 0, key, 0, 0, 0, 0])];
+    for (const [name, content] of Object.entries(streams)) {
+      const data = deflateRawSync(content);
+      const header = Buffer.alloc(0x1e);
+      header.set([0x14, 0x00, 0x06, 0x00, 0x08, 0x00, 0xfd], 4);
+      header.writeUInt32LE(70000, 0x0e);
+      header.writeUInt32LE(data.length, 0x12);
+      header.writeUInt32LE(content.length, 0x16);
+      header.writeUInt32LE(name.length, 0x1a);
+      parts.push(header, Buffer.from([...Buffer.from(name, 'latin1')].map(rotateRight)), data);
+    }
+    return Buffer.concat(parts);
+  }
+
+  const opaque = (pixels: Uint8Array, x: number, y: number) => pixels[(y * THUMBNAIL_SIZE + x) * 4 + 3]!;
+
+  it('reads the preview from a 2015+ file, preferring the model’s own over a configuration’s', () => {
+    const tiny = encodePng(1, 1, new Uint8Array([0, 0, 0, 255]));
+    const image = readSolidWorksPreview(modernFile({ 'Contents/Config-0': strToU8('feature data'), 'Config-1-PreviewPNG': tiny, PreviewPNG: preview() }));
+    expect([image.width, image.height]).toEqual([80, 60]);
+  });
+
+  it('reads the preview from an older OLE file', () => {
+    const container = CFB.utils.cfb_new();
+    CFB.utils.cfb_add(container, 'PreviewPNG', Buffer.from(preview()));
+    const image = readSolidWorksPreview(CFB.write(container, { type: 'buffer' }) as Buffer);
+    expect([image.width, image.height]).toEqual([80, 60]);
+  });
+
+  it('fails clearly for files without a preview', () => {
+    expect(() => readSolidWorksPreview(modernFile({ 'Contents/Config-0': strToU8('no picture') }))).toThrow(UnreadableFile);
+    expect(() => readSolidWorksPreview(new Uint8Array(1000).fill(7))).toThrow(UnreadableFile);
+  });
+
+  it('crops to the model, clears the background, and keeps white inside the model', async () => {
+    const png = await makeThumbnail(modernFile({ PreviewPNG: preview() }), 'solidworks');
+    const pixels = pixelsOf(png);
+    expect(opaque(pixels, 5, 5)).toBe(0);
+    expect(opaque(pixels, THUMBNAIL_SIZE / 2, THUMBNAIL_SIZE / 2)).toBe(255);
+    // Scaled up (capped at 3x), the 20px square spans 60px around the middle.
+    expect(opaque(pixels, THUMBNAIL_SIZE / 2 - 25, THUMBNAIL_SIZE / 2)).toBe(255);
+    expect(opaque(pixels, THUMBNAIL_SIZE / 2 - 35, THUMBNAIL_SIZE / 2)).toBe(0);
+    // The white hole inside the model is part of it, not background.
+    expect(pixels[(THUMBNAIL_SIZE / 2 * THUMBNAIL_SIZE + THUMBNAIL_SIZE / 2) * 4]).toBeGreaterThan(240);
+  });
+});
+
+/** The RGBA pixels of a PNG made by our encoder. */
+function pixelsOf(png: Uint8Array): Uint8Array {
+  const image = decodePng(png);
+  if (!image) throw new Error('not a PNG');
+  return image.rgba;
+}

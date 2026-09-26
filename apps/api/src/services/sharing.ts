@@ -91,8 +91,14 @@ export async function forkProject(
   if (!release) throw input.releaseNumber ? notFound('Release') : unprocessable('nothing_to_fork', 'This project has no releases to fork yet');
   const [owner] = await sql<{ handle: string }[]>`select handle from profiles where id = ${source.ownerId}`;
   const entries = await loadManifest(sql, release.manifestId);
+  // STEP and STL exports of the released files come along, so the fork can be downloaded and previewed the same way.
+  const exports = await sql<{ sourceSha256: string; format: string; blobSha256: string }[]>`
+    select source_sha256, format, blob_sha256 from file_exports
+    where project_id = ${sourceId} and source_sha256 = any(${[...new Set(entries.map((entry) => entry.blob))]}::text[])
+  `;
   const blobs = await sql<{ sha256: string; size: number }[]>`
-    select sha256, size::float8 as size from blobs where sha256 = any(${[...new Set(entries.map((entry) => entry.blob))]}::text[])
+    select sha256, size::float8 as size from blobs
+    where sha256 = any(${[...new Set([...entries.map((entry) => entry.blob), ...exports.map((row) => row.blobSha256)])]}::text[])
   `;
 
   return sql.begin(async (tx) => {
@@ -115,6 +121,9 @@ export async function forkProject(
         select ${projectId}, sha256, referenced_path from blob_references
         where project_id = ${sourceId} and sha256 = any(${blobs.map((blob) => blob.sha256)}::text[])
       `;
+    }
+    if (exports.length) {
+      await tx`insert into file_exports ${tx(exports.map((row) => ({ projectId, ...row, createdBy: userId })))}`;
     }
     const manifestId = await insertManifest(tx, projectId, entries.map((entry, index) => ({ ...entry, itemId: itemIds[index]! })));
     const [created] = await tx<{ id: string }[]>`

@@ -247,9 +247,10 @@ function PublicProjects() {
         by stars by default, and you can search it by name, owner, or description.
       </p>
       <p>
-        Each project on Explore shows a picture of the largest STL, OBJ, 3MF, STEP, or IGES file in its latest
-        release, or in its latest version if it has no release yet. SolidWorks files get pictures once the
-        add-in exports previews.
+        Each project on Explore shows a picture of the largest 3D file in its latest release, or in its latest
+        version if it has no release yet. STL, OBJ, 3MF, STEP, and IGES files are drawn from their geometry.
+        SolidWorks files show the picture SolidWorks saved with them, from the view on screen when they were
+        last saved, or are drawn from their STL export if they have one.
       </p>
     </>
   );
@@ -438,6 +439,7 @@ giga rr release --notes "Stiffer jaw, new fingertip"`}</Command>
           ["giga mv <from> <to>", "Move or rename a file or folder, keeping each file’s identity."],
           ["giga commit -m <message>", <>Upload every changed file as a version. Name it with <code>--label</code>.</>],
           ["giga checkin", <>Give up the write lock. <code>--force</code> skips the uncommitted-changes check.</>],
+          ["giga export <file> <export>", "Attach a STEP or STL you exported from SolidWorks to a committed part or assembly. It becomes the file’s preview, and people can download it."],
         ]}
       />
       <h3>Release requests</h3>

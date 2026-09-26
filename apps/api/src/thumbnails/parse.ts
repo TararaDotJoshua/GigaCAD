@@ -1,8 +1,8 @@
 import { createRequire } from 'node:module';
 import { strFromU8, unzipSync } from 'fflate';
 
-/** File types thumbnails are made for. SolidWorks files get theirs from the add-in (phase 4). */
-export type ThumbnailFormat = 'stl' | 'obj' | '3mf' | 'step' | 'iges';
+/** Model files drawn from their geometry. */
+export type MeshFormat = 'stl' | 'obj' | '3mf' | 'step' | 'iges';
 
 /** Triangles as positions (xyz per vertex) and indices (three per triangle). */
 export interface TriangleMesh {
@@ -14,7 +14,7 @@ export interface TriangleMesh {
 
 export class UnreadableFile extends Error {}
 
-export async function parseModel(bytes: Uint8Array, format: ThumbnailFormat): Promise<TriangleMesh> {
+export async function parseModel(bytes: Uint8Array, format: MeshFormat): Promise<TriangleMesh> {
   switch (format) {
     case 'stl':
       return parseStl(bytes);

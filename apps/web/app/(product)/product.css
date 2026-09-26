@@ -2202,3 +2202,172 @@
     user-select: none;
   }
 }
+
+/* The project README, under the root file list */
+
+.shell .readme {
+  margin-top: 24px;
+  border: 1px solid var(--line-ink);
+  border-radius: var(--r-md);
+  background: #fff;
+  overflow: hidden;
+}
+
+.shell .readme-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--line-ink);
+  background: var(--mist);
+}
+
+.shell .readme-head a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.shell .readme-body {
+  padding: 20px 24px 24px;
+  overflow-wrap: anywhere;
+}
+
+.shell .readme-text {
+  margin: 0;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.shell .readme-markdown {
+  max-width: 80ch;
+  line-height: 1.6;
+}
+
+.shell .readme-markdown > * + * {
+  margin-top: 12px;
+}
+
+.shell .readme-markdown :is(h1, h2, h3, h4, h5, h6) {
+  margin-top: 24px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+}
+
+.shell .readme-markdown > :first-child {
+  margin-top: 0;
+}
+
+.shell .readme-markdown h1 {
+  font-size: 1.5rem;
+}
+
+.shell .readme-markdown h2 {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line-ink);
+  font-size: 1.25rem;
+}
+
+.shell .readme-markdown h3 {
+  font-size: 1.0625rem;
+}
+
+.shell .readme-markdown :is(h4, h5, h6) {
+  font-size: 1rem;
+}
+
+.shell .readme-markdown :is(ul, ol) {
+  padding-left: 1.5em;
+}
+
+.shell .readme-markdown ul {
+  list-style: disc;
+}
+
+.shell .readme-markdown ol {
+  list-style: decimal;
+}
+
+.shell .readme-markdown li + li {
+  margin-top: 4px;
+}
+
+.shell .readme-markdown li > :is(ul, ol) {
+  margin-top: 4px;
+}
+
+.shell .readme-markdown li::marker {
+  color: var(--ink-muted);
+}
+
+.shell .readme-markdown a {
+  text-decoration: underline;
+  text-decoration-color: var(--ink-muted);
+  text-underline-offset: 3px;
+}
+
+.shell .readme-markdown strong {
+  font-weight: 600;
+}
+
+.shell .readme-markdown blockquote {
+  padding-left: 14px;
+  border-left: 3px solid var(--line-ink);
+  color: var(--ink-muted);
+}
+
+.shell .readme-markdown pre {
+  padding: 12px 14px;
+  border-radius: var(--r-sm);
+  background: var(--mist);
+  overflow-x: auto;
+}
+
+.shell .readme-markdown pre code {
+  padding: 0;
+  background: none;
+}
+
+.shell .readme-markdown hr {
+  border: 0;
+  border-top: 1px solid var(--line-ink);
+}
+
+.shell .readme-markdown img {
+  max-width: 100%;
+}
+
+.shell .readme-markdown video {
+  display: block;
+  width: 100%;
+  max-height: 70vh;
+  border-radius: var(--r-sm);
+  background: var(--forest-deep);
+}
+
+.shell .readme-markdown table {
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+}
+
+.shell .readme-markdown :is(th, td) {
+  padding: 6px 12px;
+  border: 1px solid var(--line-ink);
+  text-align: left;
+}
+
+.shell .readme-markdown th {
+  background: var(--mist);
+  font-weight: 600;
+}
+
+.shell .readme-markdown .task-list-item {
+  list-style: none;
+}
+
+.shell .readme-markdown .task-list-item input {
+  margin: 0 6px 0 -1.3em;
+}

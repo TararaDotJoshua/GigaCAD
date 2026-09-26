@@ -413,6 +413,17 @@ describe('file access', () => {
     expect(path.status).toBe(400);
   });
 
+  it('serves images and video inline for embedding, and nothing else', async () => {
+    const projectId = await newProject(asAlex);
+    const blob = (await upload(harness, asAlex, projectId, [`inline ${randomUUID()}`]))[0]!;
+    const link = async (filename: string) =>
+      (await asAlex.post(`/v1/projects/${projectId}/blobs/downloads`, { sha256s: [blob], filenames: { [blob]: filename }, inline: true })).body.downloads[0].url as string;
+    expect(await link('bench.JPG')).toContain('type=image%2Fjpeg');
+    expect(await link('clip.mp4')).toContain('type=video%2Fmp4');
+    expect(await link('logo.svg')).not.toContain('type=');
+    expect(await link('page.html')).not.toContain('type=');
+  });
+
   it('restores a known file whose stored copy went missing when it is uploaded again', async () => {
     const one = await newProject(asAlex);
     const two = await newProject(asAlex);

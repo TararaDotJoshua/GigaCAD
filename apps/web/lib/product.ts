@@ -9,6 +9,7 @@ import {
   type BranchDetail,
   type CommitDetail,
   type DirectoryFile,
+  type DirectoryItem,
   type DirectoryListing,
   type EntryDetail,
   type FilePage,
@@ -27,6 +28,7 @@ import {
   type FileExport,
   type UserPage,
 } from './api';
+import { mediaKind, type EmbeddedFile } from './readme';
 import { getAccessToken } from './session';
 
 /**
@@ -148,6 +150,76 @@ export const searchFiles = cache(
   (projectId: string, query: FileQuery & { q?: string; tags?: string; favorites?: boolean; area?: 'root' | 'branch' | 'release' }) =>
     get<FilePage<DirectoryFile>>(`/v1/projects/${projectId}/files?${fileQuery(query)}`),
 );
+/** Root files that serve as the project's readme, best first. */
+const README_NAMES = ['readme.md', 'readme.txt'];
+const MAX_README_BYTES = 512 * 1024;
+
+export interface Readme {
+  file: DirectoryFile;
+  markdown: boolean;
+  text: string;
+}
+
+/**
+ * The README at the project root, from the files already listed or, when the root spans
+ * several pages, a search. Like thumbnails, it's a nicety: a failure leaves it out.
+ */
+export async function getReadme(projectId: string, listed: readonly DirectoryItem[], complete: boolean): Promise<Readme | null> {
+  const pick = (files: readonly DirectoryItem[]) =>
+    files
+      .filter((entry): entry is DirectoryFile => entry.kind === 'file' && entry.location.area === 'root' && entry.path === entry.name)
+      .filter((file) => README_NAMES.includes(file.name.toLowerCase()))
+      .sort((a, b) => README_NAMES.indexOf(a.name.toLowerCase()) - README_NAMES.indexOf(b.name.toLowerCase()))[0];
+  try {
+    const file = pick(listed) ?? (complete ? undefined : pick((await searchFiles(projectId, { q: 'readme', area: 'root', limit: 100 })).entries));
+    if (!file || file.size > MAX_README_BYTES) return null;
+    const plan = await apiRequest<{ downloads: { sha256: string; url: string }[] }>(await getAccessToken(), `/v1/projects/${projectId}/blobs/downloads`, {
+      method: 'POST',
+      body: JSON.stringify({ sha256s: [file.blob] }),
+    });
+    const url = plan.downloads[0]?.url;
+    if (!url) return null;
+    const response = await fetch(url, { cache: 'no-store' });
+    if (!response.ok) return null;
+    return { file, markdown: file.name.toLowerCase().endsWith('.md'), text: await response.text() };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Links for the images and videos a README embeds, by the project paths it names, like
+ * `photos/bench.jpg` or `Releases/v2/clip.mp4`. Files that aren't there are left out.
+ */
+export async function getReadmeMedia(projectId: string, paths: readonly string[]): Promise<Record<string, EmbeddedFile>> {
+  try {
+    const files = await Promise.all(
+      paths.slice(0, 50).map(async (path) => {
+        const name = path.slice(path.lastIndexOf('/') + 1);
+        const matches = (await searchFiles(projectId, { q: name, limit: 100 })).entries.filter((file) => file.path.toLowerCase() === path.toLowerCase());
+        return [path, matches.find((file) => file.path === path) ?? matches[0]] as const;
+      }),
+    );
+    const found = files.flatMap(([path, file]) => {
+      const kind = file && mediaKind(file.name);
+      return file && kind ? [{ path, file, kind }] : [];
+    });
+    if (found.length === 0) return {};
+    const plan = await apiRequest<{ downloads: { sha256: string; url: string }[] }>(await getAccessToken(), `/v1/projects/${projectId}/blobs/downloads`, {
+      method: 'POST',
+      body: JSON.stringify({
+        sha256s: found.map(({ file }) => file.blob),
+        filenames: Object.fromEntries(found.map(({ file }) => [file.blob, file.name])),
+        inline: true,
+      }),
+    });
+    const urls = new Map(plan.downloads.map((download) => [download.sha256, download.url]));
+    return Object.fromEntries(found.flatMap(({ path, file, kind }) => (urls.has(file.blob) ? [[path, { url: urls.get(file.blob)!, kind }]] : [])));
+  } catch {
+    return {};
+  }
+}
+
 export const getTags = cache((projectId: string) => get<ProjectTag[]>(`/v1/projects/${projectId}/tags`));
 export const getRootFolders = cache((projectId: string) => get<{ id: string; path: string }[]>(`/v1/projects/${projectId}/directory/folders`));
 export const getEntry = cache((projectId: string, entryId: string) => {

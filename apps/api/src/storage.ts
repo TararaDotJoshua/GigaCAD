@@ -26,8 +26,11 @@ export interface StoredObject {
 /** R2 in production, SeaweedFS locally. Blobs live at a key derived from their SHA-256. */
 export interface BlobStorage {
   presignUpload(key: string, sha256: string): Promise<PresignedUpload>;
-  /** `filename` makes browsers save the download under that name instead of the blob key. */
-  presignDownload(key: string, filename?: string): Promise<string>;
+  /**
+   * `filename` makes browsers save the download under that name instead of the blob key.
+   * `contentType` serves it inline as that type instead, for embedding an image or video.
+   */
+  presignDownload(key: string, filename?: string, contentType?: string): Promise<string>;
   stat(key: string): Promise<StoredObject | null>;
   copy(fromKey: string, toKey: string): Promise<void>;
   remove(key: string): Promise<void>;
@@ -44,11 +47,11 @@ export const stagingKey = (uploadId: string) => `uploads/${uploadId}`;
 export const thumbnailKey = (sha256: string) => `thumbnails/${sha256.slice(0, 2)}/${sha256}.png`;
 export const sha256Base64 = (sha256: string) => Buffer.from(sha256, 'hex').toString('base64');
 
-/** An attachment header that survives any file name: an ASCII fallback plus the exact UTF-8 name (RFC 6266). */
-export function contentDisposition(filename: string): string {
+/** A disposition header that survives any file name: an ASCII fallback plus the exact UTF-8 name (RFC 6266). */
+export function contentDisposition(filename: string, type: 'attachment' | 'inline' = 'attachment'): string {
   const fallback = filename.replace(/[^\x20-\x7e]|["\\]/g, '_');
   const encoded = encodeURIComponent(filename).replace(/['()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
-  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`;
+  return `${type}; filename="${fallback}"; filename*=UTF-8''${encoded}`;
 }
 
 export function createS3Storage(config: Config): BlobStorage {
@@ -73,9 +76,9 @@ export function createS3Storage(config: Config): BlobStorage {
       return { url, method: 'PUT', headers: { 'x-amz-checksum-sha256': checksum } };
     },
 
-    presignDownload(key, filename) {
-      const disposition = filename ? contentDisposition(filename) : undefined;
-      return getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key, ResponseContentDisposition: disposition }), {
+    presignDownload(key, filename, contentType) {
+      const disposition = filename ? contentDisposition(filename, contentType ? 'inline' : 'attachment') : undefined;
+      return getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key, ResponseContentDisposition: disposition, ResponseContentType: contentType }), {
         expiresIn: URL_LIFETIME_SECONDS,
       });
     },

@@ -21,6 +21,7 @@ Live and verified in production:
 - Public sharing (#24): Explore, user profiles, stars, and forks. Signed-out visitors can browse public projects. A fork of a private project can never be made public.
 - Restoring deleted projects from Account within 30 days (#25).
 - Thumbnails for STL, OBJ, 3MF, STEP, and IGES files (#27), rendered by the API in a worker thread and shown in file lists and on Explore and profile cards.
+- GitHub-style user pages: an avatar, a bio, a location, and a website; a contribution graph of the last year (version commits, release requests, releases, and approvals); recent activity; and a Starred tab. Visitors only see activity in projects they can read.
 
 ## 1. Finish the launch checklist
 

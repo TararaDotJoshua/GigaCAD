@@ -165,13 +165,14 @@ export interface MemberView {
   readonly userId: string;
   readonly handle: string;
   readonly displayName: string | null;
+  readonly avatarKey: string | null;
   readonly role: ProjectRole;
 }
 
 export async function listMembers(sql: Sql, projectId: string, userId: string | null): Promise<MemberView[]> {
   await projectAccess(sql, projectId, userId);
   return sql<MemberView[]>`
-    select m.user_id, p.handle, p.display_name, m.role
+    select m.user_id, p.handle, p.display_name, p.avatar_key, m.role
     from project_members m join profiles p on p.id = m.user_id
     where m.project_id = ${projectId}
     order by array_position(array['owner','maintainer','contributor','viewer']::project_role[], m.role), p.handle

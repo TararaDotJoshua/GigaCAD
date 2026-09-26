@@ -71,12 +71,39 @@ async function goToBilling(path: string, body?: unknown): Promise<ActionState> {
 }
 
 export async function saveProfile(_state: ActionState, form: FormData): Promise<ActionState> {
-  const displayName = text(form, 'displayName');
+  const optional = (name: string) => (form.has(name) ? { [name]: text(form, name) || null } : {});
+  // "example.com" means the website; the API only takes full http(s) links.
+  const website = text(form, 'website');
   return mutate(
     (token) =>
-      apiRequest(token, '/v1/me', json('PATCH', { handle: text(form, 'handle'), ...(form.has('displayName') ? { displayName: displayName || null } : {}) })),
+      apiRequest(
+        token,
+        '/v1/me',
+        json('PATCH', {
+          handle: text(form, 'handle'),
+          ...optional('displayName'),
+          ...optional('bio'),
+          ...optional('location'),
+          ...(form.has('website') ? { website: website && !/^[a-z][a-z0-9+.-]*:/i.test(website) ? `https://${website}` : website || null } : {}),
+        }),
+      ),
     'Saved.',
   );
+}
+
+const AVATAR_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+
+export async function uploadAvatar(_state: ActionState, form: FormData): Promise<ActionState> {
+  const file = form.get('avatar');
+  if (!(file instanceof File) || file.size === 0) return { error: 'Choose an image first.' };
+  if (!AVATAR_TYPES.has(file.type)) return { error: 'Upload a PNG, JPEG, or WebP image.' };
+  if (file.size > 1024 * 1024) return { error: 'Upload an image of 1 MB or less.' };
+  const body = new Uint8Array(await file.arrayBuffer());
+  return mutate((token) => apiRequest(token, '/v1/me/avatar', { method: 'PUT', body, headers: { 'content-type': file.type } }), 'Avatar updated.');
+}
+
+export async function removeAvatar(): Promise<ActionState> {
+  return mutate((token) => apiRequest(token, '/v1/me/avatar', json('DELETE')), 'Avatar removed.');
 }
 
 export async function signOutDevice(tokenId: string): Promise<ActionState> {

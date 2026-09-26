@@ -7,7 +7,7 @@ GitHub-style version control for CAD files (SolidWorks first), hosted at gigacad
 | Path | What |
 |---|---|
 | `packages/core` | Shared rules: manifest diffs, release candidates (diff pick + part replacement), approvals, autosave pruning, ignore rules |
-| `apps/api` | REST API (Fastify): projects, branches with check-out locks, commits and autosaves, release requests with diff pick, approvals, releases, file uploads to R2, desktop sign-in |
+| `apps/api` | REST API (Fastify): projects, branches with check-out locks, commits and autosaves, release requests with diff pick, approvals, releases, the project file directory (root files, tags, favorites, search), file uploads to R2, desktop sign-in |
 | `supabase` | Database schema and row-level security (migrations), run locally with `supabase start` |
 | `apps/web` | Next.js site: the marketing page at gigacad.site (product pages come later). Follows [docs/DESIGN.md](docs/DESIGN.md) |
 | `clients/cli` | `giga`, the command line (npm package `@gigacad/cli`): sign-in, clone, check-out locks, commits, release requests, releases. See [its README](clients/cli/README.md) |

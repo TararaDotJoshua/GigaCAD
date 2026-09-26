@@ -22,7 +22,15 @@ export type EventKind =
   | 'release_request_approved'
   | 'release_request_approval_withdrawn'
   | 'release_request_closed'
-  | 'release_created';
+  | 'release_created'
+  | 'directory_entry_created'
+  | 'directory_entry_moved'
+  | 'directory_entry_deleted'
+  | 'root_file_replaced'
+  | 'tag_created'
+  | 'tag_renamed'
+  | 'tag_deleted'
+  | 'file_tags_changed';
 
 /**
  * Every state change writes an event in the same transaction. The table is the

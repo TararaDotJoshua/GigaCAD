@@ -25,6 +25,7 @@ function Concepts() {
     ["Version", "A named snapshot of a branch, with a message. Committing a version clears the autosaves before it."],
     ["Release request", "A proposal to turn a branch into the next release. You pick, file by file, what ships."],
     ["Release candidate", "The set of files a release request would ship, rebuilt in SolidWorks and waiting for approval."],
+    ["Root file", "A file kept at the top of a project, outside branches and releases. It has its own numbered revisions and no check out."],
     ["Item", "The identity of a part that lasts across renames. Replacing a part keeps its item, so its history continues."],
   ];
 
@@ -66,6 +67,92 @@ function Concepts() {
         <li>History on main can’t be rewritten. There is no force-push.</li>
         <li>Parts keep their identity when renamed or replaced, so assemblies don’t lose track of them.</li>
       </ul>
+    </>
+  );
+}
+
+function ProjectFiles() {
+  return (
+    <>
+      <p>
+        Every project opens as a folder, like one on your computer. Its top level, the project root, holds
+        ordinary files and folders you add from the browser: drawings for the shop, spec sheets, quotes,
+        photos. Next to them are two folders GigaCAD keeps for you, <strong>Branches</strong> and{" "}
+        <strong>Releases</strong>.
+      </p>
+
+      <h2 id="the-project-root">The project root</h2>
+      <p>
+        Contributors, maintainers, and owners can add files and folders at the root. Choose{" "}
+        <strong>Upload files</strong> to add files to the folder you’re in, or <strong>New folder</strong> to
+        make one. Folders can be nested and can be empty. The browser uploads files up to 2 GB each.
+      </p>
+      <p>
+        Right-click a root file or folder to rename it, move it to another folder, or delete it. On a phone
+        or tablet, press and hold it instead.
+      </p>
+      <p>
+        Root files sit outside branches and releases. Adding one never changes a branch or a release, and
+        nothing on a branch shows up at the root. Names follow the same rules as files on a branch: they
+        must be valid on Windows, and two names in one folder can’t differ only by case. The root can’t
+        have its own folders named Branches or Releases.
+      </p>
+      <p>
+        Viewers can browse and download root files but can’t change them.
+      </p>
+
+      <h2 id="branches-and-releases">Branches and releases</h2>
+      <p>
+        <strong>Branches</strong> has a folder for each branch, showing the files at its latest version.{" "}
+        <strong>Releases</strong> has a folder for each release, <code>v1</code>, <code>v2</code>, and so on,
+        showing exactly what shipped.
+      </p>
+      <p>
+        You can browse, preview, and download files in both, but not change them from the browser. Branch
+        files change through check out and commit, as always; see{" "}
+        <a href="/docs/check-out">Check out and check in</a>. Each branch folder shows who has it checked out.
+        Releases never change.
+      </p>
+
+      <h2 id="revisions">Revisions of root files</h2>
+      <p>
+        A root file keeps its own numbered history. Uploading a file with the same name as one already in the
+        folder asks whether to replace it; replacing it saves revision 2, then 3, and so on. Open the file to
+        see and download every revision.
+      </p>
+      <p>
+        Revisions are simpler than branch versions. There’s no check out, no lock, and no release request:
+        anyone who can change root files can replace one, and the newest revision is the current one.
+        Renaming or moving a file doesn’t make a revision, and its history, tags, and favorites move with
+        it. Deleting a file deletes every revision; deleting a folder deletes everything in it.
+      </p>
+      <p>Every revision counts toward the project’s storage until the file is deleted.</p>
+
+      <h2 id="tags">Tags</h2>
+      <p>
+        Tags are labels you make for a project, like “Laser cut” or “Needs review”. Contributors and above
+        create, rename, and remove them under <strong>Tags</strong> on the project page, and tag a file with
+        the tag button on its row.
+      </p>
+      <p>
+        You can tag root files and files on branches and in releases. A tag belongs to the file itself, not
+        to one copy of it, so tagging a part on a branch shows the tag everywhere that part appears, in
+        every branch and release. Choose a tag to list every file that has it.
+      </p>
+
+      <h2 id="favorites">Favorites</h2>
+      <p>
+        Star a file with the star on its row to add it to your favorites, then choose{" "}
+        <strong>Favorites</strong> to list them. Favorites are yours alone; nobody else sees them.
+      </p>
+
+      <h2 id="search-and-recent-files">Search and recent files</h2>
+      <p>
+        The search box finds files by name or path across the whole project: the root, every branch, and
+        every release. Each result shows where it is. A part that appears in several places, like one on a
+        branch that is also in v3, is listed once for each. Choose <strong>Recent</strong> to see the files
+        changed most recently.
+      </p>
     </>
   );
 }
@@ -522,6 +609,13 @@ export const docs: DocSection[] = [
   {
     title: "Everyday work",
     pages: [
+      {
+        slug: "project-files",
+        title: "Project files",
+        summary: "The project folder: root files and their revisions, branches, releases, tags, favorites, and search.",
+        outline: ["The project root", "Branches and releases", "Revisions of root files", "Tags", "Favorites", "Search and recent files"],
+        body: ProjectFiles,
+      },
       {
         slug: "branches",
         title: "Branches",

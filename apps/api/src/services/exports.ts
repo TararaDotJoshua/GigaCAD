@@ -32,6 +32,9 @@ export async function setFileExport(
     const [source] = await tx`
       select 1 from manifest_entries me join manifests m on m.id = me.manifest_id
       where m.project_id = ${projectId} and me.blob_sha256 = ${input.source} and me.path ~* ${EXPORTABLE.source}
+      union all
+      select 1 from root_file_revisions r join directory_entries e on e.id = r.entry_id
+      where r.project_id = ${projectId} and r.blob_sha256 = ${input.source} and e.name ~* ${EXPORTABLE.source}
       limit 1
     `;
     if (!source) throw unprocessable('not_exportable', 'Exports can only be added to SolidWorks parts and assemblies in this project');

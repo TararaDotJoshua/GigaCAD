@@ -202,6 +202,9 @@ test('shares a public project: browse it signed out, star it, and fork it', asyn
   await page.getByRole('button', { name: 'Fork project' }).click();
   await page.waitForURL(`**/${world.handle}/${slug}-fork`);
   await expect(page.getByText(`${world.handle}/${slug} v1`)).toBeVisible();
+  // The fork's root has Branches and Releases; its v1 holds the forked files.
+  await page.locator('#main').getByRole('link', { name: 'Releases', exact: true }).click();
+  await page.locator('#main').getByRole('link', { name: 'v1', exact: true }).click();
   await expect(page.locator('#main').getByText('Gearbox.SLDASM')).toBeVisible();
 });
 
@@ -325,9 +328,87 @@ test('every page type answers with the right status', async ({ page, browser }) 
     projectUrl('releases'),
     projectUrl('releases', 2),
     projectUrl('settings'),
+    projectUrl('tree', 'Branches'),
+    projectUrl('tree', 'Branches', world.branchName, 'parts'),
+    projectUrl('tree', 'Releases', 'v2'),
+    `${projectUrl()}?view=recent`,
+    `${projectUrl()}?q=P1`,
   ];
   for (const path of paths) {
     expect((await page.request.get(path, { maxRedirects: 0 })).status(), path).toBe(200);
   }
   expect((await page.request.get(projectUrl('releases', 99), { maxRedirects: 0 })).status()).toBe(404);
+  expect((await page.request.get(projectUrl('tree', 'Releases', 'v99'), { maxRedirects: 0 })).status()).toBe(404);
+  expect((await page.request.get(projectUrl('tree', 'Nowhere'), { maxRedirects: 0 })).status()).toBe(404);
+});
+
+test('keeps files at the project root, with folders, revisions, tags, and favorites', async ({ page }) => {
+  const slug = `files-${randomUUID().slice(0, 6)}`;
+  const project = await api(world.token, 'POST', '/v1/projects', { slug, name: 'Shop files' });
+  await api(world.token, 'POST', `/v1/projects/${project.id}/tags`, { name: 'Laser cut' });
+  await logIn(page);
+  await page.goto(`/${world.handle}/${slug}`);
+  const main = page.locator('#main');
+  await expect(main.getByRole('link', { name: 'Branches', exact: true })).toBeVisible();
+  await expect(main.getByRole('link', { name: 'Releases', exact: true })).toBeVisible();
+
+  // A folder, then a file uploaded into it from the browser.
+  await page.getByText('New folder').click();
+  await page.getByLabel('Folder name').fill('Cut files');
+  await page.getByRole('button', { name: 'Create folder' }).click();
+  await main.getByRole('link', { name: 'Cut files', exact: true }).click();
+  await page.waitForURL('**/tree/Cut%20files');
+  await page.locator('input[type="file"]').setInputFiles({ name: 'plate.dxf', mimeType: 'application/dxf', buffer: Buffer.from(`plate ${randomUUID()}`) });
+  const row = page.getByRole('row', { name: /plate\.dxf/ });
+  await expect(row).toBeVisible();
+
+  // Uploading the same name again, confirmed, saves revision 2.
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.locator('input[type="file"]').setInputFiles({ name: 'plate.dxf', mimeType: 'application/dxf', buffer: Buffer.from(`plate rev 2 ${randomUUID()}`) });
+  await expect(row.getByText('Revision 2')).toBeVisible();
+
+  // Tag it and keep it as a favorite; both views find it.
+  await row.getByLabel('Tags for plate.dxf').click();
+  await row.getByLabel('Laser cut').check();
+  await row.getByRole('button', { name: 'Save tags' }).click();
+  await expect(row.getByRole('link', { name: 'Laser cut' })).toBeVisible();
+  await row.getByRole('button', { name: 'Add plate.dxf to favorites' }).click();
+  await expect(row.getByRole('button', { name: 'Remove plate.dxf from favorites' })).toBeVisible();
+  await page.getByRole('link', { name: 'Favorites' }).click();
+  await expect(page.getByRole('row', { name: /plate\.dxf/ })).toBeVisible();
+  await page.getByLabel('Search files in this project').fill('plate');
+  await page.getByLabel('Search files in this project').press('Enter');
+  await expect(page.getByRole('row', { name: /plate\.dxf/ }).getByRole('link', { name: 'Cut files' })).toBeVisible();
+
+  // Its page lists both revisions; renaming keeps them.
+  await page.getByRole('row', { name: /plate\.dxf/ }).getByRole('link', { name: 'plate.dxf' }).click();
+  await expect(page.getByRole('row', { name: /2 · current/ })).toBeVisible();
+  await page.getByLabel('Name').fill('base plate.dxf');
+  await page.getByLabel('Folder').selectOption({ label: 'Project root' });
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('heading', { name: 'base plate.dxf' })).toBeVisible();
+  await expect(page.getByRole('row', { name: /^1 / })).toBeVisible();
+
+  // The right-click menu moves, renames, and deletes in place.
+  const menuFor = async (row: RegExp, item: string) => {
+    // Retried, in case the first click lands before the page has hydrated.
+    await expect(async () => {
+      await page.getByRole('row', { name: row }).click({ button: 'right' });
+      await expect(page.getByRole('menuitem', { name: item })).toBeVisible({ timeout: 1000 });
+    }).toPass();
+    await page.getByRole('menuitem', { name: item }).click();
+  };
+  await page.goto(`/${world.handle}/${slug}`);
+  await menuFor(/base plate\.dxf/, 'Move to…');
+  await page.getByRole('menuitem', { name: 'Cut files' }).click();
+  await expect(page.getByRole('row', { name: /base plate\.dxf/ })).toHaveCount(0);
+  await menuFor(/Cut files/, 'Rename…');
+  await page.getByRole('dialog', { name: 'Rename Cut files' }).getByLabel('Name').fill('Laser files');
+  await page.getByRole('button', { name: 'Rename' }).click();
+  await main.getByRole('link', { name: 'Laser files', exact: true }).click();
+  await expect(page.getByRole('row', { name: /base plate\.dxf/ })).toBeVisible();
+  await page.goto(`/${world.handle}/${slug}`);
+  page.once('dialog', (dialog) => dialog.accept());
+  await menuFor(/Laser files/, 'Delete');
+  await expect(main.getByRole('link', { name: 'Laser files', exact: true })).toHaveCount(0);
 });

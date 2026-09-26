@@ -64,6 +64,8 @@ export async function purgeDeletedProjects(sql: Sql, options: JobOptions = {}): 
       await tx`delete from branches where project_id = ${id}`;
       await tx`delete from manifest_entries where manifest_id in (select id from manifests where project_id = ${id})`;
       await tx`delete from manifests where project_id = ${id}`;
+      // Root files and their revisions, before the uploaded contents they point at.
+      await tx`delete from directory_entries where project_id = ${id} and parent_id is null`;
       await tx`delete from projects where id = ${id}`;
       purged++;
     });
@@ -73,7 +75,7 @@ export async function purgeDeletedProjects(sql: Sql, options: JobOptions = {}): 
 
 /**
  * Stops counting (and storing) file versions nothing uses anymore, like autosaves pruned
- * by a version commit or a release. A file stays while any manifest in its project uses it.
+ * by a version commit or a release. A file stays while any manifest or root file revision in its project uses it.
  */
 export async function unlinkUnusedBlobs(sql: Sql, options: JobOptions = {}): Promise<number> {
   const { graceHours, batch } = { ...DEFAULTS, ...options };
@@ -85,6 +87,8 @@ export async function unlinkUnusedBlobs(sql: Sql, options: JobOptions = {}): Pro
           select 1 from manifest_entries me join manifests m on m.id = me.manifest_id
           where m.project_id = pb.project_id and me.blob_sha256 = pb.sha256
         )
+        -- Root files keep every revision.
+        and not exists (select 1 from root_file_revisions rv where rv.project_id = pb.project_id and rv.blob_sha256 = pb.sha256)
         -- Exports stay while their source file does; unlinking the source removes the export row.
         and not exists (select 1 from file_exports x where x.project_id = pb.project_id and x.blob_sha256 = pb.sha256)
       limit ${batch}

@@ -17,6 +17,11 @@ const schema = z.object({
   S3_FORCE_PATH_STYLE: booleanString.default(false),
   /** Where people approve desktop sign-ins, e.g. https://app.gigacad.site */
   WEB_ORIGIN: z.url().default('http://localhost:3000'),
+  /** Minutes between background job runs (storage cleanup, purges, stale checkout notices). 0 turns them off. */
+  JOBS_INTERVAL_MINUTES: z.coerce.number().int().min(0).default(60),
+  /** Resend API key for stale checkout notices. Without it the notices are skipped. */
+  RESEND_API_KEY: z.string().min(1).optional(),
+  MAIL_FROM: z.string().default('GigaCAD <no-reply@send.gigacad.site>'),
   /** Paid plans. Both or neither; without them the API runs with the free plan only. */
   STRIPE_SECRET_KEY: z.string().min(1).optional(),
   STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),

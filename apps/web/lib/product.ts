@@ -8,6 +8,11 @@ import {
   type Branch,
   type BranchDetail,
   type CommitDetail,
+  type DirectoryFile,
+  type DirectoryListing,
+  type EntryDetail,
+  type FilePage,
+  type ProjectTag,
   type Commit,
   type Member,
   type Profile,
@@ -124,6 +129,31 @@ export const getReleaseRequestByNumber = cache(async (projectId: string, number:
 export const getMembers = cache((projectId: string) => get<Member[]>(`/v1/projects/${projectId}/members`));
 export const getApprovalRules = cache((projectId: string) => get<ApprovalRules>(`/v1/projects/${projectId}/approval-rules`));
 export const getEvents = cache((projectId: string) => get<ProjectEvent[]>(`/v1/projects/${projectId}/events?order=desc&limit=20`));
+
+export interface FileQuery {
+  sort?: 'name' | 'modified' | 'size';
+  order?: 'asc' | 'desc';
+  offset?: number;
+  limit?: number;
+}
+
+const fileQuery = (query: object) =>
+  new URLSearchParams(Object.entries(query).flatMap(([key, value]) => (value === undefined || value === '' || value === false ? [] : [[key, String(value)]])));
+
+/** One folder of the project directory, by its path from the root. A folder that doesn't exist is the not-found page. */
+export const getDirectory = cache((projectId: string, path: string, query: FileQuery = {}) =>
+  orNotFound(get<DirectoryListing>(`/v1/projects/${projectId}/directory?${fileQuery({ path, ...query })}`)),
+);
+export const searchFiles = cache(
+  (projectId: string, query: FileQuery & { q?: string; tags?: string; favorites?: boolean; area?: 'root' | 'branch' | 'release' }) =>
+    get<FilePage<DirectoryFile>>(`/v1/projects/${projectId}/files?${fileQuery(query)}`),
+);
+export const getTags = cache((projectId: string) => get<ProjectTag[]>(`/v1/projects/${projectId}/tags`));
+export const getRootFolders = cache((projectId: string) => get<{ id: string; path: string }[]>(`/v1/projects/${projectId}/directory/folders`));
+export const getEntry = cache((projectId: string, entryId: string) => {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(entryId)) notFound();
+  return orNotFound(get<EntryDetail>(`/v1/projects/${projectId}/directory/entries/${entryId}`));
+});
 
 /** A positive integer from a URL segment, or the not-found page. */
 export function parseNumber(value: string): number {

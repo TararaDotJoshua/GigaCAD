@@ -310,3 +310,99 @@ export interface DeviceToken {
   createdAt: string;
   lastUsedAt: string | null;
 }
+
+// The project file directory.
+
+export interface Tag {
+  id: string;
+  name: string;
+}
+
+export interface ProjectTag extends Tag {
+  fileCount: number;
+}
+
+export interface FileLocation {
+  area: 'root' | 'branch' | 'release';
+  branchId: string | null;
+  branchName: string | null;
+  releaseNumber: number | null;
+  /** The path inside the root, branch, or release. */
+  path: string;
+}
+
+export interface DirectoryFile {
+  kind: 'file';
+  name: string;
+  /** The full directory path, like `Branches/main/parts/P1.SLDPRT`. */
+  path: string;
+  itemId: string;
+  blob: string;
+  size: number;
+  modifiedAt: string;
+  modifiedByHandle: string | null;
+  /** Root files only. */
+  entryId: string | null;
+  revision: number | null;
+  location: FileLocation;
+  tags: Tag[];
+  favorite: boolean;
+}
+
+export interface BranchFolder {
+  id: string;
+  status: BranchStatus;
+  checkedOutBy: string | null;
+  checkedOutByHandle: string | null;
+  checkedOutMachine: string | null;
+}
+
+export interface DirectoryFolder {
+  kind: 'folder';
+  name: string;
+  path: string;
+  entryId: string | null;
+  virtual: 'branches' | 'releases' | 'branch' | 'release' | null;
+  modifiedAt: string | null;
+  branch: BranchFolder | null;
+  release: { number: number; createdByHandle: string | null } | null;
+}
+
+export type DirectoryItem = DirectoryFile | DirectoryFolder;
+
+export interface FilePage<T> {
+  entries: T[];
+  total: number;
+  nextOffset: number | null;
+}
+
+export interface DirectoryListing extends FilePage<DirectoryItem> {
+  location: {
+    area: 'root' | 'branches' | 'releases' | 'branch' | 'release';
+    path: string;
+    crumbs: { name: string; path: string }[];
+    folderId: string | null;
+    branch: (BranchFolder & { name: string }) | null;
+    release: { number: number; createdAt: string; createdByHandle: string | null } | null;
+    writable: boolean;
+  };
+}
+
+export interface DirectoryEntry {
+  id: string;
+  kind: 'file' | 'folder';
+  name: string;
+  parentId: string | null;
+  path: string;
+  itemId: string | null;
+  revision: number | null;
+  blob: string | null;
+}
+
+export interface EntryDetail {
+  entry: DirectoryEntry;
+  revisions: { number: number; blob: string; size: number; authorId: string | null; authorHandle: string | null; createdAt: string }[];
+  tags: Tag[];
+  favorite: boolean;
+  writable: boolean;
+}

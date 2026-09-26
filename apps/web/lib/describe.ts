@@ -147,6 +147,16 @@ export function describeEvent(
       return payload.role ? `${who} made @${String(payload.handle)} a ${String(payload.role)}` : `${who} removed @${String(payload.handle)}`;
     case 'approval_rules_changed':
       return `${who} changed the approval rules`;
+    case 'directory_entry_created':
+      return `${who} added ${payload.kind === 'folder' ? 'folder ' : ''}${String(payload.path)}`;
+    case 'root_file_replaced':
+      return `${who} saved revision ${String(payload.revision)} of ${String(payload.path)}`;
+    case 'directory_entry_moved':
+      return `${who} moved ${String(payload.from)} to ${String(payload.to)}`;
+    case 'directory_entry_deleted':
+      return `${who} deleted ${String(payload.path)}`;
+    case 'tag_created':
+      return `${who} added the tag ${String(payload.name)}`;
     default:
       return undefined;
   }

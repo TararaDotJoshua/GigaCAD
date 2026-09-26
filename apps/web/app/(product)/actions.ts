@@ -3,9 +3,9 @@
 import { isPlanId, type ApprovalRules, type Picks, type ProjectRole } from '@gigacad/core';
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { apiRequest, type Project, type ReleaseRequestDetail } from '../../lib/api';
+import { ApiError, apiRequest, type Project, type ReleaseRequestDetail } from '../../lib/api';
 import { messageFor } from '../../lib/messages';
-import { projectPath, releasePath, releaseRequestPath } from '../../lib/paths';
+import { projectPath, releasePath, releaseRequestPath, treePath } from '../../lib/paths';
 import { requireAccessToken } from '../../lib/session';
 
 /**
@@ -308,4 +308,145 @@ export async function releaseCandidate(requestId: string, owner: string, slug: s
     return { error: messageFor(error) };
   }
   redirect(releasePath(owner, slug, number));
+}
+
+// Project files
+
+const SHA256 = /^[0-9a-f]{64}$/;
+
+function sha(value: string): string {
+  if (!SHA256.test(value)) throw new Error('Invalid file hash');
+  return value;
+}
+
+const parent = (value: string | null) => (value === null || value === '' ? null : id(value));
+
+export interface UploadStart {
+  readonly error?: string;
+  /** Null when the project already has these contents, so nothing needs uploading. */
+  readonly upload?: { readonly uploadId: string; readonly url: string; readonly headers: Record<string, string> } | null;
+}
+
+/**
+ * The first step of adding a file from the browser: a short-lived link to upload its
+ * contents straight to storage. The browser sends the bytes; the API checks their hash.
+ */
+export async function startUpload(projectId: string, sha256: string, size: number): Promise<UploadStart> {
+  const token = await requireAccessToken();
+  try {
+    const plan = await apiRequest<{ uploads: { uploadId: string; sha256: string; url: string; headers: Record<string, string> }[] }>(
+      token,
+      `/v1/projects/${id(projectId)}/blobs/uploads`,
+      json('POST', { blobs: [{ sha256: sha(sha256), size }] }),
+    );
+    const upload = plan.uploads[0];
+    return { upload: upload ? { uploadId: upload.uploadId, url: upload.url, headers: upload.headers } : null };
+  } catch (error) {
+    return { error: messageFor(error) };
+  }
+}
+
+export async function finishUpload(projectId: string, uploadId: string): Promise<ActionState> {
+  const token = await requireAccessToken();
+  try {
+    const result = await apiRequest<{ failed: { reason: string }[] }>(
+      token,
+      `/v1/projects/${id(projectId)}/blobs/complete`,
+      json('POST', { uploadIds: [id(uploadId)] }),
+    );
+    const failed = result.failed[0]?.reason;
+    if (failed === 'storage_full') return { error: 'The project owner is out of storage.' };
+    if (failed) return { error: 'The upload didn’t arrive intact. Try again.' };
+    return {};
+  } catch (error) {
+    return { error: messageFor(error) };
+  }
+}
+
+/** Adds an uploaded file to a root folder. */
+export async function addRootFile(projectId: string, parentId: string | null, name: string, sha256: string): Promise<ActionState & { readonly taken?: boolean }> {
+  const token = await requireAccessToken();
+  try {
+    await apiRequest(token, `/v1/projects/${id(projectId)}/directory/files`, json('POST', { parentId: parent(parentId), name, blob: sha(sha256) }));
+  } catch (error) {
+    if (error instanceof ApiError && error.code === 'name_taken') return { error: messageFor(error), taken: true };
+    return { error: messageFor(error) };
+  }
+  refresh();
+  return {};
+}
+
+/** Records uploaded contents as a root file's next revision. */
+export async function replaceRootFile(projectId: string, entryId: string, sha256: string): Promise<ActionState> {
+  return mutate(
+    (token) => apiRequest(token, `/v1/projects/${id(projectId)}/directory/entries/${id(entryId)}/revisions`, json('POST', { blob: sha(sha256) })),
+    'Saved a new revision.',
+  );
+}
+
+export async function createFolder(projectId: string, parentId: string | null, _state: ActionState, form: FormData): Promise<ActionState> {
+  const name = text(form, 'name');
+  return mutate(
+    (token) => apiRequest(token, `/v1/projects/${id(projectId)}/directory/folders`, json('POST', { parentId: parent(parentId), name })),
+    `Created ${name}.`,
+  );
+}
+
+/** Renames and moves a root entry in one step. An empty destination is the project root. */
+export async function moveEntry(projectId: string, entryId: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  return mutate(
+    (token) =>
+      apiRequest(
+        token,
+        `/v1/projects/${id(projectId)}/directory/entries/${id(entryId)}`,
+        json('PATCH', { name: text(form, 'name'), parentId: parent(text(form, 'parentId')) }),
+      ),
+    'Saved.',
+  );
+}
+
+/** From the directory's right-click menu: one change at a time, staying in the folder. */
+export async function renameEntry(projectId: string, entryId: string, name: string): Promise<ActionState> {
+  return mutate((token) => apiRequest(token, `/v1/projects/${id(projectId)}/directory/entries/${id(entryId)}`, json('PATCH', { name: name.trim() })));
+}
+
+export async function moveEntryTo(projectId: string, entryId: string, parentId: string | null): Promise<ActionState> {
+  return mutate((token) => apiRequest(token, `/v1/projects/${id(projectId)}/directory/entries/${id(entryId)}`, json('PATCH', { parentId: parent(parentId) })));
+}
+
+export async function removeEntry(projectId: string, entryId: string): Promise<ActionState> {
+  return mutate((token) => apiRequest(token, `/v1/projects/${id(projectId)}/directory/entries/${id(entryId)}`, json('DELETE')));
+}
+
+export async function deleteEntry(projectId: string, entryId: string, owner: string, slug: string, parentPath: string): Promise<ActionState> {
+  const token = await requireAccessToken();
+  try {
+    await apiRequest(token, `/v1/projects/${id(projectId)}/directory/entries/${id(entryId)}`, json('DELETE'));
+  } catch (error) {
+    return { error: messageFor(error) };
+  }
+  redirect(treePath(owner, slug, parentPath));
+}
+
+export async function createTag(projectId: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  const name = text(form, 'name');
+  return mutate((token) => apiRequest(token, `/v1/projects/${id(projectId)}/tags`, json('POST', { name })), `Added ${name}.`);
+}
+
+export async function renameTag(projectId: string, tagId: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  return mutate((token) => apiRequest(token, `/v1/projects/${id(projectId)}/tags/${id(tagId)}`, json('PATCH', { name: text(form, 'name') })), 'Renamed.');
+}
+
+export async function deleteTag(projectId: string, tagId: string): Promise<ActionState> {
+  return mutate((token) => apiRequest(token, `/v1/projects/${id(projectId)}/tags/${id(tagId)}`, json('DELETE')));
+}
+
+export async function setFileTags(projectId: string, itemId: string, tagIds: string[]): Promise<ActionState> {
+  return mutate((token) =>
+    apiRequest(token, `/v1/projects/${id(projectId)}/items/${id(itemId)}/tags`, json('PUT', { tagIds: tagIds.map(id) })),
+  );
+}
+
+export async function setFavorite(projectId: string, itemId: string, favorite: boolean): Promise<ActionState> {
+  return mutate((token) => apiRequest(token, `/v1/projects/${id(projectId)}/items/${id(itemId)}/favorite`, json(favorite ? 'PUT' : 'DELETE')));
 }

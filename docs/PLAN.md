@@ -152,7 +152,7 @@ gigacad/                         (pnpm monorepo, domain: gigacad.site)
 - Exports are optional. Files committed without the add-in (the CLI, macOS) show the preview picture SolidWorks saved inside them, and `giga export <file> <export>` attaches a STEP or STL by hand.
 
 ### Web (gigacad.site)
-- **Project page:** release selector, file tree with thumbnails, 3D viewer, README. SolidWorks files preview from their STL export and offer STEP and STL downloads when they have them.
+- **Project page:** a file directory ([FILE_DIRECTORY_PLAN.md](FILE_DIRECTORY_PLAN.md)): root files and folders with their own revisions, `Branches` and `Releases` as folders, tags, favorites, search, and recent files, with thumbnails and a 3D viewer. SolidWorks files preview from their STL export and offer STEP and STL downloads when they have them.
 - **Branches page:** checkout badges ("checked out by @alex, 2h") and each branch's version timeline. Autosaves appear as a collapsible "unsaved work" group.
 - **Release Request:**
   - diff-pick table with before/after 3D previews, per-file pick controls, and a replace-item picker

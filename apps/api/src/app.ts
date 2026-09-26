@@ -8,6 +8,7 @@ import { authRoutes } from './routes/auth.js';
 import { billingRoutes } from './routes/billing.js';
 import { blobRoutes } from './routes/blobs.js';
 import { branchRoutes } from './routes/branches.js';
+import { directoryRoutes } from './routes/directory.js';
 import { projectRoutes } from './routes/projects.js';
 import { releaseRequestRoutes } from './routes/releaseRequests.js';
 import { sharingRoutes } from './routes/sharing.js';
@@ -68,5 +69,6 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   blobRoutes(app, deps);
   billingRoutes(app, deps);
   sharingRoutes(app, deps);
+  directoryRoutes(app, deps);
   return app;
 }

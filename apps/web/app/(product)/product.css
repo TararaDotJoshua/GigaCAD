@@ -232,13 +232,7 @@
   color: var(--paper);
 }
 
-.shell-account-actions {
-  display: flex;
-  gap: 2px;
-}
-
-.shell-account button,
-.shell-account a.shell-account-icon {
+.shell-account button {
   display: grid;
   place-items: center;
   width: 30px;
@@ -250,9 +244,7 @@
   cursor: pointer;
 }
 
-.shell-account button:hover,
-.shell-account a.shell-account-icon:hover,
-.shell-account a.shell-account-icon.is-active {
+.shell-account button:hover {
   background: rgb(245 245 247 / 0.06);
   color: var(--paper);
 }

@@ -2,7 +2,7 @@
 
 Where GigaCAD stands and what to do next, in order. `docs/PLAN.md` is the full product plan, and `docs/DEPLOYMENT.md` tracks each deployment step. Update this file as items finish.
 
-## Where things stand (2026-09-25)
+## Where things stand (2026-09-26)
 
 Live and verified in production:
 
@@ -16,6 +16,10 @@ Live and verified in production:
 - A browser test in CI (`e2e` job, `apps/web/e2e/`): the release flow in the web app, live refresh, and the HTTP status of every page type. It's required on `main`.
 - Paid plans (Maker, Builder, Workshop, Studio) on sale through Stripe Managed Payments, with storage limits enforced.
 - `scripts/check-site.sh` checks the status of every page type on the live site. It runs after each web deploy and every 15 minutes (`.github/workflows/uptime.yml`). GitHub emails a failed run.
+- Background jobs in the API (#22): unused files are cleaned up, deleted projects are purged after 30 days, and stale checkouts get an email reminder.
+- 3D previews in the browser (#23) for STL, OBJ, 3MF, STEP, and IGES files.
+- Public sharing (#24): Explore, user profiles, stars, and forks. Signed-out visitors can browse public projects. A fork of a private project can never be made public.
+- Restoring deleted projects from Account within 30 days (#25).
 
 ## 1. Finish the launch checklist
 
@@ -41,9 +45,8 @@ Following the phases in `docs/PLAN.md`:
 
 1. **Windows drive (phase 3).** A `GigaCAD\` drive in File Explorer where SolidWorks opens and saves files directly. It needs a sync root, file hydration, the save pipeline that produces autosaves, read-only enforcement for branches you haven't checked out, a context menu, and a tray app. Testing needs a Windows laptop with SolidWorks.
 2. **SolidWorks add-in (phase 4).** A task pane, a read-only banner, reference and preview export, and rebuilding release candidates.
-3. **Worker (phase 5).** STL and STEP to glTF previews, thumbnails, blob garbage collection, and stale-lock notifications.
-4. **Public sharing (phase 6).** Explore, fork, and stars.
-5. **macOS client and other CAD programs (phase 7).**
+3. **Worker (phase 5), the rest.** Thumbnails for file lists and project cards. Previews currently render in the browser from the original file, and file cleanup and stale-checkout reminders already run in the API.
+4. **macOS client and other CAD programs (phase 7).**
 
 ## Working notes
 

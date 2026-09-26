@@ -115,6 +115,16 @@ export interface UserPage {
   projects: ProjectCard[];
 }
 
+/** A project its owner deleted that can still be restored. */
+export interface DeletedProject {
+  id: string;
+  slug: string;
+  name: string;
+  ownerHandle: string;
+  deletedAt: string;
+  purgeAt: string;
+}
+
 export interface Member {
   userId: string;
   handle: string;

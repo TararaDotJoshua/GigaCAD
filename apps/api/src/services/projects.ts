@@ -116,6 +116,48 @@ export async function deleteProject(sql: Sql, projectId: string, userId: string)
     await requireProjectRole(tx, projectId, userId, 'owner', { lock: true });
     // Soft delete; a purge job removes it for good after the 30-day grace period.
     await tx`update projects set deleted_at = now() where id = ${projectId}`;
+    await recordEvent(tx, { projectId, actorId: userId, kind: 'project_deleted', subjectId: projectId });
+  });
+}
+
+/** Matches the purge job's default (jobs.ts); the terms promise 30 days. */
+export const RESTORE_DAYS = 30;
+
+export interface DeletedProject {
+  readonly id: string;
+  readonly slug: string;
+  readonly name: string;
+  readonly ownerHandle: string;
+  readonly deletedAt: Date;
+  /** When the purge job may remove it for good. */
+  readonly purgeAt: Date;
+}
+
+/** The caller's own deleted projects that can still be restored, most recently deleted first. */
+export async function listDeletedProjects(sql: Sql, userId: string): Promise<DeletedProject[]> {
+  return sql<DeletedProject[]>`
+    select p.id, p.slug, p.name, o.handle as owner_handle, p.deleted_at,
+           p.deleted_at + make_interval(days => ${RESTORE_DAYS}) as purge_at
+    from projects p join profiles o on o.id = p.owner_id
+    where p.owner_id = ${userId} and p.deleted_at is not null
+      and p.deleted_at > now() - make_interval(days => ${RESTORE_DAYS})
+    order by p.deleted_at desc
+  `;
+}
+
+export async function restoreProject(sql: Sql, projectId: string, userId: string): Promise<ProjectSummary> {
+  return sql.begin(async (tx) => {
+    // Locked so a restore and the purge job never both act on the same project.
+    const [project] = await tx<{ ownerId: string; restorable: boolean }[]>`
+      select owner_id, deleted_at > now() - make_interval(days => ${RESTORE_DAYS}) as restorable
+      from projects where id = ${projectId} and deleted_at is not null
+      for update
+    `;
+    // Anyone but the owner sees no deleted project at all.
+    if (!project || project.ownerId !== userId || !project.restorable) throw notFound('Deleted project');
+    await tx`update projects set deleted_at = null where id = ${projectId}`;
+    await recordEvent(tx, { projectId, actorId: userId, kind: 'project_restored', subjectId: projectId });
+    return summarize(tx, projectId, 'owner', userId);
   });
 }
 

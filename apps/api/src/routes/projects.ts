@@ -8,9 +8,11 @@ import {
   findProject,
   getApprovalRules,
   getProject,
+  listDeletedProjects,
   listEvents,
   listMembers,
   listMyProjects,
+  restoreProject,
   setApprovalRules,
   setMember,
   updateProject,
@@ -64,6 +66,13 @@ export function projectRoutes(app: FastifyInstance, { sql }: AppDeps): void {
     const { id } = parse(idParams, request.params);
     await deleteProject(sql, id, requireCaller(request).userId);
     reply.status(204);
+  });
+
+  app.get('/v1/me/deleted-projects', async (request) => listDeletedProjects(sql, requireCaller(request).userId));
+
+  app.post('/v1/projects/:id/restore', async (request) => {
+    const { id } = parse(idParams, request.params);
+    return restoreProject(sql, id, requireCaller(request).userId);
   });
 
   app.get('/v1/projects/:id/members', async (request) => {

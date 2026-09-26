@@ -154,6 +154,17 @@ export async function deleteProject(projectId: string, slug: string, _state: Act
   redirect('/app');
 }
 
+export async function restoreProject(projectId: string): Promise<ActionState> {
+  const token = await requireAccessToken();
+  let project: Project;
+  try {
+    project = await apiRequest<Project>(token, `/v1/projects/${id(projectId)}/restore`, json('POST'));
+  } catch (error) {
+    return { error: messageFor(error) };
+  }
+  redirect(projectPath(project.ownerHandle, project.slug));
+}
+
 /** A short-lived download link with the file's real name. It is never rendered into a page. */
 export async function downloadLink(projectId: string, sha256: string, filename: string): Promise<{ url?: string; error?: string }> {
   const token = await requireAccessToken();

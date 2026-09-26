@@ -38,10 +38,18 @@ export async function purgeDeletedProjects(sql: Sql, options: JobOptions = {}): 
     where deleted_at is not null and deleted_at < now() - make_interval(days => ${purgeAfterDays})
     order by deleted_at limit ${batch}
   `;
+  let purged = 0;
   for (const { id } of due) {
     // Postgres checks foreign keys after each cascaded table, so the history is removed
     // explicitly, children before the rows they point at.
     await sql.begin(async (tx) => {
+      // Checked again under a lock, in case the owner restored it since it was picked.
+      const [still] = await tx`
+        select id from projects
+        where id = ${id} and deleted_at < now() - make_interval(days => ${purgeAfterDays})
+        for update
+      `;
+      if (!still) return;
       await tx`select set_config('gigacad.purge', 'on', true)`;
       await tx`update branches set head_commit_id = null, base_release_id = null where project_id = ${id}`;
       await tx`delete from approvals where release_request_id in (select id from release_requests where project_id = ${id})`;
@@ -57,9 +65,10 @@ export async function purgeDeletedProjects(sql: Sql, options: JobOptions = {}): 
       await tx`delete from manifest_entries where manifest_id in (select id from manifests where project_id = ${id})`;
       await tx`delete from manifests where project_id = ${id}`;
       await tx`delete from projects where id = ${id}`;
+      purged++;
     });
   }
-  return due.length;
+  return purged;
 }
 
 /**

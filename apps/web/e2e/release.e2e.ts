@@ -200,6 +200,24 @@ test('shares a public project: browse it signed out, star it, and fork it', asyn
   await expect(page.locator('#main').getByText('Gearbox.SLDASM')).toBeVisible();
 });
 
+test('deletes a project and restores it from Account', async ({ page }) => {
+  const slug = `undo-${randomUUID().slice(0, 6)}`;
+  await api(world.token, 'POST', '/v1/projects', { slug, name: 'Undo me' });
+
+  await logIn(page);
+  await page.goto(`/${world.handle}/${slug}/settings`);
+  await page.getByLabel('Project slug').fill(slug);
+  await page.getByRole('button', { name: 'Delete project' }).click();
+  await page.waitForURL('**/app');
+
+  await page.goto('/settings');
+  const row = page.getByRole('row', { name: /Undo me/ });
+  await expect(row.getByText('In 30 days')).toBeVisible();
+  await row.getByRole('button', { name: 'Restore' }).click();
+  await page.waitForURL(`**/${world.handle}/${slug}`);
+  await expect(page.getByRole('heading', { name: 'Undo me' })).toBeVisible();
+});
+
 test('previews a 3D file in the browser', async ({ page }) => {
   // An ASCII STL tetrahedron, committed on its own branch.
   const facet = (a: string, b: string, c: string) => `facet normal 0 0 0\nouter loop\nvertex ${a}\nvertex ${b}\nvertex ${c}\nendloop\nendfacet`;

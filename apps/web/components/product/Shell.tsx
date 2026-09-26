@@ -34,7 +34,7 @@ export async function Shell({ project, children }: { project?: Project; children
 
   return (
     <div className="shell">
-      <SidebarNav me={me && { handle: me.handle }} home={me ? dashboardPath() : '/explore'} projects={list} current={current} />
+      <SidebarNav me={me && { handle: me.handle, avatarUrl: me.avatarUrl }} home={me ? dashboardPath() : '/explore'} projects={list} current={current} />
       <main id="main" className="shell-pane">
         {children}
       </main>

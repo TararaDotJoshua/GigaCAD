@@ -1544,6 +1544,290 @@
   height: 13px;
 }
 
+/* User pages: a sidebar with the person, then their graph, projects, and activity */
+
+.shell .avatar-lg {
+  width: 100%;
+  max-width: 240px;
+  height: auto;
+  aspect-ratio: 1;
+  font-size: 5rem;
+  letter-spacing: -0.04em;
+}
+
+.shell img.avatar {
+  object-fit: cover;
+  background: var(--mist);
+}
+
+.shell .profile-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 32px;
+}
+
+@media (min-width: 900px) {
+  .shell .profile-layout {
+    grid-template-columns: 240px minmax(0, 1fr);
+    gap: 40px;
+    align-items: start;
+  }
+}
+
+.shell .profile-side {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+@media (max-width: 899px) {
+  .shell .profile-side {
+    grid-template-columns: 96px minmax(0, 1fr);
+    align-items: center;
+  }
+
+  .shell .profile-side .avatar-lg {
+    font-size: 2.5rem;
+  }
+
+  .shell .profile-side > :not(.avatar) {
+    grid-column: 1 / -1;
+  }
+
+  .shell .profile-side > .profile-names {
+    grid-column: 2;
+  }
+}
+
+.shell .profile-names .app-title {
+  margin: 0;
+  font-size: 1.625rem;
+  overflow-wrap: anywhere;
+}
+
+.shell .profile-bio {
+  max-width: 60ch;
+  overflow-wrap: anywhere;
+}
+
+.shell .profile-edit {
+  justify-content: center;
+}
+
+.shell .profile-facts {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--t-small);
+  overflow-wrap: anywhere;
+}
+
+.shell .profile-facts a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--line-ink);
+  text-underline-offset: 3px;
+}
+
+.shell .profile-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  min-width: 0;
+}
+
+.shell .profile-tabs {
+  justify-self: start;
+  margin: 12px 0 0;
+}
+
+.shell .segment-count {
+  margin-left: 6px;
+  color: var(--ink-muted);
+  font-size: var(--t-micro);
+  font-variant-numeric: tabular-nums;
+}
+
+.shell .profile-activity {
+  margin-top: 20px;
+}
+
+/* The contribution graph: one ink at five strengths on Paper. Green stays reserved for state. */
+
+.shell .contrib-heading {
+  margin: 0 0 10px;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.shell .contrib-frame {
+  padding: 16px 18px 12px;
+  border: 1px solid var(--line-ink);
+  border-radius: var(--r-md);
+  background: #fff;
+}
+
+/* Right to left so a narrow screen opens on the latest weeks; the graph itself stays left to right. */
+.shell .contrib-scroll {
+  overflow-x: auto;
+  direction: rtl;
+}
+
+.shell .contrib-scroll > svg {
+  direction: ltr;
+}
+
+/* Fills the frame on wide screens and scrolls sideways before its cells get too small. */
+.shell .contrib-graph {
+  display: block;
+  width: 100%;
+  min-width: 640px;
+  height: auto;
+}
+
+.shell .contrib-label {
+  fill: var(--ink-muted);
+  font-size: 10px;
+}
+
+.shell .contrib-level-0 {
+  fill: var(--mist);
+}
+
+.shell .contrib-level-1 {
+  fill: rgb(10 41 34 / 0.22);
+}
+
+.shell .contrib-level-2 {
+  fill: rgb(10 41 34 / 0.42);
+}
+
+.shell .contrib-level-3 {
+  fill: rgb(10 41 34 / 0.66);
+}
+
+.shell .contrib-level-4 {
+  fill: rgb(10 41 34 / 0.92);
+}
+
+.shell .contrib-graph rect:hover {
+  stroke: var(--ink);
+  stroke-width: 1;
+}
+
+.shell .contrib-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-top: 10px;
+  color: var(--ink-muted);
+  font-size: var(--t-micro);
+}
+
+.shell .contrib-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.shell .contrib-legend svg:first-of-type {
+  margin-left: 4px;
+}
+
+.shell .contrib-legend svg:last-of-type {
+  margin-right: 4px;
+}
+
+@media (forced-colors: active) {
+  .shell .contrib-graph rect {
+    stroke: CanvasText;
+  }
+}
+
+/* Recent activity */
+
+.shell .activity-month + .activity-month {
+  margin-top: 20px;
+}
+
+.shell .activity-month h3 {
+  margin: 0 0 8px;
+  color: var(--ink-muted);
+  font-size: var(--t-micro);
+  font-weight: 500;
+}
+
+.shell .activity-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-left: 1px dashed var(--line-ink);
+}
+
+.shell .activity-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0 8px 16px;
+  font-size: var(--t-small);
+}
+
+.shell .activity-list p {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.shell .activity-list a {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.shell .activity-list a:hover {
+  text-decoration: underline;
+}
+
+.shell .activity-list li > .muted {
+  flex: none;
+  font-size: var(--t-micro);
+}
+
+.shell .activity-detail {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-muted);
+}
+
+/* Members list */
+
+.shell .member-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Account settings: the avatar row */
+
+.shell .avatar-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+
+.shell .avatar-editor .avatar-lg {
+  width: 72px;
+  font-size: 1.75rem;
+}
+
+.shell .avatar-editor .form {
+  flex: 1 1 280px;
+}
+
 /* 3D preview */
 
 .shell .cell-action .icon-button + .icon-button {

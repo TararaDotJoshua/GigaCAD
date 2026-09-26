@@ -56,9 +56,9 @@ describe('pick table', () => {
 
 describe('approvals', () => {
   const members: Member[] = [
-    { userId: 'alex', handle: 'alex', displayName: null, role: 'owner' },
-    { userId: 'sam', handle: 'sam', displayName: null, role: 'maintainer' },
-    { userId: 'kim', handle: 'kim', displayName: null, role: 'contributor' },
+    { userId: 'alex', handle: 'alex', displayName: null, avatarUrl: null, role: 'owner' },
+    { userId: 'sam', handle: 'sam', displayName: null, avatarUrl: null, role: 'maintainer' },
+    { userId: 'kim', handle: 'kim', displayName: null, avatarUrl: null, role: 'contributor' },
   ];
   const rules: ApprovalRules = { requiredCount: 1, approverUserIds: ['kim'], approverRoles: ['owner', 'maintainer'], allowSelfApproval: false, requireCleanRebuild: false };
 

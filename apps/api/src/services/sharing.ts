@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import type { Sql } from '../db.js';
 import { forbidden, notFound, unprocessable } from '../errors.js';
+import type { BlobStorage } from '../storage.js';
 import { projectAccess } from './access.js';
 import { requireStorageFor } from './billing.js';
 import { recordEvent } from './events.js';
 import { insertManifest, loadManifest } from './manifests.js';
+import { avatarUrl, contributionDays, recentActivity, visibleProject } from './profiles.js';
 import { summarize, type ProjectSummary } from './projects.js';
 
 /** A public project as Explore and profile pages list it. */
@@ -36,10 +38,7 @@ export async function exploreProjects(
 ): Promise<ProjectCard[]> {
   const pattern = query.q ? `%${query.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
   return sql<ProjectCard[]>`
-    select p.id, o.handle as owner_handle, p.slug, p.name, p.description, p.visibility, p.license, p.created_at,
-           (select max(number) from releases r where r.project_id = p.id) as latest_release_number,
-           (select count(*)::int from stars s where s.project_id = p.id) as star_count,
-           project_thumbnail(p.id) as thumbnail_sha
+    select ${projectCardColumns(sql)}
     from projects p join profiles o on o.id = p.owner_id
     where p.visibility = 'public' and p.deleted_at is null
       ${pattern ? sql`and (p.name ilike ${pattern} or p.slug ilike ${pattern} or p.description ilike ${pattern} or o.handle ilike ${pattern})` : sql``}
@@ -48,24 +47,72 @@ export async function exploreProjects(
   `;
 }
 
-/** A user's public page: their profile and public projects, plus private ones when it's you. */
-export async function userProfile(sql: Sql, handle: string, viewerId: string | null) {
-  const [profile] = await sql<{ id: string; handle: string; displayName: string | null; createdAt: Date }[]>`
-    select id, handle, display_name, created_at from profiles where handle = ${handle.toLowerCase()}
+/** What a project card shows, selected from `projects p` joined to its owner's `profiles o`. */
+function projectCardColumns(sql: Sql) {
+  return sql`
+    p.id, o.handle as owner_handle, p.slug, p.name, p.description, p.visibility, p.license, p.created_at,
+    (select max(number) from releases r where r.project_id = p.id) as latest_release_number,
+    (select count(*)::int from stars s where s.project_id = p.id) as star_count,
+    project_thumbnail(p.id) as thumbnail_sha
+  `;
+}
+
+interface ProfileRow {
+  readonly id: string;
+  readonly handle: string;
+  readonly displayName: string | null;
+  readonly bio: string | null;
+  readonly location: string | null;
+  readonly website: string | null;
+  readonly avatarKey: string | null;
+  readonly createdAt: Date;
+}
+
+async function profileByHandle(sql: Sql, handle: string): Promise<ProfileRow> {
+  const [profile] = await sql<ProfileRow[]>`
+    select id, handle, display_name, bio, location, website, avatar_key, created_at from profiles where handle = ${handle.toLowerCase()}
   `;
   if (!profile) throw notFound('User');
-  const self = profile.id === viewerId;
-  const projects = await sql<ProjectCard[]>`
-    select p.id, ${profile.handle}::text as owner_handle, p.slug, p.name, p.description, p.visibility, p.license, p.created_at,
-           (select max(number) from releases r where r.project_id = p.id) as latest_release_number,
-           (select count(*)::int from stars s where s.project_id = p.id) as star_count,
-           project_thumbnail(p.id) as thumbnail_sha
-    from projects p
-    where p.owner_id = ${profile.id} and p.deleted_at is null ${self ? sql`` : sql`and p.visibility = 'public'`}
-    order by p.created_at desc
+  return profile;
+}
+
+/**
+ * A user's page: their profile, contributions, and recent activity, and their projects.
+ * Everything is limited to projects the viewer can read, so you see your own private ones.
+ */
+export async function userProfile(sql: Sql, storage: BlobStorage, handle: string, viewerId: string | null) {
+  const { id, avatarKey, ...profile } = await profileByHandle(sql, handle);
+  const [projects, contributions, activity, [stars]] = await Promise.all([
+    sql<ProjectCard[]>`
+      select ${projectCardColumns(sql)}
+      from projects p join profiles o on o.id = p.owner_id
+      where p.owner_id = ${id} and ${visibleProject(sql, viewerId)}
+      order by p.created_at desc
+    `,
+    contributionDays(sql, id, viewerId),
+    recentActivity(sql, id, viewerId),
+    sql<{ count: number }[]>`
+      select count(*)::int as count from stars s join projects p on p.id = s.project_id
+      where s.user_id = ${id} and ${visibleProject(sql, viewerId)}
+    `,
+  ]);
+  return {
+    profile: { ...profile, avatarUrl: await avatarUrl(storage, avatarKey), starCount: stars!.count },
+    projects,
+    contributions,
+    activity,
+  };
+}
+
+/** Projects a user starred that the viewer can read, most recently starred first. */
+export async function starredProjects(sql: Sql, handle: string, viewerId: string | null): Promise<ProjectCard[]> {
+  const { id } = await profileByHandle(sql, handle);
+  return sql<ProjectCard[]>`
+    select ${projectCardColumns(sql)}
+    from stars s join projects p on p.id = s.project_id join profiles o on o.id = p.owner_id
+    where s.user_id = ${id} and ${visibleProject(sql, viewerId)}
+    order by s.created_at desc
   `;
-  const { id: _id, ...visible } = profile;
-  return { profile: visible, projects };
 }
 
 /**

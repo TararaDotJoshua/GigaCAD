@@ -1,8 +1,10 @@
 import Link from 'next/link';
 import { formatBytes, getPlan, isPlaceholderHandle } from '@gigacad/core';
-import { restoreProject, saveProfile, signOutDevice } from '../../actions';
+import { removeAvatar, restoreProject, saveProfile, signOutDevice, uploadAvatar } from '../../actions';
 import { ActionButton } from '../../../../components/product/ActionButton';
 import { ActionForm } from '../../../../components/product/ActionForm';
+import { Avatar } from '../../../../components/product/Avatar';
+import { BioField } from '../../../../components/product/BioField';
 import { EmptyState } from '../../../../components/product/EmptyState';
 import { HandleField } from '../../../../components/product/HandleField';
 import { PageHead } from '../../../../components/product/PageHead';
@@ -28,13 +30,44 @@ export default async function AccountSettings() {
 
       <section className="section">
         <h2>Profile</h2>
+        <p className="section-intro">
+          Anyone can see your profile{isPlaceholderHandle(me.handle) ? ' once you choose a handle' : <> at <Link href={`/${me.handle}`}>app.gigacad.site/{me.handle}</Link></>}.
+        </p>
         <ActionForm action={saveProfile} submitLabel="Save profile">
           <HandleField defaultValue={isPlaceholderHandle(me.handle) ? '' : me.handle} />
           <label className="field">
             <span>Display name <em>optional</em></span>
             <input name="displayName" defaultValue={me.displayName ?? ''} maxLength={100} />
           </label>
+          <BioField defaultValue={me.bio ?? ''} />
+          <label className="field">
+            <span>Location <em>optional</em></span>
+            <input name="location" defaultValue={me.location ?? ''} maxLength={60} />
+          </label>
+          <label className="field">
+            <span>Website <em>optional</em></span>
+            <input name="website" type="text" inputMode="url" defaultValue={me.website ?? ''} maxLength={200} placeholder="https://" spellCheck={false} />
+          </label>
         </ActionForm>
+      </section>
+
+      <section className="section">
+        <h2>Avatar</h2>
+        <div className="avatar-editor">
+          <Avatar handle={me.handle} url={me.avatarUrl} size="lg" />
+          <ActionForm action={uploadAvatar} submitLabel="Upload" pendingLabel="Uploading…" submitClassName="btn btn-secondary">
+            <label className="field">
+              <span>Image</span>
+              <input name="avatar" type="file" accept="image/png,image/jpeg,image/webp" required />
+              <small className="field-hint">A square PNG, JPEG, or WebP of 1 MB or less.</small>
+            </label>
+          </ActionForm>
+          {me.avatarUrl && (
+            <ActionButton action={removeAvatar} className="btn btn-danger btn-small" confirm="Remove your avatar?">
+              Remove
+            </ActionButton>
+          )}
+        </div>
       </section>
 
       <section className="section">

@@ -1,6 +1,7 @@
 export * from './approvals.js';
 export * from './autosave.js';
 export * from './candidate.js';
+export * from './contributions.js';
 export * from './handles.js';
 export * from './ignore.js';
 export * from './manifest.js';

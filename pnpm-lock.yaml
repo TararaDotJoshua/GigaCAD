@@ -35,9 +35,15 @@ importers:
       fastify:
         specifier: ^5.12.5
         version: 5.12.5
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       jose:
         specifier: ^6.2.12
         version: 6.2.12
+      occt-import-js:
+        specifier: ^0.0.23
+        version: 0.0.23
       postgres:
         specifier: ^3.4.9
         version: 3.4.9

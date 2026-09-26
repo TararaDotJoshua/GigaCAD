@@ -18,6 +18,7 @@ import {
   type ReleaseDetail,
   type ReleaseRequestDetail,
   type ReleaseRequestSummary,
+  type ThumbnailLinks,
   type UserPage,
 } from './api';
 import { getAccessToken } from './session';
@@ -48,6 +49,19 @@ export const getExplore = cache((q: string, sort: 'stars' | 'recent') =>
   get<ProjectCard[]>(`/v1/explore?${new URLSearchParams({ sort, ...(q ? { q } : {}) })}`),
 );
 export const getUserPage = cache((handle: string) => orNotFound(get<UserPage>(`/v1/users/${encodeURIComponent(handle)}`)));
+/** Thumbnail links for a project's files. They're a nicety, so a failure shows file glyphs instead of an error. */
+export async function getThumbnails(projectId: string, sha256s: readonly string[]): Promise<Record<string, string>> {
+  if (sha256s.length === 0) return {};
+  try {
+    const links = await apiRequest<ThumbnailLinks>(await getAccessToken(), `/v1/projects/${projectId}/thumbnails`, {
+      method: 'POST',
+      body: JSON.stringify({ sha256s: [...new Set(sha256s)].slice(0, 1000) }),
+    });
+    return links.thumbnails;
+  } catch {
+    return {};
+  }
+}
 export const getBilling = cache(() => get<Billing>('/v1/me/billing'));
 export const getMyProjects = cache(() => get<Project[]>('/v1/projects'));
 

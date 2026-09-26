@@ -246,6 +246,11 @@ function PublicProjects() {
         Choose <strong>Star</strong> on a project to show you like it and to help others find it. Explore sorts
         by stars by default, and you can search it by name, owner, or description.
       </p>
+      <p>
+        Each project on Explore shows a picture of the largest STL, OBJ, 3MF, STEP, or IGES file in its latest
+        release, or in its latest version if it has no release yet. SolidWorks files get pictures once the
+        add-in exports previews.
+      </p>
     </>
   );
 }

@@ -108,6 +108,14 @@ export interface ProjectCard {
   createdAt: string;
   latestReleaseNumber: number | null;
   starCount: number;
+  /** A short-lived link to the project's cover thumbnail, if it has one. */
+  thumbnailUrl: string | null;
+}
+
+export interface ThumbnailLinks {
+  /** Short-lived image links by file content hash. */
+  thumbnails: Record<string, string>;
+  pending: string[];
 }
 
 export interface UserPage {

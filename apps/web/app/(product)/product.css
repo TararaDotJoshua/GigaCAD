@@ -735,6 +735,21 @@
   color: var(--ink);
 }
 
+/* A rendered thumbnail fills the tile. */
+.shell .file-glyph.has-thumbnail {
+  width: 36px;
+  height: 36px;
+  margin-block: -3px;
+  overflow: hidden;
+}
+
+.shell .file-glyph img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 .shell .locked {
   display: inline-flex;
   align-items: center;
@@ -1415,12 +1430,38 @@
 
 .shell .project-card {
   display: grid;
-  gap: 8px;
+  grid-template-columns: 96px minmax(0, 1fr);
+  column-gap: 16px;
+  row-gap: 8px;
   align-content: start;
   padding: 16px 18px;
   border: 1px solid var(--line-ink);
   border-radius: var(--r-md);
   background: #fff;
+}
+
+/* The cover sits in its own column, spanning the card's rows. */
+.shell .project-card > :not(.project-card-cover) {
+  grid-column: 2;
+}
+
+.shell .project-card-cover {
+  display: grid;
+  place-items: center;
+  grid-row: 1 / span 3;
+  width: 96px;
+  height: 96px;
+  overflow: hidden;
+  border-radius: var(--r-sm);
+  background: var(--mist);
+  color: var(--ink-muted);
+}
+
+.shell .project-card-cover img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .shell .project-card-head {

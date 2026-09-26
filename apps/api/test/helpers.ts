@@ -42,6 +42,14 @@ export class MemoryStorage implements BlobStorage {
   async remove(key: string) {
     this.objects.delete(key);
   }
+  async read(key: string) {
+    const body = this.objects.get(key);
+    if (!body) throw new Error(`missing ${key}`);
+    return new Uint8Array(body);
+  }
+  async write(key: string, body: Uint8Array) {
+    this.objects.set(key, Buffer.from(body));
+  }
   put(url: string, content: string) {
     this.objects.set(url.replace('memory://', ''), Buffer.from(content));
   }

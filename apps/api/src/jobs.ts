@@ -1,6 +1,6 @@
 import type { Sql } from './db.js';
 import type { Mailer } from './mail.js';
-import { blobKey, stagingKey, type BlobStorage } from './storage.js';
+import { blobKey, stagingKey, thumbnailKey, type BlobStorage } from './storage.js';
 
 /**
  * Background upkeep, run on a timer by the API (see server.ts). Every job is safe to run
@@ -113,7 +113,11 @@ export async function deleteOrphanBlobs(sql: Sql, storage: BlobStorage, options:
     )
     returning b.sha256
   `;
-  for (const { sha256 } of orphans) await storage.remove(blobKey(sha256));
+  // Their thumbnail rows go with them (on delete cascade); the images are removed here.
+  for (const { sha256 } of orphans) {
+    await storage.remove(blobKey(sha256));
+    await storage.remove(thumbnailKey(sha256));
+  }
   return orphans.length;
 }
 

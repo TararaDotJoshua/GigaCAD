@@ -253,7 +253,8 @@ test('previews a 3D file in the browser', async ({ page }) => {
   await page.waitForTimeout(200);
   await expect(zoom).toHaveCount(0);
   await expect(zoom).toBeVisible();
-  expect((await zoom.boundingBox())?.width).toBe(320);
+  // It scales in over 120ms, then settles at 320px.
+  await expect.poll(async () => (await zoom.boundingBox())?.width).toBe(320);
   await page.mouse.move(0, 0);
   await expect(zoom).toHaveCount(0);
 });

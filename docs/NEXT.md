@@ -20,6 +20,7 @@ Live and verified in production:
 - 3D previews in the browser (#23) for STL, OBJ, 3MF, STEP, and IGES files.
 - Public sharing (#24): Explore, user profiles, stars, and forks. Signed-out visitors can browse public projects. A fork of a private project can never be made public.
 - Restoring deleted projects from Account within 30 days (#25).
+- Thumbnails for STL, OBJ, 3MF, STEP, and IGES files (#27), rendered by the API in a worker thread and shown in file lists and on Explore and profile cards.
 
 ## 1. Finish the launch checklist
 
@@ -45,12 +46,12 @@ Following the phases in `docs/PLAN.md`:
 
 1. **Windows drive (phase 3).** A `GigaCAD\` drive in File Explorer where SolidWorks opens and saves files directly. It needs a sync root, file hydration, the save pipeline that produces autosaves, read-only enforcement for branches you haven't checked out, a context menu, and a tray app. Testing needs a Windows laptop with SolidWorks.
 2. **SolidWorks add-in (phase 4).** A task pane, a read-only banner, reference and preview export, and rebuilding release candidates.
-3. **Worker (phase 5), the rest.** Thumbnails for file lists and project cards. Previews currently render in the browser from the original file, and file cleanup and stale-checkout reminders already run in the API.
-4. **macOS client and other CAD programs (phase 7).**
+3. **macOS client and other CAD programs (phase 7).**
 
 ## Working notes
 
 - Every change to `main` goes through a pull request. All four CI jobs must pass, and auto-merge is on.
 - Check deploys by HTTP status for each kind of page (marketing, docs, product signed out and signed in), not by looking for text in the page.
 - A CLI release means bumping the version in `clients/cli/package.json`, then running `pnpm --filter @gigacad/cli publish` from `main`. npm asks for a passkey confirmation in the browser.
+- Migrations are applied by hand with `supabase db push`, before merging the pull request that adds them. `supabase db query --linked "<sql>"` runs read-only checks against production.
 - Docker isn't available on the development Mac, so integration tests and the API image build run only in CI.

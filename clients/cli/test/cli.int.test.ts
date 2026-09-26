@@ -155,6 +155,35 @@ describe('workspace round trip', () => {
   });
 });
 
+describe('exports', () => {
+  it('attaches a STEP exported from SolidWorks to a committed part', async () => {
+    const cli = await computer(alex);
+    const project = await newProject(cli, alex);
+    await ok(cli, ['branch', 'create', 'dev', '--project', project]);
+    const parent = await tempDir();
+    const root = join(parent, 'bracket');
+    await ok(cli, ['clone', project, 'bracket', '--branch', 'dev'], parent);
+    await ok(cli, ['checkout'], root);
+    await write(root, { 'parts/Bracket.SLDPRT': 'bracket v1', 'Notes.txt': 'notes' });
+    await ok(cli, ['commit', '-m', 'Bracket'], root);
+
+    // Exports usually live outside the workspace, next to wherever SolidWorks saved them.
+    const exportsDir = await tempDir();
+    await write(exportsDir, { 'Bracket.step': 'ISO-10303-21; bracket', 'Bracket.igs': 'iges' });
+    const added = await ok(cli, ['export', 'parts/Bracket.SLDPRT', join(exportsDir, 'Bracket.step')], root);
+    expect(added).toMatchObject({ path: 'parts/Bracket.SLDPRT', format: 'step', sha256: sha256('ISO-10303-21; bracket') });
+
+    const projectId = JSON.parse(await readState(root)).projectId as string;
+    const lookup = await client(stack, alex).post(`/v1/projects/${projectId}/exports/lookup`, { sha256s: [sha256('bracket v1')] });
+    expect(lookup.body.exports[sha256('bracket v1')]).toEqual([expect.objectContaining({ format: 'step' })]);
+
+    expect((await fails(cli, ['export', 'Notes.txt', join(exportsDir, 'Bracket.step')], root)).code).toBe('not_exportable');
+    expect((await fails(cli, ['export', 'parts/Bracket.SLDPRT', join(exportsDir, 'Bracket.igs')], root)).code).toBe('unsupported_export');
+    await write(root, { 'parts/New.SLDPRT': 'not committed yet' });
+    expect((await fails(cli, ['export', 'parts/New.SLDPRT', join(exportsDir, 'Bracket.step')], root)).code).toBe('not_committed');
+  });
+});
+
 describe('locks and stale heads', () => {
   it('rejects a second machine and a commit on top of an old head, leaving local state intact', async () => {
     const laptop = await computer(alex);

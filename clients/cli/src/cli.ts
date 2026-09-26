@@ -1,5 +1,6 @@
 import { Command, CommanderError } from 'commander';
 import { registerAuthCommands } from './commands/auth.js';
+import { registerExportCommands } from './commands/exports.js';
 import { registerProjectCommands } from './commands/projects.js';
 import { registerReleaseRequestCommands } from './commands/releaseRequests.js';
 import { registerReleaseCommands } from './commands/releases.js';
@@ -92,6 +93,7 @@ Environment:
   registerAuthCommands(program, bind);
   registerProjectCommands(program, bind);
   registerWorkspaceCommands(program, bind);
+  registerExportCommands(program, bind);
   registerReleaseRequestCommands(program, bind);
   registerReleaseCommands(program, bind);
   return program;

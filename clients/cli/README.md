@@ -74,6 +74,7 @@ Commands run from anywhere inside the workspace.
 | `giga mv <from> <to>` | Moves or renames a file or folder so each file keeps its item ID |
 | `giga commit -m <message> [--label <label>]` | Uploads changed files and records a version of the whole folder |
 | `giga checkin [--force]` | Gives up the lock |
+| `giga export <file> <export>` | Attaches a STEP or STL exported from SolidWorks to a committed `.SLDPRT` or `.SLDASM`. It becomes the file's 3D preview and thumbnail, and a download option |
 
 **What gets committed.** A commit snapshots every file in the workspace except `.giga/` and ignored files. CAD lock and backup files are ignored by default, including `~$*`, `*.bak`, `Backup of *`, `.DS_Store`, and `Thumbs.db`. A `.gigaignore` file at the root adds more patterns in `.gitignore` syntax; the `.gigaignore` file itself is committed. Files already on the branch are never ignored.
 

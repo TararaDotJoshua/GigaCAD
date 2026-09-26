@@ -1,15 +1,20 @@
 import { Worker } from 'node:worker_threads';
-import { parseModel, UnreadableFile, type ThumbnailFormat } from './parse.js';
+import { parseModel, UnreadableFile, type MeshFormat } from './parse.js';
 import { encodePng } from './png.js';
 import { renderMesh, THUMBNAIL_SIZE } from './render.js';
+import { fitPreview, readSolidWorksPreview } from './solidworks.js';
 
-export { UnreadableFile, type ThumbnailFormat } from './parse.js';
+export { UnreadableFile } from './parse.js';
 export { THUMBNAIL_SIZE } from './render.js';
+
+/** Mesh and CAD formats are drawn from their geometry; SolidWorks files use the picture saved inside them. */
+export type ThumbnailFormat = MeshFormat | 'solidworks';
 
 /** Turns a model file into a PNG thumbnail. Throws `UnreadableFile` for files that can't be drawn. */
 export async function makeThumbnail(bytes: Uint8Array, format: ThumbnailFormat): Promise<Uint8Array> {
-  const mesh = await parseModel(bytes, format);
-  return encodePng(THUMBNAIL_SIZE, THUMBNAIL_SIZE, renderMesh(mesh));
+  const pixels =
+    format === 'solidworks' ? fitPreview(readSolidWorksPreview(bytes), THUMBNAIL_SIZE) : renderMesh(await parseModel(bytes, format));
+  return encodePng(THUMBNAIL_SIZE, THUMBNAIL_SIZE, pixels);
 }
 
 export interface ThumbnailRenderer {

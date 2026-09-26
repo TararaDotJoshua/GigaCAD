@@ -112,6 +112,13 @@ export interface ProjectCard {
   thumbnailUrl: string | null;
 }
 
+/** A STEP or STL export of a SolidWorks file, made in SolidWorks and uploaded with it. */
+export interface FileExport {
+  format: 'stl' | 'step';
+  sha256: string;
+  size: number;
+}
+
 export interface ThumbnailLinks {
   /** Short-lived image links by file content hash. */
   thumbnails: Record<string, string>;

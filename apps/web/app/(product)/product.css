@@ -1515,6 +1515,16 @@
   margin-left: 4px;
 }
 
+/* "STEP" and "STL": downloads of a SolidWorks file's exports, sized like the icon buttons. */
+.shell .icon-button.text-button {
+  width: auto;
+  padding-inline: 7px;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
 .shell .model-dialog {
   width: min(960px, calc(100vw - 32px));
   max-height: calc(100svh - 32px);

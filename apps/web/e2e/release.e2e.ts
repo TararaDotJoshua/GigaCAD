@@ -25,10 +25,8 @@ async function api<T = any>(token: string, method: string, path: string, body?: 
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
-/** Check out, upload through the presigned URLs, commit a version, and check in, like the CLI does. */
-async function commitVersion(token: string, projectId: string, branchId: string, files: Record<string, string>) {
-  const checkout = await api(token, 'POST', `/v1/branches/${branchId}/checkout`, { machine: 'e2e' });
-  const contents = Object.values(files);
+/** Uploads file contents to a project through the presigned URLs, like the CLI does. */
+async function uploadContents(token: string, projectId: string, contents: readonly string[]) {
   const blobs = contents.map((content) => ({ sha256: sha256(content), size: Buffer.byteLength(content) }));
   const plan = await api(token, 'POST', `/v1/projects/${projectId}/blobs/uploads`, { blobs });
   for (const upload of plan.uploads) {
@@ -40,6 +38,13 @@ async function commitVersion(token: string, projectId: string, branchId: string,
     const done = await api(token, 'POST', `/v1/projects/${projectId}/blobs/complete`, { uploadIds: plan.uploads.map((upload: { uploadId: string }) => upload.uploadId) });
     if (done.failed.length > 0) throw new Error(`upload failed: ${JSON.stringify(done.failed)}`);
   }
+  return blobs;
+}
+
+/** Check out, upload through the presigned URLs, commit a version, and check in, like the CLI does. */
+async function commitVersion(token: string, projectId: string, branchId: string, files: Record<string, string>) {
+  const checkout = await api(token, 'POST', `/v1/branches/${branchId}/checkout`, { machine: 'e2e' });
+  const blobs = await uploadContents(token, projectId, Object.values(files));
   const commit = await api(token, 'POST', `/v1/branches/${branchId}/commits`, {
     parentId: checkout.headCommitId,
     machine: 'e2e',
@@ -240,6 +245,33 @@ test('previews a 3D file in the browser', async ({ page }) => {
     await page.reload();
     await expect(thumbnail).toBeVisible({ timeout: 1_000 });
     expect(await thumbnail.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth)).toBe(512);
+  }).toPass({ timeout: 90_000, intervals: [3_000] });
+});
+
+test('previews and downloads a SolidWorks part through its STL export', async ({ page }) => {
+  const facet = (a: string, b: string, c: string) => `facet normal 0 0 0\nouter loop\nvertex ${a}\nvertex ${b}\nvertex ${c}\nendloop\nendfacet`;
+  const stl = ['solid clip', facet('0 0 0', '10 0 0', '0 10 0'), facet('0 0 0', '0 0 10', '10 0 0'), facet('0 0 0', '0 10 0', '0 0 10'), facet('10 0 0', '0 0 10', '0 10 0'), 'endsolid clip'].join('\n');
+  const part = `clip ${randomUUID()}`;
+  const branch = await api(world.token, 'POST', `/v1/projects/${world.projectId}/branches`, { name: 'exports' });
+  await commitVersion(world.token, world.projectId, branch.id, { 'parts/Clip.SLDPRT': part });
+  const [exported] = await uploadContents(world.token, world.projectId, [stl]);
+  await api(world.token, 'PUT', `/v1/projects/${world.projectId}/exports`, { source: sha256(part), format: 'stl', blob: exported!.sha256 });
+
+  await logIn(page);
+  await page.goto(projectUrl('branches', 'exports'));
+  const row = page.getByRole('row', { name: /Clip\.SLDPRT/ });
+  await expect(row.getByRole('button', { name: 'Download Clip.SLDPRT as STL' })).toBeVisible();
+  await row.getByRole('button', { name: 'Preview Clip.SLDPRT' }).click();
+  const dialog = page.getByRole('dialog', { name: '3D preview of Clip.SLDPRT' });
+  await expect(dialog.locator('canvas')).toBeVisible();
+  await expect(dialog.getByRole('status')).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Close' }).click();
+
+  // The part's thumbnail is drawn from the STL.
+  const thumbnail = row.locator('.file-glyph img');
+  await expect(async () => {
+    await page.reload();
+    await expect(thumbnail).toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 90_000, intervals: [3_000] });
 });
 

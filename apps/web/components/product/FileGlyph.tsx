@@ -1,4 +1,5 @@
 import { AssemblyIcon, DrawingIcon, FileIcon, PartIcon } from '../icons';
+import { ZoomableThumbnail } from './ZoomableThumbnail';
 
 const KINDS: [RegExp, typeof PartIcon, string][] = [
   [/\.(sldasm|asm|iam|f3z)$/i, AssemblyIcon, 'Assembly'],
@@ -6,13 +7,13 @@ const KINDS: [RegExp, typeof PartIcon, string][] = [
   [/\.(sldprt|prt|ipt|f3d|fcstd|step|stp|iges|igs|stl|3mf|obj|x_t)$/i, PartIcon, 'Part'],
 ];
 
-/** A type glyph for a CAD file, or its thumbnail once the API has rendered one. */
+/** A type glyph for a CAD file, or its thumbnail once the API has rendered one (shown larger on hover). */
 export function FileGlyph({ path, thumbnailUrl }: { path: string; thumbnailUrl?: string | undefined }) {
   const [, Icon, label] = KINDS.find(([pattern]) => pattern.test(path)) ?? [null, FileIcon, 'File'];
   if (thumbnailUrl) {
     return (
       <span className="file-glyph has-thumbnail">
-        <img src={thumbnailUrl} alt="" width={36} height={36} loading="lazy" decoding="async" />
+        <ZoomableThumbnail src={thumbnailUrl} size={36} />
       </span>
     );
   }

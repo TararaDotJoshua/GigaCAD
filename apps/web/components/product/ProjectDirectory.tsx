@@ -6,7 +6,7 @@ import { BRANCH_STATUS_LABEL, branchTone } from '../../lib/describe';
 import { exportFilename, isSolidWorks, previewFormat } from '../../lib/preview';
 import { branchPath, entryPath, projectPath, releasePath, treePath } from '../../lib/paths';
 import { getDirectory, getFileExports, getRootFolders, getTags, getThumbnails, searchFiles, type FileQuery } from '../../lib/product';
-import { FolderIcon, LockIcon, SearchIcon } from '../icons';
+import { BranchIcon, CubeIcon, FolderIcon, LockIcon, SearchIcon } from '../icons';
 import { ActionButton } from './ActionButton';
 import { ActionForm } from './ActionForm';
 import { DownloadButton } from './DownloadButton';
@@ -331,7 +331,15 @@ async function DirectoryTable({
                 <td>
                   <span className="file-cell">
                     <span className="file-glyph" aria-hidden="true">
-                      {entry.virtual === 'release' ? <LockIcon className="icon" /> : <FolderIcon className="icon" />}
+                      {entry.virtual === 'branches' ? (
+                        <BranchIcon className="icon" />
+                      ) : entry.virtual === 'releases' ? (
+                        <CubeIcon className="icon" />
+                      ) : entry.virtual === 'release' ? (
+                        <LockIcon className="icon" />
+                      ) : (
+                        <FolderIcon className="icon" />
+                      )}
                     </span>
                     <Link href={treePath(owner, slug, entry.path)} className={entry.virtual === 'branches' || entry.virtual === 'releases' ? 'folder-name' : 'folder-name mono'}>
                       {entry.name}

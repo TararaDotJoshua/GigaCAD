@@ -153,6 +153,36 @@ function ProjectFiles() {
         branch that is also in v3, is listed once for each. Choose <strong>Recent</strong> to see the files
         changed most recently.
       </p>
+
+      <h2 id="readme">README</h2>
+      <p>
+        Add a file named <code>README.md</code> or <code>README.txt</code> to the project root and it shows
+        under the file list, so people see what the project is before they open anything. Capitals don’t
+        matter. If there are both, <code>README.md</code> is shown.
+      </p>
+      <p>
+        <code>README.md</code> is written in Markdown, with headings, lists, links, tables, and code blocks.
+        HTML in it shows as plain text. <code>README.txt</code> shows as written, line for line. A README
+        larger than 512 KB isn’t shown; people can still open and download it.
+      </p>
+      <p>
+        A <code>README.md</code> can show pictures and play videos from the project. Point to a file by its
+        path from the project root, with Markdown’s image syntax:
+      </p>
+      <Command>{`![The finished bench](photos/bench.jpg)
+![Assembly walkthrough](renders/assembly.mp4)
+![What shipped](Releases/v2/render.png)`}</Command>
+      <p>
+        Pictures can be PNG, JPEG, GIF, WebP, AVIF, or BMP. Videos can be MP4, M4V, WebM, MOV, or OGV; they
+        play in the page, and the text in brackets becomes their title. Paths can reach into{" "}
+        <strong>Branches</strong> and <strong>Releases</strong>, and spaces can be written as{" "}
+        <code>%20</code>. Pictures from other websites work too, by their full address. A README can
+        show up to 50 files from the project.
+      </p>
+      <p>
+        Only people who can see the project can see its pictures and videos. The links to them expire after
+        an hour, so reload a page that has been open longer if a video won’t start.
+      </p>
     </>
   );
 }
@@ -612,8 +642,8 @@ export const docs: DocSection[] = [
       {
         slug: "project-files",
         title: "Project files",
-        summary: "The project folder: root files and their revisions, branches, releases, tags, favorites, and search.",
-        outline: ["The project root", "Branches and releases", "Revisions of root files", "Tags", "Favorites", "Search and recent files"],
+        summary: "The project folder: root files and their revisions, branches, releases, tags, favorites, search, and the README.",
+        outline: ["The project root", "Branches and releases", "Revisions of root files", "Tags", "Favorites", "Search and recent files", "README"],
         body: ProjectFiles,
       },
       {

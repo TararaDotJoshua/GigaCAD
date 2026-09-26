@@ -130,6 +130,30 @@ export async function completeUploads(
   return { completed, failed };
 }
 
+/**
+ * Types a file can be served inline as, so a README can embed it. Only raster images and
+ * video: an SVG or HTML file served inline could run script.
+ */
+const INLINE_TYPES: Readonly<Record<string, string>> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  avif: 'image/avif',
+  bmp: 'image/bmp',
+  mp4: 'video/mp4',
+  m4v: 'video/mp4',
+  webm: 'video/webm',
+  mov: 'video/quicktime',
+  ogv: 'video/ogg',
+};
+
+export function inlineContentType(filename: string): string | undefined {
+  const extension = /\.([a-z0-9]+)$/i.exec(filename)?.[1]?.toLowerCase();
+  return extension ? INLINE_TYPES[extension] : undefined;
+}
+
 export async function planDownloads(
   sql: Sql,
   storage: BlobStorage,
@@ -137,6 +161,8 @@ export async function planDownloads(
   userId: string | null,
   sha256s: readonly string[],
   filenames: Readonly<Record<string, string>> = {},
+  /** Serve images and video, by their file names, for viewing in the page rather than saving. */
+  inline = false,
 ): Promise<{ downloads: readonly { sha256: string; url: string }[]; missing: readonly string[] }> {
   await projectAccess(sql, projectId, userId);
   const unique = [...new Set(sha256s)];
@@ -144,8 +170,13 @@ export async function planDownloads(
     select sha256 from project_blobs where project_id = ${projectId} and sha256 = any(${unique}::text[])
   `;
   const available = new Set(linked.map((row) => row.sha256));
+  const presign = (sha256: string) => {
+    const filename = filenames[sha256];
+    const contentType = inline && filename ? inlineContentType(filename) : undefined;
+    return storage.presignDownload(blobKey(sha256), filename, contentType);
+  };
   const downloads = await Promise.all(
-    unique.filter((sha) => available.has(sha)).map(async (sha256) => ({ sha256, url: await storage.presignDownload(blobKey(sha256), filenames[sha256]) })),
+    unique.filter((sha) => available.has(sha)).map(async (sha256) => ({ sha256, url: await presign(sha256) })),
   );
   return { downloads, missing: unique.filter((sha) => !available.has(sha)) };
 }

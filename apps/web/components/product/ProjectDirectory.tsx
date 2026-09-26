@@ -5,8 +5,8 @@ import type { DirectoryFile, DirectoryItem, DirectoryListing, FilePage, Project,
 import { BRANCH_STATUS_LABEL, branchTone } from '../../lib/describe';
 import { exportFilename, isSolidWorks, previewFormat } from '../../lib/preview';
 import { branchPath, entryPath, projectPath, releasePath, treePath } from '../../lib/paths';
-import { getDirectory, getFileExports, getRootFolders, getTags, getThumbnails, searchFiles, type FileQuery } from '../../lib/product';
-import { FolderIcon, LockIcon, SearchIcon } from '../icons';
+import { getDirectory, getFileExports, getReadme, getRootFolders, getTags, getThumbnails, searchFiles, type FileQuery } from '../../lib/product';
+import { BranchIcon, CubeIcon, FolderIcon, LockIcon, SearchIcon } from '../icons';
 import { ActionButton } from './ActionButton';
 import { ActionForm } from './ActionForm';
 import { DownloadButton } from './DownloadButton';
@@ -15,6 +15,7 @@ import { EmptyState } from './EmptyState';
 import { FavoriteButton } from './FavoriteButton';
 import { FileGlyph } from './FileGlyph';
 import { PreviewButton } from './PreviewButton';
+import { ProjectReadme } from './ProjectReadme';
 import { RelativeTime } from './RelativeTime';
 import { StatusBadge } from './StatusBadge';
 import { TagPicker } from './TagPicker';
@@ -64,6 +65,11 @@ export async function ProjectDirectory({ project, path, params, signedIn }: { pr
     getTags(project.id),
   ]);
   const page: FilePage<DirectoryItem> = listing ?? results!;
+  // The project root shows its README.md or README.txt under the files.
+  const readme =
+    listing && listing.location.area === 'root' && listing.location.path === ''
+      ? await getReadme(project.id, listing.entries, offset === 0 && listing.nextOffset === null)
+      : null;
   const canTag = project.role !== null && project.role !== 'viewer';
   const here = searching ? projectPath(owner, slug) : treePath(owner, slug, listing!.location.path);
 
@@ -164,6 +170,8 @@ export async function ProjectDirectory({ project, path, params, signedIn }: { pr
           )}
         </nav>
       )}
+
+      {readme && <ProjectReadme project={project} readme={readme} />}
     </div>
   );
 }
@@ -331,7 +339,15 @@ async function DirectoryTable({
                 <td>
                   <span className="file-cell">
                     <span className="file-glyph" aria-hidden="true">
-                      {entry.virtual === 'release' ? <LockIcon className="icon" /> : <FolderIcon className="icon" />}
+                      {entry.virtual === 'branches' ? (
+                        <BranchIcon className="icon" />
+                      ) : entry.virtual === 'releases' ? (
+                        <CubeIcon className="icon" />
+                      ) : entry.virtual === 'release' ? (
+                        <LockIcon className="icon" />
+                      ) : (
+                        <FolderIcon className="icon" />
+                      )}
                     </span>
                     <Link href={treePath(owner, slug, entry.path)} className={entry.virtual === 'branches' || entry.virtual === 'releases' ? 'folder-name' : 'folder-name mono'}>
                       {entry.name}

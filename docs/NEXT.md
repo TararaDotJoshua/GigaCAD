@@ -22,6 +22,7 @@ Live and verified in production:
 - Restoring deleted projects from Account within 30 days (#25).
 - Thumbnails for STL, OBJ, 3MF, STEP, and IGES files (#27), rendered by the API in a worker thread and shown in file lists and on Explore and profile cards.
 - GitHub-style user pages: an avatar, a bio, a location, and a website; a contribution graph of the last year (version commits, release requests, releases, and approvals); recent activity; and a Starred tab. Visitors only see activity in projects they can read.
+- Project file directory (#34): the project root holds files and folders with their own revisions, next to `Branches` and `Releases` folders. Tags, favorites, search, and recent files cover all three. Root entries are renamed, moved, and deleted from a right-click menu. Still open: whether to hide archived branches under `Branches` and in search.
 
 ## 1. Finish the launch checklist
 

@@ -1,6 +1,6 @@
 # Project file directory: progress and remaining work
 
-Implementation status for [FILE_DIRECTORY_PLAN.md](FILE_DIRECTORY_PLAN.md), as of 2026-09-26. Nothing is committed yet; everything below is uncommitted work on the `PDM` branch.
+Implementation status for [FILE_DIRECTORY_PLAN.md](FILE_DIRECTORY_PLAN.md), as of 2026-09-26. Shipped in #34.
 
 ## Done
 
@@ -76,9 +76,6 @@ Implementation status for [FILE_DIRECTORY_PLAN.md](FILE_DIRECTORY_PLAN.md), as o
    - Search runs `branch_file_changed()` once per branch-head file, which is fine at current sizes. On large projects, a stored "changed at" per manifest entry would remove the cost.
    - Folder listings load one folder's children, then sort and page in memory. That's fine for normal folders; folders with tens of thousands of entries would need SQL paging.
    - The activity feed deliberately skips tag renames, tag deletions, and file tag changes.
-2. **Release**, which needs the owner's go-ahead:
-   - Push the migration to production with `supabase db push` before merging, following `docs/NEXT.md`.
-   - Commit on `PDM` and open a pull request. All four CI jobs (`check`, `api-image`, `integration`, `e2e`) must pass.
-   - After merging, record the directory as shipped in `docs/NEXT.md`.
+2. **Released 2026-09-26.** The migration was pushed to production after CI passed on #34, then #34 was merged. The web app and API deployed from `dae7053`. A seeded `test-bench` project is on `@tararadotjoshua`.
 
 Paid GigaPDM features remain out of scope, as the plan says.

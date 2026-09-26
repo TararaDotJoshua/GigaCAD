@@ -735,6 +735,41 @@
   color: var(--ink);
 }
 
+/* A thumbnail shown larger beside itself after a short hover (ZoomableThumbnail). */
+.shell .thumbnail-zoom {
+  position: fixed;
+  z-index: 60;
+  display: block;
+  box-sizing: border-box;
+  padding: 10px;
+  border: 1px solid var(--line-ink);
+  border-radius: var(--r-md);
+  background: var(--paper);
+  box-shadow: 0 24px 60px -18px rgb(10 41 34 / 0.35);
+  pointer-events: none;
+  animation: thumbnail-zoom-in 120ms ease-out;
+}
+
+.shell .thumbnail-zoom img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+@keyframes thumbnail-zoom-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell .thumbnail-zoom {
+    animation: none;
+  }
+}
+
 /* A rendered thumbnail fills the tile. */
 .shell .file-glyph.has-thumbnail {
   width: 36px;

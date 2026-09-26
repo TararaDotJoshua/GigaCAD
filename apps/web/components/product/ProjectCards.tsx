@@ -4,6 +4,7 @@ import { projectPath } from '../../lib/paths';
 import { PartIcon, StarIcon } from '../icons';
 import { RelativeTime } from './RelativeTime';
 import { StatusBadge } from './StatusBadge';
+import { ZoomableThumbnail } from './ZoomableThumbnail';
 
 /** Projects as Explore and profile pages list them. */
 export function ProjectCards({ projects, showOwner = true }: { projects: readonly ProjectCard[]; showOwner?: boolean }) {
@@ -11,8 +12,8 @@ export function ProjectCards({ projects, showOwner = true }: { projects: readonl
     <ul className="project-cards">
       {projects.map((project) => (
         <li key={project.id} className="project-card">
-          <div className="project-card-cover" aria-hidden="true">
-            {project.thumbnailUrl ? <img src={project.thumbnailUrl} alt="" width={96} height={96} loading="lazy" decoding="async" /> : <PartIcon className="icon" />}
+          <div className="project-card-cover">
+            {project.thumbnailUrl ? <ZoomableThumbnail src={project.thumbnailUrl} size={96} /> : <PartIcon className="icon" />}
           </div>
           <div className="project-card-head">
             <Link href={projectPath(project.ownerHandle, project.slug)} className="project-card-name">

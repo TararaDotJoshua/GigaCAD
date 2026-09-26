@@ -240,12 +240,23 @@ test('previews a 3D file in the browser', async ({ page }) => {
   await expect(dialog).toBeHidden();
 
   // The API renders a thumbnail in the background; it replaces the file glyph once ready.
-  const thumbnail = page.getByRole('row', { name: /bracket\.stl/ }).locator('.file-glyph img');
+  const thumbnail = page.getByRole('row', { name: /bracket\.stl/ }).locator('.file-glyph > img');
   await expect(async () => {
     await page.reload();
     await expect(thumbnail).toBeVisible({ timeout: 1_000 });
     expect(await thumbnail.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth)).toBe(512);
   }).toPass({ timeout: 90_000, intervals: [3_000] });
+
+  // Resting on it for half a second shows it larger; moving away hides it.
+  const zoom = page.locator('.thumbnail-zoom');
+  await thumbnail.hover();
+  await page.waitForTimeout(200);
+  await expect(zoom).toHaveCount(0);
+  await expect(zoom).toBeVisible();
+  // It scales in over 120ms, then settles at 320px.
+  await expect.poll(async () => (await zoom.boundingBox())?.width).toBe(320);
+  await page.mouse.move(0, 0);
+  await expect(zoom).toHaveCount(0);
 });
 
 test('previews and downloads a SolidWorks part through its STL export', async ({ page }) => {
@@ -268,7 +279,7 @@ test('previews and downloads a SolidWorks part through its STL export', async ({
   await dialog.getByRole('button', { name: 'Close' }).click();
 
   // The part's thumbnail is drawn from the STL.
-  const thumbnail = row.locator('.file-glyph img');
+  const thumbnail = row.locator('.file-glyph > img');
   await expect(async () => {
     await page.reload();
     await expect(thumbnail).toBeVisible({ timeout: 1_000 });

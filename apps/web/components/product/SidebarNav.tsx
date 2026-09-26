@@ -7,6 +7,7 @@ import { projectPath } from '../../lib/paths';
 import { createClient } from '../../lib/supabase/client';
 import { BranchIcon, LockIcon, LogOutIcon, MenuIcon, SearchIcon, StarIcon } from '../icons';
 import { Logo } from '../Logo';
+import { Avatar } from './Avatar';
 
 export interface NavProject {
   readonly owner: string;
@@ -25,7 +26,7 @@ export function SidebarNav({
   current,
 }: {
   /** Null for a signed-out visitor to a public page. */
-  me: { handle: string } | null;
+  me: { handle: string; avatarUrl: string | null } | null;
   /** The dashboard's path: `/` on the app host, `/app` in local development. */
   home: string;
   projects: readonly NavProject[];
@@ -83,8 +84,8 @@ export function SidebarNav({
 
         {me ? (
           <div className="shell-account">
-            <Link href="/settings" className={pathname === '/settings' || pathname.startsWith('/settings/') ? 'is-active' : undefined} onClick={() => setOpen(false)}>
-              <span className="avatar">{me.handle.slice(0, 1).toUpperCase()}</span>@{me.handle}
+            <Link href={`/${me.handle}`} className={pathname === `/${me.handle}` ? 'is-active' : undefined} onClick={() => setOpen(false)}>
+              <Avatar handle={me.handle} url={me.avatarUrl} />@{me.handle}
             </Link>
             <button type="button" onClick={logOut} title="Log out">
               <LogOutIcon className="icon" />

@@ -55,6 +55,7 @@ export const getExplore = cache((q: string, sort: 'stars' | 'recent') =>
   get<ProjectCard[]>(`/v1/explore?${new URLSearchParams({ sort, ...(q ? { q } : {}) })}`),
 );
 export const getUserPage = cache((handle: string) => orNotFound(get<UserPage>(`/v1/users/${encodeURIComponent(handle)}`)));
+export const getUserStars = cache((handle: string) => orNotFound(get<ProjectCard[]>(`/v1/users/${encodeURIComponent(handle)}/stars`)));
 /** Thumbnail links for a project's files. They're a nicety, so a failure shows file glyphs instead of an error. */
 export async function getThumbnails(projectId: string, sha256s: readonly string[]): Promise<Record<string, string>> {
   if (sha256s.length === 0) return {};

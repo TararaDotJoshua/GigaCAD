@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
 import { idParams, parse, requireCaller, viewerId } from '../http.js';
+import { withAvatars } from '../services/profiles.js';
 import {
   createProject,
   deleteProject,
@@ -23,7 +24,7 @@ const role = z.enum(['owner', 'maintainer', 'contributor', 'viewer']);
 export const visibility = z.enum(['public', 'private']);
 export const slug = z.string().regex(/^[a-z0-9](?:[a-z0-9._-]{0,98}[a-z0-9])?$/, 'Use lowercase letters, digits, dots, dashes, or underscores');
 
-export function projectRoutes(app: FastifyInstance, { sql }: AppDeps): void {
+export function projectRoutes(app: FastifyInstance, { sql, storage }: AppDeps): void {
   app.post('/v1/projects', async (request, reply) => {
     const { userId } = requireCaller(request);
     const input = parse(
@@ -77,20 +78,20 @@ export function projectRoutes(app: FastifyInstance, { sql }: AppDeps): void {
 
   app.get('/v1/projects/:id/members', async (request) => {
     const { id } = parse(idParams, request.params);
-    return listMembers(sql, id, viewerId(request));
+    return withAvatars(storage, await listMembers(sql, id, viewerId(request)));
   });
 
   app.put('/v1/projects/:id/members', async (request) => {
     const { id } = parse(idParams, request.params);
     const input = parse(z.object({ handle: z.string().min(1).max(39), role }), request.body);
     await setMember(sql, id, requireCaller(request).userId, input.handle, input.role);
-    return listMembers(sql, id, requireCaller(request).userId);
+    return withAvatars(storage, await listMembers(sql, id, requireCaller(request).userId));
   });
 
   app.delete('/v1/projects/:id/members/:handle', async (request) => {
     const { id, handle } = parse(idParams.extend({ handle: z.string().min(1).max(39) }), request.params);
     await setMember(sql, id, requireCaller(request).userId, handle, null);
-    return listMembers(sql, id, requireCaller(request).userId);
+    return withAvatars(storage, await listMembers(sql, id, requireCaller(request).userId));
   });
 
   app.get('/v1/projects/:id/approval-rules', async (request) => {

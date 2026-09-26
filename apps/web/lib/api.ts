@@ -5,6 +5,7 @@ import type {
   BillingInterval,
   CandidateError,
   CandidateWarning,
+  ContributionDay,
   ManifestEntry,
   PickRow,
   Picks,
@@ -59,6 +60,11 @@ export interface Profile {
   id: string;
   handle: string;
   displayName: string | null;
+  bio: string | null;
+  location: string | null;
+  website: string | null;
+  /** A short-lived link to the avatar image, if the user uploaded one. */
+  avatarUrl: string | null;
   quotaBytes?: number;
   createdAt?: string;
 }
@@ -126,8 +132,35 @@ export interface ThumbnailLinks {
 }
 
 export interface UserPage {
-  profile: { handle: string; displayName: string | null; createdAt: string };
+  profile: {
+    handle: string;
+    displayName: string | null;
+    bio: string | null;
+    location: string | null;
+    website: string | null;
+    avatarUrl: string | null;
+    createdAt: string;
+    /** Stars the user gave, to projects the viewer can see. */
+    starCount: number;
+  };
   projects: ProjectCard[];
+  /** Contributions per UTC day over the last year, in projects the viewer can see. */
+  contributions: ContributionDay[];
+  activity: Activity[];
+}
+
+/** Something a user did, as their page lists it. */
+export interface Activity {
+  kind: 'commit' | 'release_request' | 'release' | 'approval';
+  createdAt: string;
+  ownerHandle: string;
+  projectSlug: string;
+  projectName: string;
+  number: number | null;
+  title: string | null;
+  versionLabel: string | null;
+  branchName: string | null;
+  commitId: string | null;
 }
 
 /** A project its owner deleted that can still be restored. */
@@ -144,6 +177,7 @@ export interface Member {
   userId: string;
   handle: string;
   displayName: string | null;
+  avatarUrl: string | null;
   role: ProjectRole;
 }
 

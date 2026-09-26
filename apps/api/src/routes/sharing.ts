@@ -2,9 +2,11 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
 import { idParams, parse, requireCaller, viewerId } from '../http.js';
-import { exploreProjects, forkProject, starProject, userProfile } from '../services/sharing.js';
+import { exploreProjects, forkProject, starProject, starredProjects, userProfile } from '../services/sharing.js';
 import { withCovers } from '../services/thumbnails.js';
 import { slug, visibility } from './projects.js';
+
+const handleParams = z.object({ handle: z.string().min(1).max(39) });
 
 export function sharingRoutes(app: FastifyInstance, { sql, storage }: AppDeps): void {
   app.get('/v1/explore', async (request) => {
@@ -21,9 +23,14 @@ export function sharingRoutes(app: FastifyInstance, { sql, storage }: AppDeps): 
   });
 
   app.get('/v1/users/:handle', async (request) => {
-    const { handle } = parse(z.object({ handle: z.string().min(1).max(39) }), request.params);
-    const page = await userProfile(sql, handle, viewerId(request));
+    const { handle } = parse(handleParams, request.params);
+    const page = await userProfile(sql, storage, handle, viewerId(request));
     return { ...page, projects: await withCovers(storage, page.projects) };
+  });
+
+  app.get('/v1/users/:handle/stars', async (request) => {
+    const { handle } = parse(handleParams, request.params);
+    return withCovers(storage, await starredProjects(sql, handle, viewerId(request)));
   });
 
   app.put('/v1/projects/:id/star', async (request) => {

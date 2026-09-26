@@ -153,6 +153,27 @@ test('picks files, generates the candidate, approves, and releases', async ({ pa
   ]);
 });
 
+test("shows contributions on the user's page, private ones only to them", async ({ page, browser }) => {
+  await logIn(page);
+  // The account link in the sidebar opens your own page, and "Edit profile" there opens settings.
+  await page.getByRole('link', { name: `@${world.handle}`, exact: true }).click();
+  await page.waitForURL(`**/${world.handle}`);
+  await expect(page.getByRole('link', { name: 'Edit profile' })).toHaveAttribute('href', '/settings');
+  const heading = page.getByRole('heading', { name: /contributions? in the last year$/ });
+  const total = Number((await heading.textContent())?.match(/^(\d+)/)?.[1]);
+  // v1: a commit, a release request, an approval, and a release. Then the branch's commit, its request, and v2's approval and release.
+  expect(total).toBeGreaterThanOrEqual(8);
+  await expect(page.locator('.contrib-graph rect:not(.contrib-level-0)')).not.toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'v2', exact: true })).toHaveAttribute('href', projectUrl('releases', 2));
+
+  // Robot is private, so a visitor sees none of it.
+  const visitor = await (await browser.newContext()).newPage();
+  await visitor.goto(`/${world.handle}`);
+  await expect(visitor.getByRole('heading', { name: '0 contributions in the last year' })).toBeVisible();
+  await expect(visitor.getByRole('link', { name: 'v2', exact: true })).toHaveCount(0);
+  await visitor.context().close();
+});
+
 test('refreshes a private project page when something happens in it', async ({ page }) => {
   await logIn(page);
   // Realtime confirms the Postgres subscription once row-level security has let the session in.
@@ -299,7 +320,7 @@ test('every page type answers with the right status', async ({ page, browser }) 
     expect((await signedOut.request.get(path, { maxRedirects: 0 })).status(), path).toBe(200);
   }
   // Explore and profiles are public. Account pages and private projects send visitors to sign in.
-  for (const path of ['/explore', '/explore?sort=recent&q=gear', `/${world.handle}`]) {
+  for (const path of ['/explore', '/explore?sort=recent&q=gear', `/${world.handle}`, `/${world.handle}?tab=starred`]) {
     expect((await signedOut.request.get(path, { maxRedirects: 0 })).status(), path).toBe(200);
   }
   for (const path of ['/app', projectUrl()]) {
@@ -318,6 +339,7 @@ test('every page type answers with the right status', async ({ page, browser }) 
     '/settings/billing',
     '/explore',
     `/${world.handle}`,
+    `/${world.handle}?tab=starred`,
     projectUrl(),
     projectUrl('fork'),
     projectUrl('branches'),

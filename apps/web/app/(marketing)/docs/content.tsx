@@ -208,6 +208,113 @@ scratch/`}</Command>
   );
 }
 
+function PublicProjects() {
+  return (
+    <>
+      <p>
+        A public project can be seen by anyone, with or without an account: its files, releases, branches,
+        and release requests. Only its members can change it. Public projects are listed on{" "}
+        <a href="https://app.gigacad.site/explore">Explore</a> and on their owner’s profile page.
+      </p>
+
+      <h2 id="make-a-project-public">Make a project public</h2>
+      <p>
+        Owners and maintainers can change who sees a project under <strong>Settings</strong> on the project.
+        Making it private again hides it from everyone who isn’t a member, including from Explore.
+      </p>
+
+      <h2 id="choose-a-license">Choose a license</h2>
+      <p>
+        Set a license in the project’s settings so people know what they may do with your designs. A fork
+        starts with the license of the project it came from.
+      </p>
+
+      <h2 id="fork-a-release">Fork a release</h2>
+      <p>
+        To build on someone else’s design, open the project and choose <strong>Fork</strong>. Pick a
+        release, a name, and an address. GigaCAD copies that release into a new project you own, as its v1,
+        and links back to where it came from.
+      </p>
+      <ul>
+        <li>The fork’s history starts fresh. Its parts get their own identities, so nothing you do affects the original.</li>
+        <li>Its files count against your storage. Files you already store in your own projects don’t count twice.</li>
+        <li>A fork of a private project stays private, visible only to people you add.</li>
+      </ul>
+
+      <h2 id="stars">Stars</h2>
+      <p>
+        Choose <strong>Star</strong> on a project to show you like it and to help others find it. Explore sorts
+        by stars by default, and you can search it by name, owner, or description.
+      </p>
+    </>
+  );
+}
+
+function DeletingProjects() {
+  return (
+    <>
+      <h2 id="delete-a-project">Delete a project</h2>
+      <p>
+        Only a project’s owner can delete it. Open the project’s <strong>Settings</strong>, go to{" "}
+        <strong>Delete project</strong>, and type the project’s address to confirm. The project disappears
+        for everyone right away, and it stops counting against your storage.
+      </p>
+
+      <h2 id="restore-a-deleted-project">Restore a deleted project</h2>
+      <p>
+        For 30 days, you can bring it back from <strong>Account</strong>, under{" "}
+        <strong>Deleted projects</strong>. Everything returns as it was: releases, branches, members, and
+        settings. While it’s deleted, its address stays reserved, so nobody can take it.
+      </p>
+
+      <h2 id="whats-kept-and-what-isnt">What’s kept and what isn’t</h2>
+      <p>
+        After 30 days the project is permanently deleted, with all its releases, branches, and history. Files
+        no other project uses are removed from storage. This can’t be undone. Forks other people made are
+        separate projects, so they stay.
+      </p>
+    </>
+  );
+}
+
+function PlansAndStorage() {
+  return (
+    <>
+      <p>
+        Every plan includes every feature and unlimited collaborators. Plans differ only in how much you can
+        store. See <a href="/pricing">Pricing</a> for the current plans.
+      </p>
+
+      <h2 id="how-storage-counts">How storage counts</h2>
+      <ul>
+        <li>Each file version counts once, no matter how many branches, releases, or of your projects use it.</li>
+        <li>Everything in a project counts against its owner, including uploads by other members.</li>
+        <li>Autosaves count until they’re cleared by the next version or release. Cleared files stop counting within a day.</li>
+        <li>Deleted projects stop counting right away, and count again if you restore them.</li>
+      </ul>
+      <p>
+        Your usage is under <strong>Account</strong>, in <strong>Plan and storage</strong>.
+      </p>
+
+      <h2 id="when-youre-full">When you’re full</h2>
+      <p>
+        Uploads to your projects pause, for you and for anyone else working in them. Everything stays readable
+        and downloadable. To keep going, delete files you no longer need, delete a project, or choose a bigger
+        plan.
+      </p>
+
+      <h2 id="change-or-cancel-a-plan">Change or cancel a plan</h2>
+      <p>
+        Choose a plan in <strong>Plan and storage</strong>, or open <strong>Manage billing</strong> to switch,
+        cancel, update your card, or download invoices. Switching takes effect right away, and the difference
+        is charged or credited for the rest of the period. Canceling keeps your plan until the end of the
+        period you paid for. Stripe sells plans for GigaCAD through Link and adds any sales tax or VAT at
+        checkout. Your statement shows <code>LINK.COM* GIGACAD</code>.
+      </p>
+    </>
+  );
+}
+
 function Cli() {
   return (
     <>
@@ -489,12 +596,21 @@ export const docs: DocSection[] = [
         title: "Public projects and forks",
         summary: "Share a project with everyone and let people fork its releases.",
         outline: ["Make a project public", "Choose a license", "Fork a release", "Stars"],
+        body: PublicProjects,
       },
       {
         slug: "deleting-projects",
         title: "Delete a project",
         summary: "Delete a project and restore it within 30 days.",
         outline: ["Delete a project", "Restore a deleted project", "What’s kept and what isn’t"],
+        body: DeletingProjects,
+      },
+      {
+        slug: "plans-and-storage",
+        title: "Plans and storage",
+        summary: "How storage is counted, what happens when you’re full, and how to change plans.",
+        outline: ["How storage counts", "When you’re full", "Change or cancel a plan"],
+        body: PlansAndStorage,
       },
     ],
   },

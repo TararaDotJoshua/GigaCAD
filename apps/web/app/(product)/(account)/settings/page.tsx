@@ -1,13 +1,13 @@
 import Link from 'next/link';
 import { formatBytes, getPlan, isPlaceholderHandle } from '@gigacad/core';
-import { saveProfile, signOutDevice } from '../../actions';
+import { restoreProject, saveProfile, signOutDevice } from '../../actions';
 import { ActionButton } from '../../../../components/product/ActionButton';
 import { ActionForm } from '../../../../components/product/ActionForm';
 import { EmptyState } from '../../../../components/product/EmptyState';
 import { HandleField } from '../../../../components/product/HandleField';
 import { PageHead } from '../../../../components/product/PageHead';
 import { RelativeTime } from '../../../../components/product/RelativeTime';
-import { apiRequest, type DeviceToken } from '../../../../lib/api';
+import { apiRequest, type DeletedProject, type DeviceToken } from '../../../../lib/api';
 import { dashboardPath } from '../../../../lib/hosts';
 import { getBilling, getMe } from '../../../../lib/product';
 import { requireAccessToken } from '../../../../lib/session';
@@ -15,7 +15,13 @@ import { requireAccessToken } from '../../../../lib/session';
 export const metadata = { title: 'Account' };
 
 export default async function AccountSettings() {
-  const [me, billing, devices] = await Promise.all([getMe(), getBilling(), apiRequest<DeviceToken[]>(await requireAccessToken(), '/v1/me/tokens')]);
+  const token = await requireAccessToken();
+  const [me, billing, devices, deleted] = await Promise.all([
+    getMe(),
+    getBilling(),
+    apiRequest<DeviceToken[]>(token, '/v1/me/tokens'),
+    apiRequest<DeletedProject[]>(token, '/v1/me/deleted-projects'),
+  ]);
   return (
     <div className="page page-narrow">
       <PageHead crumbs={[{ label: 'Your projects', href: dashboardPath() }, { label: 'Account' }]} title="Account." />
@@ -43,6 +49,43 @@ export default async function AccountSettings() {
           </Link>
         </p>
       </section>
+
+      {deleted.length > 0 && (
+        <section className="section">
+          <h2>Deleted projects</h2>
+          <p className="section-intro">A deleted project can be restored for 30 days, with everything in it. After that it’s gone for good.</p>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th scope="col">Project</th>
+                <th scope="col">Deleted</th>
+                <th scope="col">Removed for good</th>
+                <th scope="col">
+                  <span className="sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {deleted.map((project) => (
+                <tr key={project.id}>
+                  <td>
+                    {project.name} <span className="mono muted">{project.slug}</span>
+                  </td>
+                  <td className="muted">
+                    <RelativeTime value={project.deletedAt} />
+                  </td>
+                  <td className="muted">{daysLeft(project.purgeAt)}</td>
+                  <td className="cell-action">
+                    <ActionButton action={restoreProject.bind(null, project.id)} className="btn btn-secondary btn-small" pendingLabel="Restoring…">
+                      Restore
+                    </ActionButton>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
 
       <section className="section">
         <h2>Devices</h2>
@@ -86,4 +129,9 @@ export default async function AccountSettings() {
       </section>
     </div>
   );
+}
+
+function daysLeft(purgeAt: string): string {
+  const days = Math.max(1, Math.ceil((new Date(purgeAt).getTime() - Date.now()) / 86_400_000));
+  return days === 1 ? 'In 1 day' : `In ${days} days`;
 }

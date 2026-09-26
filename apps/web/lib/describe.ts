@@ -115,6 +115,8 @@ export function describeEvent(
   switch (event.kind) {
     case 'project_created':
       return `${who} created the project`;
+    case 'project_restored':
+      return `${who} restored the project`;
     case 'branch_created':
       return `${who} created branch ${String(payload.name)}`;
     case 'branch_checked_out':

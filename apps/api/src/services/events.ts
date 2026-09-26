@@ -4,6 +4,8 @@ import type { Db } from '../db.js';
 export type EventKind =
   | 'project_created'
   | 'project_updated'
+  | 'project_deleted'
+  | 'project_restored'
   | 'member_changed'
   | 'approval_rules_changed'
   | 'branch_created'

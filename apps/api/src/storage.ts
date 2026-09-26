@@ -31,6 +31,9 @@ export interface BlobStorage {
   stat(key: string): Promise<StoredObject | null>;
   copy(fromKey: string, toKey: string): Promise<void>;
   remove(key: string): Promise<void>;
+  /** Reads a whole object; for the server's own work, like making thumbnails. */
+  read(key: string): Promise<Uint8Array>;
+  write(key: string, body: Uint8Array, contentType: string): Promise<void>;
 }
 
 export const MAX_SINGLE_UPLOAD_BYTES = 5 * 1024 ** 3;
@@ -38,6 +41,7 @@ const URL_LIFETIME_SECONDS = 60 * 60;
 
 export const blobKey = (sha256: string) => `blobs/${sha256.slice(0, 2)}/${sha256}`;
 export const stagingKey = (uploadId: string) => `uploads/${uploadId}`;
+export const thumbnailKey = (sha256: string) => `thumbnails/${sha256.slice(0, 2)}/${sha256}.png`;
 export const sha256Base64 = (sha256: string) => Buffer.from(sha256, 'hex').toString('base64');
 
 /** An attachment header that survives any file name: an ASCII fallback plus the exact UTF-8 name (RFC 6266). */
@@ -92,6 +96,16 @@ export function createS3Storage(config: Config): BlobStorage {
 
     async remove(key) {
       await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+    },
+
+    async read(key) {
+      const response = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+      if (!response.Body) throw new Error(`Empty object ${key}`);
+      return response.Body.transformToByteArray();
+    },
+
+    async write(key, body, contentType) {
+      await client.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: contentType }));
     },
   };
 }

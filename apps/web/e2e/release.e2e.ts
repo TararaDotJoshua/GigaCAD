@@ -233,6 +233,14 @@ test('previews a 3D file in the browser', async ({ page }) => {
   await expect(dialog.getByRole('status')).toHaveCount(0);
   await dialog.getByRole('button', { name: 'Close' }).click();
   await expect(dialog).toBeHidden();
+
+  // The API renders a thumbnail in the background; it replaces the file glyph once ready.
+  const thumbnail = page.getByRole('row', { name: /bracket\.stl/ }).locator('.file-glyph img');
+  await expect(async () => {
+    await page.reload();
+    await expect(thumbnail).toBeVisible({ timeout: 1_000 });
+    expect(await thumbnail.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth)).toBe(512);
+  }).toPass({ timeout: 90_000, intervals: [3_000] });
 });
 
 test('every page type answers with the right status', async ({ page, browser }) => {

@@ -19,6 +19,7 @@ export interface ProjectCard {
   readonly createdAt: Date;
   readonly latestReleaseNumber: number | null;
   readonly starCount: number;
+  readonly thumbnailSha: string | null;
 }
 
 export async function starProject(sql: Sql, projectId: string, userId: string, starred: boolean): Promise<{ starred: boolean; starCount: number }> {
@@ -37,7 +38,8 @@ export async function exploreProjects(
   return sql<ProjectCard[]>`
     select p.id, o.handle as owner_handle, p.slug, p.name, p.description, p.visibility, p.license, p.created_at,
            (select max(number) from releases r where r.project_id = p.id) as latest_release_number,
-           (select count(*)::int from stars s where s.project_id = p.id) as star_count
+           (select count(*)::int from stars s where s.project_id = p.id) as star_count,
+           project_thumbnail(p.id) as thumbnail_sha
     from projects p join profiles o on o.id = p.owner_id
     where p.visibility = 'public' and p.deleted_at is null
       ${pattern ? sql`and (p.name ilike ${pattern} or p.slug ilike ${pattern} or p.description ilike ${pattern} or o.handle ilike ${pattern})` : sql``}
@@ -56,7 +58,8 @@ export async function userProfile(sql: Sql, handle: string, viewerId: string | n
   const projects = await sql<ProjectCard[]>`
     select p.id, ${profile.handle}::text as owner_handle, p.slug, p.name, p.description, p.visibility, p.license, p.created_at,
            (select max(number) from releases r where r.project_id = p.id) as latest_release_number,
-           (select count(*)::int from stars s where s.project_id = p.id) as star_count
+           (select count(*)::int from stars s where s.project_id = p.id) as star_count,
+           project_thumbnail(p.id) as thumbnail_sha
     from projects p
     where p.owner_id = ${profile.id} and p.deleted_at is null ${self ? sql`` : sql`and p.visibility = 'public'`}
     order by p.created_at desc

@@ -1,11 +1,13 @@
 import type { ManifestEntry } from '@gigacad/core';
 import { previewFormat } from '../../lib/preview';
+import { getThumbnails } from '../../lib/product';
 import { DownloadButton } from './DownloadButton';
 import { FileGlyph } from './FileGlyph';
 import { PreviewButton } from './PreviewButton';
 
-/** The files of one snapshot, sorted as the API returns them (by path). */
-export function FileTable({ projectId, files, download = true }: { projectId: string; files: readonly ManifestEntry[]; download?: boolean }) {
+/** The files of one snapshot, sorted as the API returns them (by path), with thumbnails where they're ready. */
+export async function FileTable({ projectId, files, download = true }: { projectId: string; files: readonly ManifestEntry[]; download?: boolean }) {
+  const thumbnails = await getThumbnails(projectId, files.filter((file) => previewFormat(file.path)).map((file) => file.blob));
   return (
     <table className="data-table file-table">
       <thead>
@@ -26,7 +28,7 @@ export function FileTable({ projectId, files, download = true }: { projectId: st
           <tr key={file.itemId}>
             <td>
               <span className="file-cell">
-                <FileGlyph path={file.path} />
+                <FileGlyph path={file.path} thumbnailUrl={thumbnails[file.blob]} />
                 <span className="mono">{file.path}</span>
               </span>
             </td>

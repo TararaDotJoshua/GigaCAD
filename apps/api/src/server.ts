@@ -3,6 +3,8 @@ import { createAuthenticator } from './auth.js';
 import { loadConfig } from './config.js';
 import { createSql } from './db.js';
 import { runJobs } from './jobs.js';
+import { generateThumbnails } from './thumbnails/job.js';
+import { workerRenderer } from './thumbnails/index.js';
 import { createResendMailer } from './mail.js';
 import { createStripePayments } from './payments.js';
 import { createS3Storage } from './storage.js';
@@ -39,6 +41,24 @@ const timers =
   config.JOBS_INTERVAL_MINUTES > 0
     ? [setTimeout(jobs, 60_000), setInterval(jobs, config.JOBS_INTERVAL_MINUTES * 60_000)]
     : [];
+
+// Thumbnails render in a worker thread, one run at a time; the worker is closed after each run to free its memory.
+const renderer = workerRenderer();
+let rendering = false;
+const thumbnails = async () => {
+  if (rendering) return;
+  rendering = true;
+  try {
+    const finished = await generateThumbnails({ sql, storage, renderer });
+    if (finished) app.log.info({ thumbnails: finished }, 'thumbnails');
+  } catch (error) {
+    app.log.error(error, 'thumbnails failed');
+  } finally {
+    await renderer.close();
+    rendering = false;
+  }
+};
+if (config.THUMBNAILS_INTERVAL_SECONDS > 0) timers.push(setInterval(thumbnails, config.THUMBNAILS_INTERVAL_SECONDS * 1000));
 
 const shutdown = async () => {
   timers.forEach((timer) => clearTimeout(timer));

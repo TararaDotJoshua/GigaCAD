@@ -3,9 +3,10 @@ import { z } from 'zod';
 import type { AppDeps } from '../app.js';
 import { idParams, parse, requireCaller, viewerId } from '../http.js';
 import { exploreProjects, forkProject, starProject, userProfile } from '../services/sharing.js';
+import { withCovers } from '../services/thumbnails.js';
 import { slug, visibility } from './projects.js';
 
-export function sharingRoutes(app: FastifyInstance, { sql }: AppDeps): void {
+export function sharingRoutes(app: FastifyInstance, { sql, storage }: AppDeps): void {
   app.get('/v1/explore', async (request) => {
     const query = parse(
       z.object({
@@ -16,12 +17,13 @@ export function sharingRoutes(app: FastifyInstance, { sql }: AppDeps): void {
       }),
       request.query,
     );
-    return exploreProjects(sql, query);
+    return withCovers(storage, await exploreProjects(sql, query));
   });
 
   app.get('/v1/users/:handle', async (request) => {
     const { handle } = parse(z.object({ handle: z.string().min(1).max(39) }), request.params);
-    return userProfile(sql, handle, viewerId(request));
+    const page = await userProfile(sql, handle, viewerId(request));
+    return { ...page, projects: await withCovers(storage, page.projects) };
   });
 
   app.put('/v1/projects/:id/star', async (request) => {

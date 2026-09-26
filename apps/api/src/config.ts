@@ -19,6 +19,8 @@ const schema = z.object({
   WEB_ORIGIN: z.url().default('http://localhost:3000'),
   /** Minutes between background job runs (storage cleanup, purges, stale checkout notices). 0 turns them off. */
   JOBS_INTERVAL_MINUTES: z.coerce.number().int().min(0).default(60),
+  /** Seconds between checks for thumbnails to render. 0 turns thumbnails off. */
+  THUMBNAILS_INTERVAL_SECONDS: z.coerce.number().int().min(0).default(15),
   /** Resend API key for stale checkout notices. Without it the notices are skipped. */
   RESEND_API_KEY: z.string().min(1).optional(),
   MAIL_FROM: z.string().default('GigaCAD <no-reply@send.gigacad.site>'),

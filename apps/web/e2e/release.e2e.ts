@@ -155,7 +155,10 @@ test('picks files, generates the candidate, approves, and releases', async ({ pa
 
 test("shows contributions on the user's page, private ones only to them", async ({ page, browser }) => {
   await logIn(page);
-  await page.goto(`/${world.handle}`);
+  // The account link in the sidebar opens your own page; the gear next to it opens settings.
+  await page.getByRole('link', { name: `@${world.handle}`, exact: true }).click();
+  await page.waitForURL(`**/${world.handle}`);
+  await expect(page.getByRole('link', { name: 'Account settings' })).toHaveAttribute('href', '/settings');
   const heading = page.getByRole('heading', { name: /contributions? in the last year$/ });
   const total = Number((await heading.textContent())?.match(/^(\d+)/)?.[1]);
   // v1: a commit, a release request, an approval, and a release. Then the branch's commit, its request, and v2's approval and release.

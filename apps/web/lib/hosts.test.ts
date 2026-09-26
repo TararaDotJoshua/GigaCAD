@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isAsset, routeRequest } from './hosts';
+import { isAsset, isPublicBrowsePath, routeRequest } from './hosts';
 
 const prod = { siteUrl: 'https://gigacad.site', appUrl: 'https://app.gigacad.site' };
 const local = { siteUrl: 'http://localhost:3000', appUrl: 'http://localhost:3000' };
@@ -37,5 +37,10 @@ describe('routeRequest', () => {
     expect(routeRequest('app.gigacad.site', '/favicon.ico', '', prod)).toEqual({ kind: 'next' });
     expect(isAsset('/_next/static/chunk.js')).toBe(true);
     expect(isAsset('/alex/robot.v2')).toBe(false);
+  });
+
+  it('lets signed-out visitors browse profiles, projects, and Explore, but not account pages', () => {
+    for (const path of ['/explore', '/alex', '/alex/robot', '/alex/robot/releases/2']) expect(isPublicBrowsePath(path), path).toBe(true);
+    for (const path of ['/', '/app', '/new', '/settings', '/settings/billing', '/billing/checkout', '/device', '/login']) expect(isPublicBrowsePath(path), path).toBe(false);
   });
 });

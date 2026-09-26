@@ -18,8 +18,8 @@ import {
 import { getRelease, listReleases } from '../services/releases.js';
 
 const role = z.enum(['owner', 'maintainer', 'contributor', 'viewer']);
-const visibility = z.enum(['public', 'private']);
-const slug = z.string().regex(/^[a-z0-9](?:[a-z0-9._-]{0,98}[a-z0-9])?$/, 'Use lowercase letters, digits, dots, dashes, or underscores');
+export const visibility = z.enum(['public', 'private']);
+export const slug = z.string().regex(/^[a-z0-9](?:[a-z0-9._-]{0,98}[a-z0-9])?$/, 'Use lowercase letters, digits, dots, dashes, or underscores');
 
 export function projectRoutes(app: FastifyInstance, { sql }: AppDeps): void {
   app.post('/v1/projects', async (request, reply) => {

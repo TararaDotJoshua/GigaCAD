@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { cache } from 'react';
 import {
   ApiError,
@@ -12,17 +12,22 @@ import {
   type Member,
   type Profile,
   type Project,
+  type ProjectCard,
   type ProjectEvent,
   type Release,
   type ReleaseDetail,
   type ReleaseRequestDetail,
   type ReleaseRequestSummary,
+  type UserPage,
 } from './api';
-import { requireAccessToken } from './session';
+import { getAccessToken } from './session';
 
-/** Server-side API reads for product pages. Each is cached for the length of one request. */
+/**
+ * Server-side API reads for product pages, cached for the length of one request. They
+ * send the session when there is one; public projects can be read signed out.
+ */
 async function get<T>(path: string): Promise<T> {
-  return apiRequest<T>(await requireAccessToken(), path);
+  return apiRequest<T>(await getAccessToken(), path);
 }
 
 /** Turns the API's 404 (also used for private projects you can't see) into the not-found page. */
@@ -36,12 +41,28 @@ async function orNotFound<T>(read: Promise<T>): Promise<T> {
 }
 
 export const getMe = cache(() => get<Profile>('/v1/me'));
+/** The signed-in user, or null for a signed-out visitor to a public page. */
+export const getViewer = cache(async () => ((await getAccessToken()) ? getMe() : null));
+export const getMyProjectsIfSignedIn = cache(async () => ((await getAccessToken()) ? getMyProjects() : []));
+export const getExplore = cache((q: string, sort: 'stars' | 'recent') =>
+  get<ProjectCard[]>(`/v1/explore?${new URLSearchParams({ sort, ...(q ? { q } : {}) })}`),
+);
+export const getUserPage = cache((handle: string) => orNotFound(get<UserPage>(`/v1/users/${encodeURIComponent(handle)}`)));
 export const getBilling = cache(() => get<Billing>('/v1/me/billing'));
 export const getMyProjects = cache(() => get<Project[]>('/v1/projects'));
 
-export const getProject = cache((owner: string, slug: string) =>
-  orNotFound(get<Project>(`/v1/users/${encodeURIComponent(owner)}/projects/${encodeURIComponent(slug)}`)),
-);
+export const getProject = cache(async (owner: string, slug: string) => {
+  try {
+    return await get<Project>(`/v1/users/${encodeURIComponent(owner)}/projects/${encodeURIComponent(slug)}`);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      // Private projects look missing to outsiders. A signed-out visitor may just need to log in.
+      if (!(await getAccessToken())) redirect(`/login?next=${encodeURIComponent(`/${owner}/${slug}`)}`);
+      notFound();
+    }
+    throw error;
+  }
+});
 
 export const getBranches = cache((projectId: string) => get<Branch[]>(`/v1/projects/${projectId}/branches`));
 export const getBranchDetail = cache((branchId: string) => orNotFound(get<BranchDetail>(`/v1/branches/${branchId}`)));

@@ -10,6 +10,7 @@ import { blobRoutes } from './routes/blobs.js';
 import { branchRoutes } from './routes/branches.js';
 import { projectRoutes } from './routes/projects.js';
 import { releaseRequestRoutes } from './routes/releaseRequests.js';
+import { sharingRoutes } from './routes/sharing.js';
 import type { BlobStorage } from './storage.js';
 
 declare module 'fastify' {
@@ -66,5 +67,6 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   releaseRequestRoutes(app, deps);
   blobRoutes(app, deps);
   billingRoutes(app, deps);
+  sharingRoutes(app, deps);
   return app;
 }

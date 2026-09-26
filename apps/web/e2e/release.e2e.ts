@@ -171,6 +171,35 @@ test('shows storage used and the plans', async ({ page }) => {
   await expect(page.getByRole('row', { name: /Maker/ }).getByText('Opens soon')).toBeVisible();
 });
 
+test('shares a public project: browse it signed out, star it, and fork it', async ({ page, browser }) => {
+  const slug = `gearbox-${randomUUID().slice(0, 6)}`;
+  const project = await api(world.token, 'POST', '/v1/projects', { slug, name: 'Public gearbox', visibility: 'public' });
+  const branch = await api(world.token, 'POST', `/v1/projects/${project.id}/branches`, { name: 'initial' });
+  await commitVersion(world.token, project.id, branch.id, { 'Gearbox.SLDASM': `gearbox ${slug}` });
+  const request = await api(world.token, 'POST', `/v1/branches/${branch.id}/release-requests`, { title: 'v1' });
+  for (const step of ['candidate', 'approvals', 'release']) await api(world.token, 'POST', `/v1/release-requests/${request.releaseRequest.id}/${step}`);
+
+  // Anyone can find and open it.
+  const visitor = await (await browser.newContext()).newPage();
+  await visitor.goto('/explore');
+  await visitor.getByRole('link', { name: `${world.handle}/Public gearbox` }).click();
+  await expect(visitor.getByRole('heading', { name: 'Public gearbox' })).toBeVisible();
+  await expect(visitor.getByRole('link', { name: /Star/ })).toHaveAttribute('href', /\/login\?next=/);
+  await visitor.context().close();
+
+  // Its owner stars and forks it.
+  await logIn(page);
+  await page.goto(`/${world.handle}/${slug}`);
+  await page.getByRole('button', { name: /^Star this project/ }).click();
+  await expect(page.getByRole('button', { name: /^Unstar this project, 1 star/ })).toBeVisible();
+  await page.getByRole('link', { name: /Fork/ }).click();
+  await page.getByLabel('Address').fill(`${slug}-fork`);
+  await page.getByRole('button', { name: 'Fork project' }).click();
+  await page.waitForURL(`**/${world.handle}/${slug}-fork`);
+  await expect(page.getByText(`${world.handle}/${slug} v1`)).toBeVisible();
+  await expect(page.locator('#main').getByText('Gearbox.SLDASM')).toBeVisible();
+});
+
 test('every page type answers with the right status', async ({ page, browser }) => {
   // Marketing and sign-in pages, signed out.
   const signedOut = await browser.newContext();
@@ -180,10 +209,15 @@ test('every page type answers with the right status', async ({ page, browser }) 
   for (const path of ['/', '/docs', docPage!, '/download', '/pricing', '/privacy', '/terms', '/login', '/signup', '/forgot-password']) {
     expect((await signedOut.request.get(path, { maxRedirects: 0 })).status(), path).toBe(200);
   }
-  // Product pages send signed-out visitors to sign in.
-  const guarded = await signedOut.request.get('/app', { maxRedirects: 0 });
-  expect(guarded.status()).toBe(307);
-  expect(guarded.headers().location).toContain('/login');
+  // Explore and profiles are public. Account pages and private projects send visitors to sign in.
+  for (const path of ['/explore', '/explore?sort=recent&q=gear', `/${world.handle}`]) {
+    expect((await signedOut.request.get(path, { maxRedirects: 0 })).status(), path).toBe(200);
+  }
+  for (const path of ['/app', projectUrl()]) {
+    const guarded = await signedOut.request.get(path, { maxRedirects: 0 });
+    expect(guarded.status(), path).toBe(307);
+    expect(guarded.headers().location, path).toContain('/login');
+  }
   await signedOut.close();
 
   // Every product page, signed in.
@@ -193,7 +227,10 @@ test('every page type answers with the right status', async ({ page, browser }) 
     '/new',
     '/settings',
     '/settings/billing',
+    '/explore',
+    `/${world.handle}`,
     projectUrl(),
+    projectUrl('fork'),
     projectUrl('branches'),
     projectUrl('branches', world.branchName),
     projectUrl('commits', world.commitId),

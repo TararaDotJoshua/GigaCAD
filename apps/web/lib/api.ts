@@ -87,7 +87,30 @@ export interface Project {
   license: string | null;
   role: ProjectRole | null;
   latestReleaseNumber: number | null;
+  starCount: number;
+  starred: boolean;
+  forkCount: number;
+  forkedFrom: { ownerHandle: string; slug: string; releaseNumber: number } | null;
   createdAt: string;
+}
+
+/** A project as Explore and profile pages list it. */
+export interface ProjectCard {
+  id: string;
+  ownerHandle: string;
+  slug: string;
+  name: string;
+  description: string;
+  visibility: 'public' | 'private';
+  license: string | null;
+  createdAt: string;
+  latestReleaseNumber: number | null;
+  starCount: number;
+}
+
+export interface UserPage {
+  profile: { handle: string; displayName: string | null; createdAt: string };
+  projects: ProjectCard[];
 }
 
 export interface Member {

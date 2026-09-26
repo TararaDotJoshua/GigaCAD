@@ -1,6 +1,6 @@
 import type { Project } from '../../lib/api';
 import { dashboardPath } from '../../lib/hosts';
-import { getBranches, getMe, getMyProjects, getReleaseRequests } from '../../lib/product';
+import { getBranches, getMyProjectsIfSignedIn, getReleaseRequests, getViewer } from '../../lib/product';
 import { SidebarNav, type NavProject } from './SidebarNav';
 
 /**
@@ -9,8 +9,8 @@ import { SidebarNav, type NavProject } from './SidebarNav';
  */
 export async function Shell({ project, children }: { project?: Project; children: React.ReactNode }) {
   const [me, projects, branches, requests] = await Promise.all([
-    getMe(),
-    getMyProjects(),
+    getViewer(),
+    getMyProjectsIfSignedIn(),
     project ? getBranches(project.id) : Promise.resolve([]),
     project ? getReleaseRequests(project.id) : Promise.resolve([]),
   ]);
@@ -25,7 +25,7 @@ export async function Shell({ project, children }: { project?: Project; children
       .filter((branch) => branch.status === 'open' || branch.status === 'frozen')
       .map((branch) => ({
         name: branch.name,
-        holder: branch.checkedOutBy === me.id ? ('you' as const) : branch.checkedOutByHandle,
+        holder: me && branch.checkedOutBy === me.id ? ('you' as const) : branch.checkedOutByHandle,
       })),
   };
   const list = projects.map((p) => ({ owner: p.ownerHandle, slug: p.slug, name: p.name }));
@@ -34,7 +34,7 @@ export async function Shell({ project, children }: { project?: Project; children
 
   return (
     <div className="shell">
-      <SidebarNav me={{ handle: me.handle }} home={dashboardPath()} projects={list} current={current} />
+      <SidebarNav me={me && { handle: me.handle }} home={me ? dashboardPath() : '/explore'} projects={list} current={current} />
       <main id="main" className="shell-pane">
         {children}
       </main>

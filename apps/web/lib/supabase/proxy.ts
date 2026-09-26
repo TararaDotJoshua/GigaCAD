@@ -1,9 +1,9 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
-import { isAsset, isMarketingPath, isPublicAuthPath, routeRequest, sites } from '../hosts';
+import { isAsset, isMarketingPath, isPublicAuthPath, isPublicBrowsePath, routeRequest, sites } from '../hosts';
 import { supabaseConfig } from '../config';
 
-/** Splits the marketing and product hosts, refreshes the Supabase session, and sends signed-out visitors to log in. */
+/** Splits the marketing and product hosts, refreshes the Supabase session, and sends signed-out visitors to log in (except on public pages). */
 export async function updateSession(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const route = routeRequest(request.headers.get('host') ?? request.nextUrl.host, pathname, search, sites());
@@ -30,7 +30,7 @@ export async function updateSession(request: NextRequest) {
     },
   });
   const { data } = await supabase.auth.getClaims();
-  if (!data?.claims && !isPublicAuthPath(effectivePath)) {
+  if (!data?.claims && !isPublicAuthPath(effectivePath) && !isPublicBrowsePath(effectivePath)) {
     const login = request.nextUrl.clone();
     login.pathname = '/login';
     login.search = '';

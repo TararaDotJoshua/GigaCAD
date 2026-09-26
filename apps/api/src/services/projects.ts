@@ -8,18 +8,38 @@ export interface ProjectSummary extends ProjectRow {
   readonly ownerHandle: string;
   readonly role: ProjectRole | null;
   readonly latestReleaseNumber: number | null;
+  readonly starCount: number;
+  /** Whether the viewer starred it; false when signed out. */
+  readonly starred: boolean;
+  readonly forkCount: number;
+  /** The release this project was forked from, if it still exists and the viewer can see it. */
+  readonly forkedFrom: { readonly ownerHandle: string; readonly slug: string; readonly releaseNumber: number } | null;
 }
 
-async function summarize(db: Db, projectId: string, role: ProjectRole | null): Promise<ProjectSummary> {
-  const [row] = await db<Omit<ProjectSummary, 'role'>[]>`
+export async function summarize(db: Db, projectId: string, role: ProjectRole | null, viewerId: string | null): Promise<ProjectSummary> {
+  const [row] = await db<(Omit<ProjectSummary, 'role' | 'forkedFrom'> & { forkOwner: string | null; forkSlug: string | null; forkNumber: number | null })[]>`
     select p.id, p.owner_id, p.slug, p.name, p.description, p.visibility, p.license, p.created_at,
            o.handle as owner_handle,
-           (select max(number) from releases r where r.project_id = p.id) as latest_release_number
+           (select max(number) from releases r where r.project_id = p.id) as latest_release_number,
+           (select count(*)::int from stars s where s.project_id = p.id) as star_count,
+           exists (select 1 from stars s where s.project_id = p.id and s.user_id = ${viewerId}) as starred,
+           (select count(*)::int from projects f join releases fr on fr.id = f.forked_from_release_id
+             where fr.project_id = p.id and f.deleted_at is null and f.visibility = 'public') as fork_count,
+           so.handle as fork_owner, sp.slug as fork_slug, sr.number as fork_number
     from projects p join profiles o on o.id = p.owner_id
+    left join releases sr on sr.id = p.forked_from_release_id
+    left join projects sp on sp.id = sr.project_id and sp.deleted_at is null
+      and (sp.visibility = 'public' or exists (select 1 from project_members m where m.project_id = sp.id and m.user_id = ${viewerId}))
+    left join profiles so on so.id = sp.owner_id
     where p.id = ${projectId}
   `;
   if (!row) throw notFound('Project');
-  return { ...row, role };
+  const { forkOwner, forkSlug, forkNumber, ...summary } = row;
+  return {
+    ...summary,
+    role,
+    forkedFrom: forkOwner && forkSlug && forkNumber ? { ownerHandle: forkOwner, slug: forkSlug, releaseNumber: forkNumber } : null,
+  };
 }
 
 export async function createProject(
@@ -37,7 +57,7 @@ export async function createProject(
     await tx`insert into project_members (project_id, user_id, role) values (${projectId}, ${userId}, 'owner')`;
     await tx`insert into approval_rules (project_id) values (${projectId})`;
     await recordEvent(tx, { projectId, actorId: userId, kind: 'project_created', subjectId: projectId });
-    return summarize(tx, projectId, 'owner');
+    return summarize(tx, projectId, 'owner', userId);
   });
 }
 
@@ -56,7 +76,7 @@ export async function listMyProjects(sql: Sql, userId: string): Promise<ProjectS
 
 export async function getProject(sql: Sql, projectId: string, userId: string | null): Promise<ProjectSummary> {
   const { role } = await projectAccess(sql, projectId, userId);
-  return summarize(sql, projectId, role);
+  return summarize(sql, projectId, role, userId);
 }
 
 export async function findProject(sql: Sql, ownerHandle: string, slug: string, userId: string | null): Promise<ProjectSummary> {
@@ -81,7 +101,7 @@ export async function updateProject(
       await tx`update projects set ${tx(defined)} where id = ${projectId}`;
       await recordEvent(tx, { projectId, actorId: userId, kind: 'project_updated', subjectId: projectId, payload: defined });
     }
-    return summarize(tx, projectId, role);
+    return summarize(tx, projectId, role, userId);
   });
 }
 

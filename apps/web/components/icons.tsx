@@ -126,6 +126,14 @@ export const ForkIcon = ({ className }: IconProps) => (
   </svg>
 );
 
+/** An isometric cube, drawn like the part line art. */
+export const CubeIcon = ({ className }: IconProps) => (
+  <svg className={className} {...base}>
+    <path d="M8 1.8 13.4 4.9v6.2L8 14.2 2.6 11.1V4.9L8 1.8Z" />
+    <path d="M2.6 4.9 8 8l5.4-3.1M8 8v6.2" />
+  </svg>
+);
+
 export const PlusIcon = ({ className }: IconProps) => (
   <svg className={className} {...base}>
     <path d="M8 3v10M3 8h10" />

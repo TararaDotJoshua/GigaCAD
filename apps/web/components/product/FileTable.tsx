@@ -1,6 +1,8 @@
 import type { ManifestEntry } from '@gigacad/core';
+import { previewFormat } from '../../lib/preview';
 import { DownloadButton } from './DownloadButton';
 import { FileGlyph } from './FileGlyph';
+import { PreviewButton } from './PreviewButton';
 
 /** The files of one snapshot, sorted as the API returns them (by path). */
 export function FileTable({ projectId, files, download = true }: { projectId: string; files: readonly ManifestEntry[]; download?: boolean }) {
@@ -18,7 +20,9 @@ export function FileTable({ projectId, files, download = true }: { projectId: st
         </tr>
       </thead>
       <tbody>
-        {files.map((file) => (
+        {files.map((file) => {
+          const format = previewFormat(file.path);
+          return (
           <tr key={file.itemId}>
             <td>
               <span className="file-cell">
@@ -31,11 +35,13 @@ export function FileTable({ projectId, files, download = true }: { projectId: st
             </td>
             {download && (
               <td className="cell-action">
+                {format && <PreviewButton projectId={projectId} sha256={file.blob} path={file.path} format={format} />}
                 <DownloadButton projectId={projectId} sha256={file.blob} path={file.path} />
               </td>
             )}
           </tr>
-        ))}
+          );
+        })}
       </tbody>
     </table>
   );

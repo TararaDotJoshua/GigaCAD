@@ -200,6 +200,23 @@ test('shares a public project: browse it signed out, star it, and fork it', asyn
   await expect(page.locator('#main').getByText('Gearbox.SLDASM')).toBeVisible();
 });
 
+test('previews a 3D file in the browser', async ({ page }) => {
+  // An ASCII STL tetrahedron, committed on its own branch.
+  const facet = (a: string, b: string, c: string) => `facet normal 0 0 0\nouter loop\nvertex ${a}\nvertex ${b}\nvertex ${c}\nendloop\nendfacet`;
+  const stl = ['solid bracket', facet('0 0 0', '10 0 0', '0 10 0'), facet('0 0 0', '0 0 10', '10 0 0'), facet('0 0 0', '0 10 0', '0 0 10'), facet('10 0 0', '0 0 10', '0 10 0'), 'endsolid bracket'].join('\n');
+  const branch = await api(world.token, 'POST', `/v1/projects/${world.projectId}/branches`, { name: 'preview' });
+  await commitVersion(world.token, world.projectId, branch.id, { 'parts/bracket.stl': stl });
+
+  await logIn(page);
+  await page.goto(projectUrl('branches', 'preview'));
+  await page.getByRole('button', { name: 'Preview bracket.stl' }).click();
+  const dialog = page.getByRole('dialog', { name: '3D preview of bracket.stl' });
+  await expect(dialog.locator('canvas')).toBeVisible();
+  await expect(dialog.getByRole('status')).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await expect(dialog).toBeHidden();
+});
+
 test('every page type answers with the right status', async ({ page, browser }) => {
   // Marketing and sign-in pages, signed out.
   const signedOut = await browser.newContext();

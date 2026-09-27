@@ -6,4 +6,4 @@
  * Bump this by hand whenever the Electron version or anything in src/bootstrap changes.
  * CI fails if either changes without a bump (scripts/check-shell.mjs).
  */
-export const SHELL_VERSION = 1;
+export const SHELL_VERSION = 2;

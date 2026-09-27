@@ -23,7 +23,7 @@ describe('command parsing', () => {
 
     const noMessage = await cli.run(['commit']);
     expect(noMessage.code).toBe(1);
-    expect(noMessage.stderr).toContain("required option '-m, --message <message>'");
+    expect(noMessage.stderr).toContain('A version needs a message');
 
     const noBranch = await cli.run(['clone', 'alex/robot']);
     expect(noBranch.code).toBe(1);

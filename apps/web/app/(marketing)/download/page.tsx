@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { FolderIcon, WindowsIcon } from "../../../components/icons";
+import { AppleIcon, FolderIcon, WindowsIcon } from "../../../components/icons";
 import { APP_URL, DOWNLOAD_URL, MAC_DOWNLOAD_URL } from "../../../components/site";
 
 export const metadata: Metadata = {
-  title: "Download GigaCAD for Windows",
+  title: "Download GigaCAD for Windows and Mac",
   description:
-    "Install the GigaCAD drive, tray app, and SolidWorks add-in. Windows 10 or 11, 64-bit.",
+    "Install the GigaCAD drive, tray app, and SolidWorks add-in on Windows 10 or 11, or GigaCAD for macOS 13 or later.",
 };
 
 const menu = [
@@ -54,7 +54,7 @@ export default function DownloadPage() {
         <div className="hero-grid" aria-hidden="true" />
         <div className="container page-head-inner download-head">
           <div className="page-head-copy">
-            <h1 className="page-title">Download GigaCAD for Windows.</h1>
+            <h1 className="page-title">Download GigaCAD.</h1>
             <p className="lead">
               One installer sets up the GigaCAD drive in File Explorer, a tray app for signing in and
               committing, and the SolidWorks add-in.
@@ -65,6 +65,13 @@ export default function DownloadPage() {
                 Download for Windows
               </a>
               <p className="download-meta">64-bit installer for Windows 10 and 11</p>
+              <a className="text-link" href={MAC_DOWNLOAD_URL}>
+                <AppleIcon className="icon" />
+                Download for Mac
+              </a>
+              <p className="download-meta">
+                macOS 13 or later, Intel and Apple silicon. <a href="#mac">First-time setup</a>
+              </p>
             </div>
           </div>
 

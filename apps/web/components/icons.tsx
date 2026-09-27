@@ -16,6 +16,12 @@ export const WindowsIcon = ({ className }: IconProps) => (
   </svg>
 );
 
+export const AppleIcon = ({ className }: IconProps) => (
+  <svg className={className} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+    <path d="M11.2 8.4c0-1.5 1.2-2.2 1.3-2.3-.7-1-1.8-1.2-2.2-1.2-.9-.1-1.8.6-2.3.6-.5 0-1.2-.5-2-.5C4.9 5 3.9 5.6 3.4 6.6c-1.1 1.9-.3 4.7.8 6.2.5.8 1.1 1.6 1.9 1.6.8 0 1.1-.5 2-.5s1.2.5 2 .5c.8 0 1.3-.8 1.8-1.5.6-.8.8-1.6.8-1.7 0 0-1.5-.6-1.5-2.8zM9.8 3.9c.4-.5.7-1.2.6-1.9-.6 0-1.3.4-1.7.9-.4.4-.7 1.1-.6 1.8.7.1 1.3-.3 1.7-.8z" />
+  </svg>
+);
+
 export const LockIcon = ({ className }: IconProps) => (
   <svg className={className} {...base}>
     <rect x="3" y="7" width="10" height="7" rx="1.5" />

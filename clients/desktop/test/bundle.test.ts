@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { compareVersions, manifestFor, MANIFEST_FILE, SIGNATURE_FILE, signBytes, verifyBundle } from '../src/shared/bundle.js';
 import { keyPair, makeBundle } from './helpers.js';
-import { chooseBundle, clearRollbackNotice, currentBundleDir, markHealthy, readState, writeState } from '../src/bootstrap/select.js';
+import { chooseBundle, clearRollbackNotice, currentBundleDir, markBad, markHealthy, readState, writeState } from '../src/bootstrap/select.js';
 
 const key = keyPair();
 let temp: string;
@@ -109,6 +109,16 @@ describe('chooseBundle', () => {
     expect(readState(options.bundlesDir)).toMatchObject({ current: '1.1.0', bad: ['1.2.0'] });
     clearRollbackNotice(options.bundlesDir);
     expect(chooseBundle(options)).toMatchObject({ version: '1.1.0', rolledBackFrom: undefined });
+  });
+
+  it('goes back past a healthy bundle that later fails to start', () => {
+    const options = setup();
+    makeBundle(options.builtInDir, '1.0.0', key.privateKey);
+    makeBundle(join(options.bundlesDir, '1.1.0'), '1.1.0', key.privateKey);
+    chooseBundle(options);
+    markHealthy(options.bundlesDir, '1.1.0');
+    markBad(options.bundlesDir, '1.1.0');
+    expect(chooseBundle(options)).toMatchObject({ source: 'builtin', rolledBackFrom: '1.1.0' });
   });
 
   it('returns nothing when even the built-in bundle fails', () => {

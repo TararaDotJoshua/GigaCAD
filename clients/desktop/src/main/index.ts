@@ -21,6 +21,15 @@ if (!runtime || !app.requestSingleInstanceLock()) {
   });
   app.on('second-instance', () => controller?.showWindow());
   app.on('activate', () => controller?.showWindow());
+  // A stray error in a background task (a dropped connection, say) shouldn't stop syncing or put
+  // up Electron's modal error dialog. It goes to the activity list instead.
+  const report = (error: unknown) => {
+    const text = error instanceof Error ? error.message : String(error);
+    console.error('GigaCAD:', error);
+    controller?.log(`Something went wrong: ${text}`);
+  };
+  process.on('uncaughtException', report);
+  process.on('unhandledRejection', report);
   // The app keeps syncing from the menu bar when its window is closed.
   app.on('window-all-closed', () => undefined);
 
@@ -35,7 +44,14 @@ if (!runtime || !app.requestSingleInstanceLock()) {
   });
 
   void app.whenReady().then(async () => {
-    controller = await Controller.create(runtime);
+    try {
+      controller = await Controller.create(runtime);
+    } catch (error) {
+      // An update that can't start goes back to the previous version.
+      if (globalThis.__gigacadStartFailed) globalThis.__gigacadStartFailed(error);
+      else throw error;
+      return;
+    }
     for (const url of waiting.splice(0)) void controller.handleUrl(url);
   });
 }

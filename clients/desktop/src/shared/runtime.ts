@@ -20,6 +20,9 @@ export interface BundleRuntime {
 declare global {
   // eslint-disable-next-line no-var
   var __gigacad: BundleRuntime | undefined;
+  /** The bootstrap's handler for a bundle that fails while starting: it rolls back. */
+  // eslint-disable-next-line no-var
+  var __gigacadStartFailed: ((error: unknown) => void) | undefined;
 }
 
 /** ~/Library/Application Support/GigaCAD: settings, bundles, and caches. Survives reinstalling the app. */

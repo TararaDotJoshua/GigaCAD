@@ -84,6 +84,7 @@ export class Controller {
     app.setLoginItemSettings({ openAtLogin: this.settings.startAtLogin });
     const signedIn = await this.engine.start();
     this.cliPath = isOurShim(SHIM_PATH) ? SHIM_PATH : await terminalGiga();
+    void this.setup.check().then(() => this.changed());
 
     if (!this.settings.setupDone || !signedIn) this.showWindow();
     this.updater.start();
@@ -292,6 +293,7 @@ export class Controller {
       await this.signIn.signOut(this.settings.apiUrl);
       this.engine.stop();
       await this.engine.start();
+      this.setup.setStatus('signin', 'todo');
     },
     syncNow: () => void this.engine.syncAll(),
     setPaused: async (paused) => {
@@ -412,7 +414,8 @@ export class Controller {
     return join(projectDir(this.settings.folder, project.owner, project.slug), 'Branches', branch);
   }
 
-  private log(text: string): void {
+  /** Adds an error to the activity list (the window and the menu bar show it). */
+  log(text: string): void {
     this.engine.activity.unshift({ at: new Date().toISOString(), text, kind: 'error' });
     this.changed();
   }

@@ -4,6 +4,8 @@
 
 It does not provide the Explorer virtual drive or run SolidWorks rebuilds. Those come from the Windows app and the SolidWorks add-in.
 
+On a Mac, GigaCAD for macOS includes `giga` (Settings → Install Command Line Tool), so it needs no Node install, and it updates with the app. The app and the terminal share one sign-in and one machine name, so a checkout made in either one counts as this computer's.
+
 ## Install
 
 ```sh

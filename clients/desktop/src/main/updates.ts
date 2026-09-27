@@ -1,11 +1,8 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { createWriteStream, existsSync } from 'node:fs';
-import { mkdir, rename, rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { Readable, Transform } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
-import type { ReadableStream } from 'node:stream/web';
 import { promisify } from 'node:util';
 import { compareVersions, verifyBundle, verifyBytes } from '../shared/bundle.js';
 import type { UpdateState } from '../shared/types.js';
@@ -133,23 +130,29 @@ export class Updater {
       this.set({ kind: 'downloading', version: manifest.version, progress: 0, lastChecked });
       const response = await fetchImpl(manifest.bundleUrl);
       if (!response.ok || !response.body) throw new Error(`Downloading the update failed (HTTP ${response.status})`);
+      // Read the body as fast as it arrives, into memory (bundles are about a megabyte). Piping it
+      // into a file lets backpressure pause the stream, and undici then asserts when the server
+      // closes the connection mid-pause, crashing the main process.
       const hash = createHash('sha256');
+      const chunks: Uint8Array[] = [];
       let received = 0;
       let reported = 0;
-      const meter = new Transform({
-        transform: (chunk: Buffer, _encoding, done) => {
-          hash.update(chunk);
-          received += chunk.length;
-          const progress = Math.min(1, received / Math.max(manifest.size, 1));
-          if (progress - reported >= 0.01) {
-            reported = progress;
-            this.set({ kind: 'downloading', version: manifest.version, progress, lastChecked });
-          }
-          done(null, chunk);
-        },
-      });
-      await pipeline(Readable.fromWeb(response.body as ReadableStream), meter, createWriteStream(archive));
+      const reader = response.body.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        hash.update(value);
+        chunks.push(value);
+        received += value.length;
+        if (received > manifest.size) throw new Error('The update download was damaged; it will be tried again later');
+        const progress = Math.min(1, received / Math.max(manifest.size, 1));
+        if (progress - reported >= 0.01) {
+          reported = progress;
+          this.set({ kind: 'downloading', version: manifest.version, progress, lastChecked });
+        }
+      }
       if (received !== manifest.size || hash.digest('hex') !== manifest.sha256) throw new Error('The update download was damaged; it will be tried again later');
+      await writeFile(archive, Buffer.concat(chunks));
 
       await rm(staging, { recursive: true, force: true });
       await mkdir(staging, { recursive: true });

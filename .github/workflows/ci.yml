@@ -33,6 +33,31 @@ jobs:
       - run: pnpm build
       - run: pnpm --filter @gigacad/cli smoke
 
+  # GigaCAD for macOS: its tests (the lock tests need macOS), the shell-version check, and a
+  # packaged DMG to try. Optional until it has proved stable.
+  desktop:
+    runs-on: macos-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # check-shell compares against where this branch left main.
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm vitest run clients/desktop
+      - run: node clients/desktop/scripts/check-shell.mjs origin/main
+      # Signed with a throwaway key: this DMG only runs bundles built on the same runner.
+      - run: pnpm --filter @gigacad/desktop dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GigaCAD-macOS
+          path: clients/desktop/dist/*.dmg
+
   # The image Railway deploys. Building it catches files missing from its COPY lines.
   api-image:
     runs-on: ubuntu-latest

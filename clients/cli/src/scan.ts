@@ -34,7 +34,14 @@ export async function loadIgnoreMatcher(root: string): Promise<IgnoreMatcher> {
  * are never ignored. Symlinks, names Windows can't store, and paths that differ only
  * in case are errors, because they can't round-trip through GigaCAD.
  */
-export async function listWorkingFiles(root: string, tracked: Iterable<string> = []): Promise<WorkingFile[]> {
+export interface ScanOptions {
+  /** Folders to leave out entirely, by normalized path (e.g. a project root's `Branches`). */
+  readonly skipFolder?: ((path: string) => boolean) | undefined;
+  /** Receives every folder that was walked, by normalized path, so empty folders are visible too. */
+  readonly folders?: string[] | undefined;
+}
+
+export async function listWorkingFiles(root: string, tracked: Iterable<string> = [], options: ScanOptions = {}): Promise<WorkingFile[]> {
   const isIgnored = await loadIgnoreMatcher(root);
   const trackedKeys = new Set([...tracked].map(pathKey));
   const keep = (path: string) => trackedKeys.has(pathKey(path)) || !isIgnored(path);
@@ -56,6 +63,8 @@ export async function listWorkingFiles(root: string, tracked: Iterable<string> =
       if (entry.isSymbolicLink()) {
         if (keep(normalized)) symlinks.push(normalized);
       } else if (entry.isDirectory()) {
+        if (options.skipFolder?.(normalized)) continue;
+        options.folders?.push(normalized);
         await walk(join(dir, entry.name), `${normalized}/`);
       } else if (entry.isFile() && keep(normalized)) {
         const info = await lstat(join(dir, entry.name));

@@ -85,6 +85,19 @@ Commands run from anywhere inside the workspace.
 
 **Protecting local work.** `giga pull` and `giga checkout` refuse to overwrite a file you changed if the branch also changed it. They also refuse to replace an untracked file that sits where a branch file would go. In either case nothing is changed. `giga checkin` refuses while you have uncommitted changes, unless you pass `--force`; your files stay on disk either way.
 
+## Project root files
+
+A project's root holds ordinary files and folders with their own revisions, next to `Branches` and `Releases`. `giga root` keeps a local folder in sync with them. It never touches branches or releases, and it skips any `Branches/` and `Releases/` folders inside it, so a branch workspace can live at `Branches/<name>/`.
+
+| Command | What it does |
+|---|---|
+| `giga root clone <owner>/<project> [directory]` | Downloads the root files and folders into a new or empty folder (one that holds only `Branches` or `Releases` is fine too) |
+| `giga root status` | Lists local changes waiting to be pushed, without contacting the server |
+| `giga root pull` | Downloads changes from the server: new files and revisions, renames, and deletions. Local edits are kept |
+| `giga root push` | Pulls, then uploads local changes: new files and folders, new revisions, renames and moves, and deletions |
+
+Renaming a file in Finder or Explorer keeps its identity and revisions, as long as its contents didn't change at the same time. When a file changed both here and on the server, nothing is lost: your version is renamed to `<name> (conflict).<ext>` and uploaded as a new file, and the server's version takes the original name. A folder deleted here is only deleted on the server if nothing new was added to it there in the meantime.
+
 ## Projects, branches, releases
 
 ```sh

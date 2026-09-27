@@ -2094,6 +2094,69 @@
   gap: 8px;
 }
 
+/* The latest release beside the files, like GitHub's Releases tile. */
+
+.shell .side-heading a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.shell .side-heading a:hover {
+  text-decoration: underline;
+}
+
+.shell .count-pill {
+  margin-right: auto;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--mist);
+  color: var(--ink-muted);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.shell .latest-release {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.shell .latest-release > .icon {
+  flex: none;
+  margin-top: 3px;
+  color: var(--forest);
+}
+
+.shell .latest-release > span {
+  display: grid;
+  gap: 2px;
+}
+
+.shell .latest-release-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.shell .latest-release:hover .mono {
+  text-decoration: underline;
+}
+
+.shell .latest-release time {
+  color: var(--ink-muted);
+  font-size: var(--t-micro);
+}
+
+.shell .releases-more {
+  display: block;
+  margin-top: 12px;
+  font-size: var(--t-small);
+}
+
 .shell .manage-tags {
   margin-top: 14px;
   padding-top: 12px;

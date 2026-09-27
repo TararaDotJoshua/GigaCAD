@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ForkIcon } from '../../../../components/icons';
+import { ForkIcon, TagIcon } from '../../../../components/icons';
 import { PageHead } from '../../../../components/product/PageHead';
 import { ProjectDirectory, TagsCard, type DirectoryParams } from '../../../../components/product/ProjectDirectory';
 import { RelativeTime } from '../../../../components/product/RelativeTime';
@@ -7,18 +7,20 @@ import { StarButton } from '../../../../components/product/StarButton';
 import { StatusBadge } from '../../../../components/product/StatusBadge';
 import { describeEvent } from '../../../../lib/describe';
 import { projectPath, releasePath, treePath } from '../../../../lib/paths';
-import { getBranches, getEvents, getMembers, getProject, getTags, getViewer } from '../../../../lib/product';
+import { getBranches, getEvents, getMembers, getProject, getReleases, getTags, getViewer } from '../../../../lib/product';
 
 /** The project page and its folders: the project's files, with tags and recent activity beside them. */
 export async function ProjectFilesPage({ owner, slug, path, params }: { owner: string; slug: string; path: string; params: DirectoryParams }) {
   const project = await getProject(owner, slug);
-  const [events, members, branches, tags, viewer] = await Promise.all([
+  const [events, members, branches, tags, releases, viewer] = await Promise.all([
     getEvents(project.id),
     getMembers(project.id),
     getBranches(project.id),
     getTags(project.id),
+    getReleases(project.id),
     getViewer(),
   ]);
+  const latest = releases.reduce<(typeof releases)[number] | null>((best, release) => (!best || release.number > best.number ? release : best), null);
   const handles = new Map(members.map((member) => [member.userId, member.handle]));
   const branchNames = new Map(branches.map((branch) => [branch.id, branch.name]));
   const activity = events
@@ -75,6 +77,33 @@ export async function ProjectFilesPage({ owner, slug, path, params }: { owner: s
 
         <div className="side-stack">
           <TagsCard project={project} tags={tags} />
+          <section className="side releases-card" aria-label="Releases">
+            <h2 className="side-heading">
+              <Link href={projectPath(owner, slug, 'releases')}>Releases</Link>
+              {releases.length > 0 && <span className="count-pill">{releases.length}</span>}
+            </h2>
+            {latest ? (
+              <>
+                <Link href={releasePath(owner, slug, latest.number)} className="latest-release">
+                  <TagIcon className="icon" />
+                  <span>
+                    <span className="latest-release-title">
+                      <span className="mono">v{latest.number}</span>
+                      <StatusBadge tone="signal">Latest</StatusBadge>
+                    </span>
+                    <RelativeTime value={latest.createdAt} />
+                  </span>
+                </Link>
+                {releases.length > 1 && (
+                  <Link href={projectPath(owner, slug, 'releases')} className="releases-more">
+                    + {releases.length - 1} {releases.length === 2 ? 'release' : 'releases'}
+                  </Link>
+                )}
+              </>
+            ) : (
+              <p className="muted">No releases yet.</p>
+            )}
+          </section>
           <aside className="side" aria-label="Recent activity">
             <h2 className="side-heading">Activity</h2>
             {activity.length === 0 ? (

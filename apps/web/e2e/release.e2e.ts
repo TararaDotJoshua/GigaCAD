@@ -224,7 +224,7 @@ test('shares a public project: browse it signed out, star it, and fork it', asyn
   await page.waitForURL(`**/${world.handle}/${slug}-fork`);
   await expect(page.getByText(`${world.handle}/${slug} v1`)).toBeVisible();
   // The fork's root has Branches and Releases; its v1 holds the forked files.
-  await page.locator('#main').getByRole('link', { name: 'Releases', exact: true }).click();
+  await page.getByRole('region', { name: 'Files' }).getByRole('link', { name: 'Releases', exact: true }).click();
   await page.locator('#main').getByRole('link', { name: 'v1', exact: true }).click();
   await expect(page.locator('#main').getByText('Gearbox.SLDASM')).toBeVisible();
 });
@@ -372,7 +372,7 @@ test('keeps files at the project root, with folders, revisions, tags, and favori
   await page.goto(`/${world.handle}/${slug}`);
   const main = page.locator('#main');
   await expect(main.getByRole('link', { name: 'Branches', exact: true })).toBeVisible();
-  await expect(main.getByRole('link', { name: 'Releases', exact: true })).toBeVisible();
+  await expect(main.getByRole('region', { name: 'Files' }).getByRole('link', { name: 'Releases', exact: true })).toBeVisible();
 
   // A folder, then a file uploaded into it from the browser.
   await page.getByText('New folder').click();

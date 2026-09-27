@@ -22,6 +22,7 @@ Live and verified in production:
 - Restoring deleted projects from Account within 30 days (#25).
 - Thumbnails for STL, OBJ, 3MF, STEP, and IGES files (#27), rendered by the API in a worker thread and shown in file lists and on Explore and profile cards.
 - GitHub-style user pages: an avatar, a bio, a location, and a website; a contribution graph of the last year (version commits, release requests, releases, and approvals); recent activity; and a Starred tab. Visitors only see activity in projects they can read.
+- GigaCAD for macOS (`clients/desktop`, #42 and the release PR after it): projects as Finder folders with locks, icons, autosaves, and Quick Actions, verified against production on `tararadotjoshua/test-bench`. Over-the-air updates were verified against a local update server (update, tampered download, crash rollback, needs-new-DMG). The R2 bucket `gigacad-downloads` is served at `downloads.gigacad.site`. Nothing is published there yet: see section 1.
 - Project file directory (#34): the project root holds files and folders with their own revisions, next to `Branches` and `Releases` folders. Tags, favorites, search, and recent files cover all three. Root entries are renamed, moved, and deleted from a right-click menu. Still open: whether to hide archived branches under `Branches` and in search.
 
 ## 1. Finish the launch checklist
@@ -36,6 +37,7 @@ These need the owner's accounts. Everything else before the next phase is done.
 - **Stripe follow-ups.** Paid plans are live. Set a support email in Stripe (Managed Payments forwards customer questions there), delete the sandbox's webhook to `api.gigacad.site`, and move the API to a restricted live key (`rk_live_`) with the permissions in deployment step 10.
 - **R2 spending alert (step 9).** Cloudflare dashboard → Notifications → Add → Usage Based Billing → R2 storage, with a monthly threshold. The API token agents can use has no notification permissions.
 - **Supabase Pro** before public sign-ups, for daily backups and no pausing.
+- **First macOS release.** Back up `~/.config/gigacad/desktop-update-key.pem` (the update signing key) in a password manager; losing it means every installed copy needs a new DMG. Store it with `gh secret set DESKTOP_UPDATE_KEY < ~/.config/gigacad/desktop-update-key.pem`, check that the `CLOUDFLARE_API_TOKEN` secret can write to R2 (add "Workers R2 Storage: Edit" if not), then run the `Desktop release` workflow from `main` with `dmg` checked. Until then, the download page's Mac link returns 404.
 
 ## 2. Cleanup
 
@@ -48,7 +50,8 @@ Following the phases in `docs/PLAN.md`:
 
 1. **Windows drive (phase 3).** A `GigaCAD\` drive in File Explorer where SolidWorks opens and saves files directly. It needs a sync root, file hydration, the save pipeline that produces autosaves, read-only enforcement for branches you haven't checked out, a context menu, and a tray app. Testing needs a Windows laptop with SolidWorks.
 2. **SolidWorks add-in (phase 4).** A task pane, a read-only banner, reference and preview export, and rebuilding release candidates.
-3. **macOS client and other CAD programs (phase 7).**
+3. **macOS client (phase 7).** The folder-based app is built (see above). Next: try it on a clean Mac account (no Node, Homebrew, or Command Line Tools), then decide whether viewers' root folders should be locked and whether local copies of archived branches should be removed. A File Provider version needs a Developer ID.
+4. **Other CAD programs (phase 7).** Fusion, FreeCAD, and Onshape exports through generic parsers.
 
 ## Working notes
 

@@ -70,25 +70,28 @@ export class Setup {
     await this.step('urlScheme', async () => (app.setAsDefaultProtocolClient('gigacad') || app.isDefaultProtocolClient('gigacad') ? 'done' : 'error'));
   }
 
-  /** The whole checklist. Moving to Applications relaunches the app, so it's offered, not forced. */
-  async runAll(): Promise<void> {
+  /** Checks the steps that only need a look (nothing is changed); runs at every launch too. */
+  async check(): Promise<void> {
     await this.step('applications', async () => {
       if (!app.isPackaged) return ['skipped', 'Development build'];
       if (app.isInApplicationsFolder()) return 'done';
       return ['todo', 'GigaCAD isn’t in Applications. Moving it there keeps gigacad:// links and the giga tool working.'];
     });
     await this.step('signin', async () => (this.host.signedIn() ? 'done' : 'todo'));
-    await this.repair();
     await this.step('cli', async () => {
       if (isOurShim(SHIM_PATH)) return ['done', SHIM_PATH];
       if (!appBundlePath()) return ['skipped', 'Only from the installed app'];
       const other = await terminalGiga();
       return other ? ['skipped', `Terminal already has giga at ${other}`] : 'todo';
     });
-    await this.step('login', async () => {
-      app.setLoginItemSettings({ openAtLogin: this.host.startAtLogin() });
-      return this.host.startAtLogin() ? 'done' : ['skipped', 'Off in Settings'];
-    });
+    await this.step('login', async () => (this.host.startAtLogin() ? 'done' : ['skipped', 'Off in Settings']));
+  }
+
+  /** The whole checklist. Moving to Applications relaunches the app, so it's offered, not forced. */
+  async runAll(): Promise<void> {
+    app.setLoginItemSettings({ openAtLogin: this.host.startAtLogin() });
+    await this.check();
+    await this.repair();
   }
 
   /** Moves the app to /Applications and relaunches it (macOS asks first). */

@@ -1,0 +1,39 @@
+# The .app holds only the Electron runtime and the bootstrap (the shell). Everything else is the
+# signed code bundle in Resources/app-bundle, which updates replace without touching the app.
+appId: site.gigacad.desktop
+# The binary must be named GigaCAD: the terminal shim runs Contents/MacOS/GigaCAD (cliInstall.ts).
+productName: GigaCAD
+executableName: GigaCAD
+copyright: Copyright © GigaCAD
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/shell/bootstrap.cjs
+  - package.json
+extraResources:
+  - from: out/bundle
+    to: app-bundle
+  - from: out/shell/cli-launcher.cjs
+    to: cli-launcher.cjs
+asar: false
+npmRebuild: false
+nodeGypRebuild: false
+buildDependenciesFromSource: false
+protocols:
+  - name: GigaCAD
+    schemes: [gigacad]
+mac:
+  # Ad-hoc signature: no Apple Developer account. Users choose "Open Anyway" once.
+  identity: '-'
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  notarize: false
+  category: public.app-category.productivity
+  icon: build/app-icon.png
+  minimumSystemVersion: '13.0'
+  target: dmg
+  artifactName: GigaCAD-${version}-${arch}.${ext}
+dmg:
+  title: GigaCAD
+  artifactName: GigaCAD-${version}-${arch}.${ext}

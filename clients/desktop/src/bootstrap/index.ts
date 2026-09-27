@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { bundlesDir } from '../shared/runtime.js';
 import { PUBLIC_KEY } from './publicKey.js';
-import { chooseBundle, clearRollbackNotice, markHealthy } from './select.js';
+import { chooseBundle, clearRollbackNotice, markBad, markHealthy } from './select.js';
 import { SHELL_VERSION } from './shell.js';
 
 const dir = bundlesDir();
@@ -37,5 +37,24 @@ if (!choice) {
     },
     clearRollbackNotice: () => clearRollbackNotice(dir),
   };
-  createRequire(__filename)(join(choice.dir, 'main', 'index.cjs'));
+  globalThis.__gigacadStartFailed = startFailed;
+  try {
+    createRequire(__filename)(join(choice.dir, 'main', 'index.cjs'));
+  } catch (error) {
+    startFailed(error);
+  }
+}
+
+/** The bundle couldn't start. A downloaded one is marked bad, and the relaunch goes back to an older one. */
+function startFailed(error: unknown): void {
+  if (choice?.source === 'downloaded') {
+    markBad(dir, choice.version);
+    app.relaunch();
+    app.exit(1);
+    return;
+  }
+  void app.whenReady().then(() => {
+    dialog.showErrorBox('GigaCAD can’t start', `${error instanceof Error ? error.message : String(error)}\n\nDownload GigaCAD again from gigacad.site.`);
+    app.quit();
+  });
 }

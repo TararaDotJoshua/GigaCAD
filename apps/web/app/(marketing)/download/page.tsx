@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { FolderIcon, WindowsIcon } from "../../../components/icons";
-import { APP_URL, DOWNLOAD_URL } from "../../../components/site";
+import { APP_URL, DOWNLOAD_URL, MAC_DOWNLOAD_URL } from "../../../components/site";
 
 export const metadata: Metadata = {
   title: "Download GigaCAD for Windows",
@@ -161,18 +161,23 @@ export default function DownloadPage() {
       <section className="section closing">
         <div className="container">
           <div className="other-platforms">
-            <h2 className="h3">On a Mac?</h2>
+            <h2 className="h3" id="mac">On a Mac?</h2>
             <p className="body">
-              A macOS drive is planned after Windows. Until then you can browse projects, 3D previews, and
-              release requests in the browser on any computer.
+              GigaCAD for macOS puts your projects in a GigaCAD folder in Finder, with Check Out, Commit
+              Version, and Check In in the right-click menu. It runs on macOS 13 or later, Intel or Apple
+              silicon. It isn’t notarized by Apple yet, so the first time, open it from System Settings →
+              Privacy &amp; Security → Open Anyway.
             </p>
             <div className="other-platforms-links">
+              <a className="text-link" href={MAC_DOWNLOAD_URL}>
+                Download for Mac
+              </a>
+              <Link className="text-link" href="/docs/install-mac">
+                Read the Mac install guide
+              </Link>
               <a className="text-link" href={APP_URL}>
                 Open GigaCAD in your browser
               </a>
-              <Link className="text-link" href="/docs/install-windows">
-                Read the install guide
-              </Link>
             </div>
           </div>
         </div>

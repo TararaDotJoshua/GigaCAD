@@ -1,3 +1,5 @@
+import { MAC_DOWNLOAD_URL } from "../../../components/site";
+
 // The docs table of contents. Each page lists the headings it will cover;
 // pages without `body` render those headings as unwritten sections.
 
@@ -604,6 +606,77 @@ giga rr release --notes "Stiffer jaw, new fingertip"`}</Command>
   );
 }
 
+function InstallMac() {
+  return (
+    <>
+      <p>
+        GigaCAD for macOS puts your projects in a <code>GigaCAD</code> folder in your home folder, laid out
+        like the web directory. Branches you check out are editable; everything else is read-only.
+      </p>
+
+      <h2 id="requirements">Requirements</h2>
+      <p>
+        macOS 13 Ventura or later, on an Intel or Apple silicon Mac. Nothing else: the app brings its own
+        copy of everything it needs, including the <code>giga</code> command-line tool.
+      </p>
+
+      <h2 id="install-and-open-anyway">Install and Open Anyway</h2>
+      <p>
+        <a href={MAC_DOWNLOAD_URL}>Download GigaCAD for Mac</a>, open the disk image, and drag GigaCAD
+        into Applications. GigaCAD isn’t notarized by Apple yet, so the first time you open it macOS says it
+        can’t check the app. To open it:
+      </p>
+      <ol>
+        <li>Open GigaCAD from Applications and choose <strong>Done</strong> in the warning.</li>
+        <li>
+          Open <strong>System Settings → Privacy &amp; Security</strong> and scroll to Security.
+        </li>
+        <li>
+          Next to “GigaCAD was blocked”, choose <strong>Open Anyway</strong>, then confirm with your password
+          or Touch ID.
+        </li>
+      </ol>
+      <p>You only do this once. Updates install themselves.</p>
+
+      <h2 id="set-up-and-sign-in">Set up and sign in</h2>
+      <p>
+        GigaCAD opens a sign-in window and your browser. Check that the browser shows the same code, then
+        approve it. A short checklist then creates the <code>GigaCAD</code> folder and adds GigaCAD to
+        Finder’s right-click menu. If you already use <code>giga</code> in Terminal, the app uses the same
+        sign-in.
+      </p>
+
+      <h2 id="the-gigacad-folder">The GigaCAD folder</h2>
+      <p>
+        Each project is at <code>~/GigaCAD/&lt;owner&gt;/&lt;project&gt;</code>. Root files sync both ways:
+        edit one and a new revision is recorded. <code>Branches</code> holds a folder per branch. Branches
+        you haven’t downloaded show a dashed icon; right-click and choose{" "}
+        <strong>Quick Actions → GigaCAD: Download</strong>. <code>Releases</code> keeps the latest release by
+        default.
+      </p>
+      <p>
+        To edit a branch, right-click its folder and choose <strong>Quick Actions → GigaCAD: Check Out</strong>
+        . Its folder gets a green dot. Each save becomes an autosave after a few seconds; use{" "}
+        <strong>GigaCAD: Commit Version…</strong> to record a named version, and{" "}
+        <strong>GigaCAD: Check In</strong> when you’re done. The same actions are in the GigaCAD window.
+      </p>
+
+      <h2 id="the-command-line-tool">The command-line tool</h2>
+      <p>
+        In GigaCAD’s Settings, choose <strong>Install Command Line Tool</strong> to use <code>giga</code> in
+        Terminal without installing Node. See <a href="/docs/cli">Command-line tool</a>.
+      </p>
+
+      <h2 id="uninstall">Uninstall</h2>
+      <p>
+        Quit GigaCAD from the menu bar, drag it from Applications to the Trash, and delete the{" "}
+        <code>GigaCAD: …</code> workflows in <code>~/Library/Services</code>. Your <code>GigaCAD</code> folder
+        stays; read-only files in it can be unlocked in Finder with Get Info.
+      </p>
+    </>
+  );
+}
+
 export const docs: DocSection[] = [
   {
     title: "Get started",
@@ -626,6 +699,13 @@ export const docs: DocSection[] = [
         title: "Install on Windows",
         summary: "Install the GigaCAD drive, tray app, and SolidWorks add-in, then sign in.",
         outline: ["Requirements", "Run the installer", "Sign in with a device code", "Find the drive in File Explorer", "Uninstall"],
+      },
+      {
+        slug: "install-mac",
+        title: "Install on a Mac",
+        summary: "Install GigaCAD for macOS, open it the first time, and find your projects in Finder.",
+        outline: ["Requirements", "Install and Open Anyway", "Set up and sign in", "The GigaCAD folder", "The command-line tool", "Uninstall"],
+        body: InstallMac,
       },
       {
         slug: "first-project",

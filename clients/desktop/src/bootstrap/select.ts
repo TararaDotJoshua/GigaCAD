@@ -117,6 +117,15 @@ export function markHealthy(bundlesDir: string, version: string): void {
   }
 }
 
+/** A bundle failed while starting: never choose it again, and say so after the rollback. */
+export function markBad(bundlesDir: string, version: string): void {
+  const state = readState(bundlesDir);
+  if (!state.bad.includes(version)) state.bad.push(version);
+  if (state.pending === version) state.pending = undefined;
+  state.rolledBackFrom = version;
+  writeState(bundlesDir, state);
+}
+
 export function clearRollbackNotice(bundlesDir: string): void {
   const state = readState(bundlesDir);
   if (state.rolledBackFrom === undefined) return;

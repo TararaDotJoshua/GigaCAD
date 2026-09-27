@@ -38,6 +38,38 @@ instead of GigaCAD. Test them with a packaged build.
 
 Unit tests run with the rest of the repository (`pnpm test`). The lock tests need macOS.
 
+## Package
+
+```sh
+pnpm --filter @gigacad/desktop dist                         # dist/GigaCAD-<version>-universal.dmg
+pnpm --filter @gigacad/desktop dist -- --dir --arch x64     # just the .app, one architecture: faster
+```
+
+`dist` renders the Finder icons, builds and signs the bundle, runs electron-builder (ad-hoc
+signature, no Apple account), and then `scripts/check-package.mjs`, which fails on any
+`node_modules`, native module, or built-in bundle the app wouldn't accept. The CI `desktop` job
+does the same on every pull request and uploads the DMG.
+
+## Release
+
+Code changes reach installed apps as over-the-air updates:
+
+1. Bump `version` in `package.json` and merge to `main`.
+2. Run the **Desktop release** workflow. It signs the bundle with `DESKTOP_UPDATE_KEY`,
+   uploads it to `downloads.gigacad.site/desktop/stable/`, and then uploads the manifest that
+   installed apps check every 6 hours.
+3. Check **dmg** too when `SHELL_VERSION` changed (a new Electron or bootstrap). Apps on the
+   older shell then show "New version available · Needs a fresh download".
+
+`scripts/release.mjs` makes the same files locally in `release/`. To try an update without
+publishing it, serve that folder and start the app with
+`GIGACAD_UPDATE_URL=http://127.0.0.1:<port>/desktop/stable/manifest.json` (build the release
+with `GIGACAD_DOWNLOADS_URL=http://127.0.0.1:<port>/desktop` so the manifest points there).
+
+The signing key: `scripts/keygen.mjs` makes one; its public half is in
+`src/bootstrap/publicKey.ts`. Keep the private half in the `DESKTOP_UPDATE_KEY` secret and a
+backup. Losing it means shipping a new DMG to change keys.
+
 ## How it's put together
 
 - `src/bootstrap/`: the app's entry, shipped in the `.app`. It picks the newest verified code
@@ -46,8 +78,9 @@ Unit tests run with the rest of the repository (`pnpm test`). The lock tests nee
 - `src/main/`: the code bundle's main process: sync engine, locks, Finder icons, Quick Actions,
   the updater, and the window and menu bar item.
 - `src/preload/` and `src/renderer/`: the window (React).
-- `scripts/`: `build.mjs` (shell and signed bundle into `out/`), `dev.mjs`, and `icons.mjs`
-  (pre-renders Finder icons into `build/`; needs a Mac).
+- `scripts/`: `build.mjs` (shell and signed bundle into `out/`), `dev.mjs`, `icons.mjs`
+  (pre-renders Finder icons into `build/`; needs a Mac), `dist.mjs`, `release.mjs`, and
+  `check-shell.mjs` (fails when the shell changed without a `SHELL_VERSION` bump).
 
 Builds are signed with `DESKTOP_UPDATE_KEY`, `GIGACAD_UPDATE_KEY_FILE`, or
 `~/.config/gigacad/desktop-update-key.pem`. Without any of them, a throwaway key in `.keys/`

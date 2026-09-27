@@ -75,6 +75,7 @@ gigacad/                         (pnpm monorepo, domain: gigacad.site)
   clients/cli/          `giga` TS CLI (power users + E2E tests)
   clients/windows/      .NET 8: GigaCAD Sync service (Cloud Files API sync root) + tray app + Explorer context menu
   clients/solidworks/   .NET Framework 4.8 COM add-in (SolidWorks API) with Task Pane; talks to Sync service over a named pipe
+  clients/desktop/      GigaCAD for macOS: Electron app that runs the CLI in-process; real Finder folders, locks, icons, Quick Actions, over-the-air code updates
   clients/macos/        (later) File Provider extension, same folder layout
   supabase/             Supabase CLI project: migrations, RLS policies, local stack (`supabase start`)
   docker-compose.yml    SeaweedFS (R2 stand-in for local dev)
@@ -172,7 +173,9 @@ gigacad/                         (pnpm monorepo, domain: gigacad.site)
 4. **SolidWorks add-in:** Task Pane, read-only banner, references, STL export on version commits, STEP and STL export on candidate rebuilds, candidate rebuild.
 5. **Worker (done in the API):** thumbnails (rendered from STL/OBJ/3MF/STEP/IGES and from SolidWorks exports, or the preview picture saved in SolidWorks files), blob GC, stale-lock notifications. The server stores and serves exports (`file_exports`) for downloads and previews.
 6. **Public sharing:** explore, fork, stars.
-7. **macOS File Provider client**, plus other CAD packages (Fusion, FreeCAD, Onshape exports) through generic parsers.
+7. **macOS client**, plus other CAD packages (Fusion, FreeCAD, Onshape exports) through generic parsers.
+   - Now: `clients/desktop`, which needs no Apple Developer account or Xcode. Projects are real folders in `~/GigaCAD` laid out like the web directory; branches you don't hold and releases are locked (`chmod` + `chflags uchg`); saves in a branch you hold become autosaves after 5 s; Finder gets branded icons and Quick Actions (`gigacad://` links). It ships as an ad-hoc signed DMG ("Open Anyway" once), and its code updates over the air as signed bundles from `downloads.gigacad.site`. See `clients/desktop/README.md`.
+   - Later, with a Developer ID: a File Provider extension (`clients/macos/`) for on-demand files, plus notarization.
 
 ## Verification
 - **Unit (`pnpm test`):**

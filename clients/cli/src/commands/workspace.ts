@@ -57,8 +57,9 @@ export function registerWorkspaceCommands(program: Command, bind: Bind): void {
   program
     .command('commit')
     .description('Upload every changed file and record a version on the branch')
-    .requiredOption('-m, --message <message>', 'What changed')
+    .option('-m, --message <message>', 'What changed (required unless --autosave)')
     .option('--label <label>', 'Version label, e.g. "rev B"')
+    .option('--autosave', 'Record an autosave instead of a version; autosaves are removed at the next version')
     .action(bind(commit));
 }
 
@@ -372,7 +373,13 @@ async function checkin(rt: Runtime, options: { force?: boolean }): Promise<void>
   rt.out.result(branch, `Checked in ${workspace.state.branchName}. Others can check it out now.`);
 }
 
-async function commit(rt: Runtime, options: { message: string; label?: string }): Promise<void> {
+async function commit(rt: Runtime, options: { message?: string; label?: string; autosave?: boolean }): Promise<void> {
+  if (options.autosave && options.label) {
+    throw new CliError('invalid_arguments', 'Autosaves can’t have a version label', { hint: 'Drop --label, or commit a version without --autosave.' });
+  }
+  if (!options.autosave && !options.message) {
+    throw new CliError('invalid_arguments', 'A version needs a message', { hint: 'Pass -m "what changed", or --autosave.' });
+  }
   const { workspace, session } = await workspaceSession(rt);
   requireSignedIn(session);
   const { root, state } = workspace;
@@ -408,8 +415,8 @@ async function commit(rt: Runtime, options: { message: string; label?: string })
   const result = await session.api.post<CommitResult>(`/v1/branches/${state.branchId}/commits`, {
     parentId: state.headCommitId,
     machine: state.machine,
-    kind: 'version',
-    message: options.message,
+    kind: options.autosave ? 'autosave' : 'version',
+    ...(options.message ? { message: options.message } : {}),
     ...(options.label ? { versionLabel: options.label } : {}),
     files: commitFiles(state, hashed),
   });
@@ -428,6 +435,6 @@ async function commit(rt: Runtime, options: { message: string; label?: string })
     .map(([kind, count]) => `${count} ${kind}`);
   rt.out.result(
     { commit: result.commit, changes, uploaded: uploads.uploaded, alreadyPresent: uploads.alreadyPresent },
-    `Committed ${result.commit.versionLabel ? `${result.commit.versionLabel} ` : ''}${shortId(result.commit.id)} on ${state.branchName}: ${counts.join(', ')}`,
+    `${options.autosave ? 'Autosaved' : 'Committed'} ${result.commit.versionLabel ? `${result.commit.versionLabel} ` : ''}${shortId(result.commit.id)} on ${state.branchName}: ${counts.join(', ')}`,
   );
 }

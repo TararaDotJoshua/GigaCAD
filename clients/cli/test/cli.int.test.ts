@@ -133,6 +133,12 @@ describe('workspace round trip', () => {
     ]);
     const p1Item = head.body.files.find((file: { path: string }) => file.path === 'parts/P1.SLDPRT').itemId;
 
+    // Saving in the drive records autosaves: no message needed.
+    await write(root, { 'Robot.SLDASM': 'asm autosaved' });
+    const autosave = await ok(cli, ['commit', '--autosave'], root);
+    expect(autosave.commit).toMatchObject({ kind: 'autosave', versionLabel: null });
+    expect((await ok(cli, ['status'], root)).changes).toEqual([]);
+
     // A rename with giga mv keeps the item; an unchanged file isn't uploaded again.
     await ok(cli, ['mv', 'parts/P1.SLDPRT', 'parts/Bracket.SLDPRT'], root);
     await write(root, { 'Robot.SLDASM': 'asm v2' });

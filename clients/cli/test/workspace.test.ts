@@ -30,6 +30,7 @@ async function fakeWorkspace(files: Record<string, string>): Promise<string> {
     branchName: 'dev',
     machine: 'test (giga 00000000)',
     headCommitId: '00000000-0000-4000-8000-00000000cccc',
+    headKind: 'version',
     base,
     tracked: trackedFrom(base),
     cache: {},

@@ -723,12 +723,14 @@
   overflow-wrap: anywhere;
 }
 
-/* The demo's pick thumbnail at table size: a Mist tile with the file type drawn in Ink. */
+/* The demo's pick thumbnail at table size: a Mist tile with the file type drawn in Ink.
+   Glyphs and rendered thumbnails share one size so names line up; the negative margin keeps rows at text height. */
 .shell .file-glyph {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 36px;
+  height: 36px;
+  margin-block: -3px;
   flex: none;
   border-radius: var(--r-sm);
   background: var(--mist);
@@ -772,9 +774,6 @@
 
 /* A rendered thumbnail fills the tile. */
 .shell .file-glyph.has-thumbnail {
-  width: 36px;
-  height: 36px;
-  margin-block: -3px;
   overflow: hidden;
 }
 

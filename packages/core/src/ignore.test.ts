@@ -15,11 +15,15 @@ describe('createIgnoreMatcher', () => {
     'docs/.~lock.notes.odt#',
     'Thumbs.db',
     'sub/.DS_Store',
+    'Icon\r',
+    'parts/Icon\r',
+    '._Arm.SLDPRT',
+    'Releases/v2/.gigacad-placeholder',
   ])('ignores %s', (path) => {
     expect(isIgnored(path)).toBe(true);
   });
 
-  it.each(['Arm.SLDPRT', 'Robot.SLDASM', 'drawings/Arm.SLDDRW', 'exports/Arm.STEP', '.gigaignore'])(
+  it.each(['Arm.SLDPRT', 'Robot.SLDASM', 'drawings/Arm.SLDDRW', 'exports/Arm.STEP', '.gigaignore', 'Icon', 'Icons/gear.svg'])(
     'keeps %s',
     (path) => {
       expect(isIgnored(path)).toBe(false);

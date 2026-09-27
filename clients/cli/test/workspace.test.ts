@@ -101,6 +101,17 @@ describe('dirty workspace protection', () => {
     expect(result.errorJson().error.code).toBe('nothing_to_commit');
   });
 
+  it('needs a message for a version and no label for an autosave, before touching anything', async () => {
+    const root = await fakeWorkspace({ 'A.SLDPRT': 'a' });
+    await writeFile(join(root, 'A.SLDPRT'), 'a changed');
+    const cli = await testCli({ env: { GIGA_TOKEN: 'gcd_test' } });
+
+    expect((await cli.run(['commit', '--json'], { cwd: root })).errorJson().error.code).toBe('invalid_arguments');
+    expect((await cli.run(['commit', '--autosave', '--label', 'rev B', '--json'], { cwd: root })).errorJson().error.code).toBe('invalid_arguments');
+    // An autosave without a message gets past argument checks and only fails at the (offline) API.
+    expect((await cli.run(['commit', '--autosave', '--json'], { cwd: root })).errorJson().error.code).toBe('network');
+  });
+
   it('refuses to use a workspace against a different API', async () => {
     const root = await fakeWorkspace({ 'A.SLDPRT': 'a' });
     const cli = await testCli({ env: { GIGA_API_URL: 'http://127.0.0.1:2' } });

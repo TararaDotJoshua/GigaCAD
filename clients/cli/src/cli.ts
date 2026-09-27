@@ -4,6 +4,7 @@ import { registerExportCommands } from './commands/exports.js';
 import { registerProjectCommands } from './commands/projects.js';
 import { registerReleaseRequestCommands } from './commands/releaseRequests.js';
 import { registerReleaseCommands } from './commands/releases.js';
+import { registerRootCommands } from './commands/root.js';
 import { registerWorkspaceCommands } from './commands/workspace.js';
 import type { Context } from './context.js';
 import { Output } from './output.js';
@@ -29,10 +30,13 @@ export class Runtime {
     return this.workspacePromise;
   }
 
-  /** An API session. Inside a workspace it talks to the API the workspace was cloned from. */
-  async session(options: { ignoreWorkspace?: boolean } = {}): Promise<Session> {
+  /**
+   * An API session. Inside a workspace it talks to the API the workspace was cloned from;
+   * `workspaceApiUrl` does the same for other saved folders, like a project root folder.
+   */
+  async session(options: { ignoreWorkspace?: boolean; workspaceApiUrl?: string } = {}): Promise<Session> {
     const workspace = options.ignoreWorkspace ? undefined : await this.workspace();
-    return openSession(this.ctx, { apiUrlFlag: this.apiUrlFlag, workspaceApiUrl: workspace?.state.apiUrl });
+    return openSession(this.ctx, { apiUrlFlag: this.apiUrlFlag, workspaceApiUrl: options.workspaceApiUrl ?? workspace?.state.apiUrl });
   }
 }
 
@@ -93,6 +97,7 @@ Environment:
   registerAuthCommands(program, bind);
   registerProjectCommands(program, bind);
   registerWorkspaceCommands(program, bind);
+  registerRootCommands(program, bind);
   registerExportCommands(program, bind);
   registerReleaseRequestCommands(program, bind);
   registerReleaseCommands(program, bind);

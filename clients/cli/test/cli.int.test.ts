@@ -138,6 +138,9 @@ describe('workspace round trip', () => {
     const autosave = await ok(cli, ['commit', '--autosave'], root);
     expect(autosave.commit).toMatchObject({ kind: 'autosave', versionLabel: null });
     expect((await ok(cli, ['status'], root)).changes).toEqual([]);
+    // A version needs no new changes on top of an autosave: it names the autosaved work.
+    expect((await ok(cli, ['commit', '-m', 'Name the autosave'], root)).commit).toMatchObject({ kind: 'version', message: 'Name the autosave' });
+    expect((await fails(cli, ['commit', '-m', 'Nothing new'], root)).code).toBe('nothing_to_commit');
 
     // A rename with giga mv keeps the item; an unchanged file isn't uploaded again.
     await ok(cli, ['mv', 'parts/P1.SLDPRT', 'parts/Bracket.SLDPRT'], root);

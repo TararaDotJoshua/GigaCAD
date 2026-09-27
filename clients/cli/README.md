@@ -73,7 +73,7 @@ Commands run from anywhere inside the workspace.
 | `giga status` | Lists local changes, who holds the lock, and whether the branch has newer commits |
 | `giga mv <from> <to>` | Moves or renames a file or folder so each file keeps its item ID |
 | `giga commit -m <message> [--label <label>]` | Uploads changed files and records a version of the whole folder |
-| `giga commit --autosave` | Records an autosave instead of a version. Autosaves need no message, and the branch's next version removes them. GigaCAD Desktop makes one each time you save |
+| `giga commit --autosave` | Records an autosave instead of a version. Autosaves need no message, and the branch's next version removes them. GigaCAD Desktop makes one each time you save. A version can follow autosaves with no new changes; it names the autosaved work |
 | `giga checkin [--force]` | Gives up the lock |
 | `giga export <file> <export>` | Attaches a STEP or STL exported from SolidWorks to a committed `.SLDPRT` or `.SLDASM`. It becomes the file's 3D preview and thumbnail, and a download option |
 

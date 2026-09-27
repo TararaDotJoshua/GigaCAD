@@ -1,0 +1,175 @@
+import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { createWriteStream, existsSync } from 'node:fs';
+import { mkdir, rename, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { Readable, Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import type { ReadableStream } from 'node:stream/web';
+import { promisify } from 'node:util';
+import { compareVersions, verifyBundle, verifyBytes } from '../shared/bundle.js';
+import type { UpdateState } from '../shared/types.js';
+
+const run = promisify(execFile);
+
+export const DEFAULT_MANIFEST_URL = 'https://downloads.gigacad.site/desktop/stable/manifest.json';
+const CHECK_INTERVAL = 6 * 60 * 60_000;
+const FOCUS_INTERVAL = 60 * 60_000;
+
+/** `manifest.json`: the newest bundle, signed with the same key as the bundles. */
+export interface UpdateManifest {
+  readonly version: string;
+  readonly shellMin: number;
+  readonly bundleUrl: string;
+  readonly sha256: string;
+  readonly size: number;
+  readonly notes: string;
+  readonly notesUrl: string | null;
+  /** The DMG to download when the update needs a newer shell. */
+  readonly dmgUrl: string;
+  readonly publishedAt: string;
+  readonly signature: string;
+}
+
+const SIGNED_FIELDS = ['version', 'shellMin', 'bundleUrl', 'sha256', 'size', 'notes', 'notesUrl', 'dmgUrl', 'publishedAt'] as const;
+
+/** The exact bytes the signature covers: the fields in a fixed order, as JSON. */
+export function canonicalManifest(manifest: Omit<UpdateManifest, 'signature'>): string {
+  return JSON.stringify(SIGNED_FIELDS.map((field) => [field, manifest[field]]));
+}
+
+export function verifyManifest(manifest: UpdateManifest, publicKey: string): boolean {
+  if (typeof manifest.signature !== 'string') return false;
+  return verifyBytes(canonicalManifest(manifest), manifest.signature, publicKey);
+}
+
+export interface UpdaterOptions {
+  readonly currentVersion: string;
+  readonly shellVersion: number;
+  readonly bundlesDir: string;
+  readonly publicKey: string;
+  readonly manifestUrl: string;
+  readonly fetch?: typeof fetch;
+  /** Whether it's safe to restart now (no sync work running). */
+  readonly canRestart: () => boolean;
+  readonly relaunch: () => void;
+  readonly onChange: (state: UpdateState) => void;
+}
+
+/**
+ * Checks for a newer code bundle, downloads and verifies it in the background, and says when a
+ * restart will apply it. Never touches the installed app; the bootstrap picks the bundle up.
+ */
+export class Updater {
+  state: UpdateState = { kind: 'idle', lastChecked: null };
+  private checking: Promise<void> | undefined;
+  private timer: NodeJS.Timeout | undefined;
+  private lastCheckAt = 0;
+
+  constructor(private readonly options: UpdaterOptions) {}
+
+  private set(state: UpdateState): void {
+    this.state = state;
+    this.options.onChange(state);
+  }
+
+  start(firstDelay = 10_000): void {
+    this.timer = setTimeout(() => {
+      void this.check();
+      this.timer = setInterval(() => void this.check(), CHECK_INTERVAL);
+    }, firstDelay);
+  }
+
+  stop(): void {
+    clearTimeout(this.timer);
+    clearInterval(this.timer);
+  }
+
+  /** When the window gains focus: check again if the last check was over an hour ago. */
+  focused(): void {
+    if (Date.now() - this.lastCheckAt > FOCUS_INTERVAL) void this.check();
+  }
+
+  check(): Promise<void> {
+    if (this.state.kind === 'ready' || this.state.kind === 'downloading') return Promise.resolve();
+    this.checking ??= this.checkOnce().finally(() => (this.checking = undefined));
+    return this.checking;
+  }
+
+  private async checkOnce(): Promise<void> {
+    const { currentVersion, shellVersion, bundlesDir, publicKey } = this.options;
+    const fetchImpl = this.options.fetch ?? fetch;
+    this.lastCheckAt = Date.now();
+    const lastChecked = new Date().toISOString();
+    this.set({ kind: 'checking', lastChecked: this.state.lastChecked });
+    try {
+      const response = await fetchImpl(this.options.manifestUrl, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`The update server answered HTTP ${response.status}`);
+      const manifest = (await response.json()) as UpdateManifest;
+      if (!verifyManifest(manifest, publicKey)) throw new Error('The update information isn’t signed by GigaCAD');
+      if (compareVersions(manifest.version, currentVersion) <= 0) {
+        this.set({ kind: 'idle', lastChecked });
+        return;
+      }
+      if (manifest.shellMin > shellVersion) {
+        this.set({ kind: 'needsReinstall', version: manifest.version, notes: manifest.notes, dmgUrl: manifest.dmgUrl, lastChecked });
+        return;
+      }
+      const target = join(bundlesDir, manifest.version);
+      if (!existsSync(target) || !verifyBundle(target, publicKey).ok) await this.download(manifest, target, lastChecked);
+      this.set({ kind: 'ready', version: manifest.version, notes: manifest.notes, notesUrl: manifest.notesUrl, restarting: false, lastChecked });
+    } catch (error) {
+      this.set({ kind: 'error', message: error instanceof Error ? error.message : String(error), lastChecked });
+    }
+  }
+
+  private async download(manifest: UpdateManifest, target: string, lastChecked: string): Promise<void> {
+    const { bundlesDir, publicKey, shellVersion } = this.options;
+    const fetchImpl = this.options.fetch ?? fetch;
+    await mkdir(bundlesDir, { recursive: true, mode: 0o700 });
+    const archive = join(bundlesDir, `.download-${manifest.version}.tar.gz`);
+    const staging = join(bundlesDir, `.extract-${manifest.version}`);
+    try {
+      this.set({ kind: 'downloading', version: manifest.version, progress: 0, lastChecked });
+      const response = await fetchImpl(manifest.bundleUrl);
+      if (!response.ok || !response.body) throw new Error(`Downloading the update failed (HTTP ${response.status})`);
+      const hash = createHash('sha256');
+      let received = 0;
+      let reported = 0;
+      const meter = new Transform({
+        transform: (chunk: Buffer, _encoding, done) => {
+          hash.update(chunk);
+          received += chunk.length;
+          const progress = Math.min(1, received / Math.max(manifest.size, 1));
+          if (progress - reported >= 0.01) {
+            reported = progress;
+            this.set({ kind: 'downloading', version: manifest.version, progress, lastChecked });
+          }
+          done(null, chunk);
+        },
+      });
+      await pipeline(Readable.fromWeb(response.body as ReadableStream), meter, createWriteStream(archive));
+      if (received !== manifest.size || hash.digest('hex') !== manifest.sha256) throw new Error('The update download was damaged; it will be tried again later');
+
+      await rm(staging, { recursive: true, force: true });
+      await mkdir(staging, { recursive: true });
+      await run('/usr/bin/tar', ['-xzf', archive, '-C', staging]);
+      const verified = verifyBundle(staging, publicKey);
+      if (!verified.ok) throw new Error(`The update didn’t verify (${verified.reason})`);
+      if (verified.manifest.version !== manifest.version || verified.manifest.shellMin > shellVersion) throw new Error('The update doesn’t match its description');
+      await rm(target, { recursive: true, force: true });
+      await rename(staging, target);
+    } finally {
+      await rm(archive, { force: true });
+      await rm(staging, { recursive: true, force: true });
+    }
+  }
+
+  /** Restarts into the downloaded bundle once no upload or autosave is running. */
+  async restart(pollMs = 500): Promise<void> {
+    if (this.state.kind !== 'ready') return;
+    this.set({ ...this.state, restarting: true });
+    while (!this.options.canRestart()) await new Promise((resolve) => setTimeout(resolve, pollMs));
+    this.options.relaunch();
+  }
+}

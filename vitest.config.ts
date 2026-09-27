@@ -3,6 +3,7 @@ import { defineConfig } from 'vitest/config';
 
 export const alias = {
   '@gigacad/core': fileURLToPath(new URL('./packages/core/src/index.ts', import.meta.url)),
+  '@gigacad/cli/lib': fileURLToPath(new URL('./clients/cli/src/lib.ts', import.meta.url)),
 };
 
 // Unit tests. Integration tests (*.int.test.ts) need `supabase start`; run them with `pnpm test:integration`.

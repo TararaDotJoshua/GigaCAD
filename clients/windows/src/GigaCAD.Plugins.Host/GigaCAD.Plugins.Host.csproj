@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Loads plugins into the GigaCAD app and serves the pipe their CAD add-ins connect to. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>GigaCAD.Plugins.Hosting</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\GigaCAD.Plugins.Abstractions\GigaCAD.Plugins.Abstractions.csproj" />
+    <ProjectReference Include="..\GigaCAD.Plugins.Protocol\GigaCAD.Plugins.Protocol.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="GigaCAD.Plugins.Tests" />
+  </ItemGroup>
+</Project>

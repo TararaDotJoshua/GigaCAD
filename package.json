@@ -10,7 +10,8 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
-    "test:integration": "vitest run --config vitest.integration.config.ts"
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:windows": "dotnet test clients/windows/GigaCAD.Windows.sln"
   },
   "devDependencies": {
     "@types/node": "^24.13.6",

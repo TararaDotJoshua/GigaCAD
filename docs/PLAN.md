@@ -73,8 +73,8 @@ gigacad/                         (pnpm monorepo, domain: gigacad.site)
   apps/worker/          pg-boss jobs: glTF/thumbnail generation, blob GC, stale-lock notices
   apps/web/             One Next.js app on Cloudflare Workers (@opennextjs/cloudflare): marketing pages (static) at gigacad.site, product at app.gigacad.site; three.js viewer; Supabase Auth UI
   clients/cli/          `giga` TS CLI (power users + E2E tests)
-  clients/windows/      .NET 8: GigaCAD Sync service (Cloud Files API sync root) + tray app + Explorer context menu
-  clients/solidworks/   .NET Framework 4.8 COM add-in (SolidWorks API) with Task Pane; talks to Sync service over a named pipe
+  clients/windows/      .NET 10: GigaCAD app (Cloud Files API sync root) + tray app + Explorer context menu, and the CAD plugin framework; see WINDOWS_APP_PLAN.md
+                        src/GigaCAD.SolidWorks.AddIn: .NET Framework 4.8 COM add-in (SolidWorks API) with Task Pane; talks to the app over a named pipe
   clients/macos/        (later) File Provider extension, same folder layout
   supabase/             Supabase CLI project: migrations, RLS policies, local stack (`supabase start`)
   docker-compose.yml    SeaweedFS (R2 stand-in for local dev)
@@ -118,6 +118,8 @@ gigacad/                         (pnpm monorepo, domain: gigacad.site)
 - Live updates: Supabase Realtime (Postgres changes on `branches`, `release_requests`, `approvals`) push checkout locks, RR status, and approvals to the web app, tray app, and add-in
 
 ### Windows drive (`clients/windows`)
+The full plan, including the CAD plugin framework that SolidWorks plugs into, is in [WINDOWS_APP_PLAN.md](WINDOWS_APP_PLAN.md).
+
 - Registers a Cloud Files sync root (CsWin32/Vanara bindings) called **GigaCAD** in the Explorer sidebar.
 - **Layout:** `GigaCAD\<owner>\<project>\`
   - `main\` and `releases\vN\`: read-only
@@ -138,7 +140,7 @@ gigacad/                         (pnpm monorepo, domain: gigacad.site)
 - Placeholder states show synced, uploading, read-only, and checked-out-by-other.
 - The tray app handles sign-in (device code), sync status, and the commit dialog.
 
-### SolidWorks add-in (`clients/solidworks`)
+### SolidWorks add-in (`clients/windows/src/GigaCAD.SolidWorks.AddIn`)
 - **Task Pane:**
   - the current project, branch, and checkout holder
   - Check Out / In, Commit Version, Open RR

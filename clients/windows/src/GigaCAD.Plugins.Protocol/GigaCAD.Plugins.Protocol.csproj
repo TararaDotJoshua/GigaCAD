@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Messages between a CAD add-in and the GigaCAD app over a named pipe, and the client add-ins use. -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Text.Json" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="GigaCAD.Plugins.Tests" />
+  </ItemGroup>
+</Project>

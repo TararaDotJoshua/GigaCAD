@@ -33,6 +33,16 @@ jobs:
       - run: pnpm build
       - run: pnpm --filter @gigacad/cli smoke
 
+  # The Windows app's plugin framework, on .NET 10 and (for the SolidWorks add-in) .NET Framework 4.8.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: clients/windows/global.json
+      - run: dotnet test clients/windows/GigaCAD.Windows.sln -c Release
+
   # The image Railway deploys. Building it catches files missing from its COPY lines.
   api-image:
     runs-on: ubuntu-latest

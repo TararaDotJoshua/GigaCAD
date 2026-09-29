@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net10.0</TargetFrameworks>
+    <!--
+      On Windows the protocol tests also run on .NET Framework 4.8, which the SolidWorks add-in uses.
+      Elsewhere, -p:IncludeNet48=true compile-checks that target without running it.
+    -->
+    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('Windows')) Or '$(IncludeNet48)' == 'true'">net10.0;net48</TargetFrameworks>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\GigaCAD.Plugins.Abstractions\GigaCAD.Plugins.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\GigaCAD.Plugins.Protocol\GigaCAD.Plugins.Protocol.csproj" />
+  </ItemGroup>
+
+  <!-- The host and the SolidWorks plugin are .NET 10 only. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <Compile Remove="Hosting/**;SolidWorks/**" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' != 'net48'">
+    <ProjectReference Include="..\..\src\GigaCAD.Plugins.Host\GigaCAD.Plugins.Host.csproj" />
+    <ProjectReference Include="..\..\src\GigaCAD.Plugins.SolidWorks\GigaCAD.Plugins.SolidWorks.csproj" />
+    <ProjectReference Include="..\GigaCAD.Plugins.TestPlugin\GigaCAD.Plugins.TestPlugin.csproj" ReferenceOutputAssembly="false" OutputItemType="TestPluginAssembly" />
+  </ItemGroup>
+
+  <!-- testplugin/ holds the test plugin's dll; plugins/solidworks/ is the real plugin laid out as the installer will. -->
+  <Target Name="LayOutPlugins" AfterTargets="Build" Condition="'$(TargetFramework)' != '' And '$(TargetFramework)' != 'net48'">
+    <Copy SourceFiles="@(TestPluginAssembly)" DestinationFolder="$(OutDir)testplugin" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(OutDir)GigaCAD.Plugins.SolidWorks.dll;..\..\src\GigaCAD.Plugins.SolidWorks\plugin.json" DestinationFolder="$(OutDir)plugins/solidworks" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

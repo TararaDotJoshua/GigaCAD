@@ -48,7 +48,10 @@ These need the owner's accounts. Everything else before the next phase is done.
 
 Following the phases in `docs/PLAN.md`:
 
-1. **Windows app (phase 3).** Windows gets the macOS app (`clients/desktop`), ported: folders in Explorer, locks, autosaves, a right-click menu, and a notification-area icon. The plan and milestones are in `docs/WINDOWS_APP_PLAN.md`. The CAD plugin framework is done: plugin registry, add-in pipe server, the SolidWorks plugin (`clients/desktop/src/main/plugins`), and the add-in's protocol library (`clients/windows`), tested in CI on Windows with a .NET Framework 4.8 client. Next is W1: the app running on Windows. Testing needs the Windows laptop.
+1. **Windows app (phase 3).** The desktop app runs on Windows (`docs/WINDOWS_APP_PLAN.md`, milestones W1–W4, #46–#49): folders in File Explorer, locks, autosaves, the GigaCAD right-click menu, folder icons, `giga.cmd`, and the add-in pipe answering from the sync engine. CI tests it on Windows and uploads an unsigned installer (the `GigaCAD-Windows` artifact). Next:
+   - Try that installer on the Windows PC: sign in, sync, check out from the right-click menu, save in SolidWorks, and check the locks, icons, and tray.
+   - Publish it: run the **Desktop release** workflow with **windows** checked. Until then the website's Windows download (`downloads.gigacad.site/desktop/GigaCAD-Setup.exe`) doesn't exist.
+   - A code-signing certificate, so SmartScreen stops warning.
 2. **SolidWorks add-in (phase 4).** A task pane, a read-only banner, reference and preview export, and rebuilding release candidates. It uses `clients/windows/src/GigaCAD.Plugins.Protocol` to talk to the app, and it builds only on a computer with SolidWorks installed.
 3. **macOS client (phase 7).** The folder-based app is built (see above). Next: try it on a clean Mac account (no Node, Homebrew, or Command Line Tools), then decide whether viewers' root folders should be locked and whether local copies of archived branches should be removed. A File Provider version needs a Developer ID.
 4. **Other CAD programs (phase 7).** Fusion, FreeCAD, and Onshape exports through generic parsers.

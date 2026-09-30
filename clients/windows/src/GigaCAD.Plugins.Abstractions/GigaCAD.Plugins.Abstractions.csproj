@@ -1,7 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <!-- The contracts every GigaCAD plugin implements. netstandard2.0 so CAD add-ins on .NET Framework 4.8 can share it. -->
-  <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
-    <RootNamespace>GigaCAD.Plugins</RootNamespace>
-  </PropertyGroup>
-</Project>

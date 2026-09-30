@@ -1,8 +1,0 @@
-{
-  "id": "solidworks",
-  "name": "SolidWorks",
-  "version": "0.1.0",
-  "hostApi": 1,
-  "assembly": "GigaCAD.Plugins.SolidWorks.dll",
-  "entryType": "GigaCAD.Plugins.SolidWorks.SolidWorksPlugin"
-}

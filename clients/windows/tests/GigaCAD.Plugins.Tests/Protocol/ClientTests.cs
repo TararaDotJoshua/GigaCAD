@@ -117,6 +117,13 @@ namespace GigaCAD.Plugins.Tests.Protocol
             Assert.Equal(ErrorCodes.Disconnected, (await Assert.ThrowsAsync<RpcException>(() => client.CheckinAsync("a", CancellationToken.None))).Code);
         }
 
+        [Fact]
+        public async Task ConnectingWithNoAppRunningTimesOut()
+        {
+            var name = "gc" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            await Assert.ThrowsAsync<TimeoutException>(() => GigaCadHostClient.ConnectAsync(Hello, name, TimeSpan.FromMilliseconds(200), CancellationToken.None));
+        }
+
         private static async Task<(GigaCadHostClient Client, MessageConnection App)> ConnectedAsync()
         {
             var (clientStream, serverStream) = MemoryPipe.Create();

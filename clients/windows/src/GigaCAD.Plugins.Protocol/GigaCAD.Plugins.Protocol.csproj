@@ -1,5 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Messages between a CAD add-in and the GigaCAD app over a named pipe, and the client add-ins use. -->
+  <!--
+    The add-in side of the pipe protocol: messages, framing, and GigaCadHostClient. The app side is
+    TypeScript (clients/desktop/src/main/plugins); clients/desktop/test/plugins/fixtures/pipe-protocol.json keeps them in step.
+    netstandard2.0 so the SolidWorks add-in can use it on .NET Framework 4.8.
+  -->
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
   </PropertyGroup>

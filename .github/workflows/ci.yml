@@ -58,6 +58,33 @@ jobs:
           name: GigaCAD-macOS
           path: clients/desktop/dist/*.dmg
 
+  # The CAD plugin framework on Windows: the add-in protocol library on .NET 10 and .NET Framework
+  # 4.8 (the SolidWorks add-in's runtime), and the app's plugin tests over real named pipes,
+  # including the .NET Framework client talking to the app's pipe server.
+  windows:
+    runs-on: windows-latest
+    env:
+      # The plugin tests don't start Electron; skip its 100 MB download.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: clients/windows/global.json
+      # Also builds the interop client for both frameworks.
+      - run: dotnet test clients/windows/GigaCAD.Windows.sln -c Release
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm vitest run clients/desktop/test/plugins
+        env:
+          GIGACAD_INTEROP: "1"
+          GIGACAD_INTEROP_TFM: net48
+          GIGACAD_INTEROP_CONFIGURATION: Release
+
   # The image Railway deploys. Building it catches files missing from its COPY lines.
   api-image:
     runs-on: ubuntu-latest

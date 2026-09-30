@@ -9,7 +9,7 @@ Live and verified in production:
 - Marketing site at `gigacad.site`, product at `app.gigacad.site` (Cloudflare Workers), API at `api.gigacad.site` (Railway), Supabase project `gaxicutwgacxekqcsnpg`.
 - Sign-up with confirmation email through Resend (`send.gigacad.site`).
 - `@gigacad/cli` 0.1.0 on npm.
-- CI on every pull request (`check`, `api-image`, `integration`, `e2e`). `main` is protected. Merges deploy the web app automatically, and Railway deploys the API after CI.
+- CI on every pull request (`check`, `api-image`, `integration`, `e2e`, `windows` for the CAD plugin framework on Windows, and the optional `desktop` job for macOS). `main` is protected. Merges deploy the web app automatically, and Railway deploys the API after CI.
 - The release flow, end to end. On `tararajoshua/smoke-test`: v1 and v2 from the CLI, v3 picked in the web app (keep main on a conflict, take a branch file, replace a part), approved, and released. `giga release export 3` matched every file byte for byte, and the replacement kept the old part's item ID.
 - Sharing. A second account viewed a project shared with it.
 - Live updates. Project pages refresh on their own when something happens, including on private projects (fixed in #13).
@@ -48,14 +48,14 @@ These need the owner's accounts. Everything else before the next phase is done.
 
 Following the phases in `docs/PLAN.md`:
 
-1. **Windows drive (phase 3).** A `GigaCAD\` drive in File Explorer where SolidWorks opens and saves files directly. It needs a sync root, file hydration, the save pipeline that produces autosaves, read-only enforcement for branches you haven't checked out, a context menu, and a tray app. Testing needs a Windows laptop with SolidWorks.
-2. **SolidWorks add-in (phase 4).** A task pane, a read-only banner, reference and preview export, and rebuilding release candidates.
+1. **Windows app (phase 3).** Windows gets the macOS app (`clients/desktop`), ported: folders in Explorer, locks, autosaves, a right-click menu, and a notification-area icon. The plan and milestones are in `docs/WINDOWS_APP_PLAN.md`. The CAD plugin framework is done: plugin registry, add-in pipe server, the SolidWorks plugin (`clients/desktop/src/main/plugins`), and the add-in's protocol library (`clients/windows`), tested in CI on Windows with a .NET Framework 4.8 client. Next is W1: the app running on Windows. Testing needs the Windows laptop.
+2. **SolidWorks add-in (phase 4).** A task pane, a read-only banner, reference and preview export, and rebuilding release candidates. It uses `clients/windows/src/GigaCAD.Plugins.Protocol` to talk to the app, and it builds only on a computer with SolidWorks installed.
 3. **macOS client (phase 7).** The folder-based app is built (see above). Next: try it on a clean Mac account (no Node, Homebrew, or Command Line Tools), then decide whether viewers' root folders should be locked and whether local copies of archived branches should be removed. A File Provider version needs a Developer ID.
 4. **Other CAD programs (phase 7).** Fusion, FreeCAD, and Onshape exports through generic parsers.
 
 ## Working notes
 
-- Every change to `main` goes through a pull request. All four CI jobs must pass, and auto-merge is on.
+- Every change to `main` goes through a pull request. The required CI jobs must pass (`check`, `api-image`, `integration`, `e2e`, and `windows` once it's added as a required check), and auto-merge is on. `desktop` is optional for now.
 - Check deploys by HTTP status for each kind of page (marketing, docs, product signed out and signed in), not by looking for text in the page.
 - A CLI release means bumping the version in `clients/cli/package.json`, then running `pnpm --filter @gigacad/cli publish` from `main`. npm asks for a passkey confirmation in the browser.
 - Migrations are applied by hand with `supabase db push`, before merging the pull request that adds them. `supabase db query --linked "<sql>"` runs read-only checks against production.

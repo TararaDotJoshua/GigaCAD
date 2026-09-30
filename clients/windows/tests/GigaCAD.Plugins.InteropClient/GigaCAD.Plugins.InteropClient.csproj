@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Plays the SolidWorks add-in against the real app pipe server, for
+    clients/desktop/test/plugins/interop.test.ts. On Windows it also builds for .NET Framework 4.8,
+    the add-in's runtime.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworks>net10.0</TargetFrameworks>
+    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('Windows')) Or '$(IncludeNet48)' == 'true'">net10.0;net48</TargetFrameworks>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\GigaCAD.Plugins.Protocol\GigaCAD.Plugins.Protocol.csproj" />
+  </ItemGroup>
+</Project>

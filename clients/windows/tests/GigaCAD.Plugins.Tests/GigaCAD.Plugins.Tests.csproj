@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net10.0</TargetFrameworks>
+    <!--
+      On Windows the tests also run on .NET Framework 4.8, which the SolidWorks add-in uses.
+      Elsewhere, -p:IncludeNet48=true compile-checks that target without running it.
+    -->
+    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('Windows')) Or '$(IncludeNet48)' == 'true'">net10.0;net48</TargetFrameworks>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\GigaCAD.Plugins.Protocol\GigaCAD.Plugins.Protocol.csproj" />
+  </ItemGroup>
+</Project>

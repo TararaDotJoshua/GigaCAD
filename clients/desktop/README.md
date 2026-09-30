@@ -70,6 +70,23 @@ The signing key: `scripts/keygen.mjs` makes one; its public half is in
 `src/bootstrap/publicKey.ts`. Keep the private half in the `DESKTOP_UPDATE_KEY` secret and a
 backup. Losing it means shipping a new DMG to change keys.
 
+## Plugins
+
+CAD-specific behavior (SolidWorks first) comes from plugins in `src/main/plugins/`. The Windows plan in [docs/WINDOWS_APP_PLAN.md](../../docs/WINDOWS_APP_PLAN.md) covers the design.
+
+- **Plugins:** a plugin is a `GigaPlugin` object (`types.ts`). It can supply file types, ignore patterns, installed versions of its CAD program, menu commands, and its add-in's `clientId`. Plugins are compiled into the signed bundle; add one to `builtInPlugins()` in `index.ts`.
+- **Registry:** `PluginRegistry` combines them and turns off any capability that throws.
+- **Pipe server:** `PluginPipeServer` is the pipe CAD add-ins connect to (`\\.\pipe\GigaCAD.Host.<domain>.<user>` on Windows).
+  - Framing and messages are in `protocol.ts`. `test/plugins/fixtures/pipe-protocol.json` keeps them in step with the add-ins' C# library in `clients/windows`.
+  - Every add-in method answers `not_implemented` until the app registers handlers with `server.handle()`.
+- **Not wired in yet:** `createPluginHost()` isn't called by the app yet; that's milestone W1 of the Windows plan.
+- **Interop test:** `test/plugins/interop.test.ts` runs the C# client against the pipe server. It needs the .NET SDK, and runs in the `windows` CI job with .NET Framework 4.8:
+
+  ```sh
+  dotnet build clients/windows/tests/GigaCAD.Plugins.InteropClient
+  GIGACAD_INTEROP=1 pnpm vitest run clients/desktop/test/plugins/interop.test.ts
+  ```
+
 ## How it's put together
 
 - `src/bootstrap/`: the app's entry, shipped in the `.app`. It picks the newest verified code

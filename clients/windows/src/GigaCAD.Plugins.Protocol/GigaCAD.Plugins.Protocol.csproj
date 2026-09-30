@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The add-in side of the pipe protocol: messages, framing, and GigaCadHostClient. The app side is
+    TypeScript (clients/desktop/src/main/plugins); clients/desktop/test/plugins/fixtures/pipe-protocol.json keeps them in step.
+    netstandard2.0 so the SolidWorks add-in can use it on .NET Framework 4.8.
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Text.Json" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="GigaCAD.Plugins.Tests" />
+  </ItemGroup>
+</Project>

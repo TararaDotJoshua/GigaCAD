@@ -9,7 +9,7 @@ Hobbyists and enthusiasts don't have an affordable, CAD-agnostic way to version 
 - A branch reaches main through a **Release Request**. The requester **picks, file by file,** what replaces main. The system builds a **Release Candidate**, the assembly is **rebuilt in SolidWorks** against the chosen parts, and **configured approvers** sign off.
 - Files appear in **Explorer (later Finder) as a virtual drive**, like SolidWorks PDM.
 
-v1 targets **SolidWorks**. SolidWorks is Windows-only, so the Windows drive and a SolidWorks add-in come before the macOS drive. The core stays CAD-agnostic: unknown file types are fully versioned, they just miss the SolidWorks extras.
+v1 targets **SolidWorks**. SolidWorks is Windows-only, so the Windows app and a SolidWorks add-in are the priority. (A folder-based macOS app shipped first, and Windows is a port of it.) The core stays CAD-agnostic: unknown file types are fully versioned, they just miss the SolidWorks extras.
 
 The directory `/Users/joshtarara/Documents/GigaCAD` is empty, so this is a new build.
 
@@ -73,9 +73,8 @@ gigacad/                         (pnpm monorepo, domain: gigacad.site)
   apps/worker/          pg-boss jobs: glTF/thumbnail generation, blob GC, stale-lock notices
   apps/web/             One Next.js app on Cloudflare Workers (@opennextjs/cloudflare): marketing pages (static) at gigacad.site, product at app.gigacad.site; three.js viewer; Supabase Auth UI
   clients/cli/          `giga` TS CLI (power users + E2E tests)
-  clients/windows/      .NET 8: GigaCAD Sync service (Cloud Files API sync root) + tray app + Explorer context menu
-  clients/solidworks/   .NET Framework 4.8 COM add-in (SolidWorks API) with Task Pane; talks to Sync service over a named pipe
-  clients/desktop/      GigaCAD for macOS: Electron app that runs the CLI in-process; real Finder folders, locks, icons, Quick Actions, over-the-air code updates
+  clients/desktop/      GigaCAD for macOS and Windows: Electron app that runs the CLI in-process; real Finder/Explorer folders, locks, icons, Quick Actions/context menu, over-the-air code updates, and the CAD plugin host (see WINDOWS_APP_PLAN.md)
+  clients/windows/      .NET: the add-in pipe protocol library (netstandard2.0), and later the SolidWorks add-in (.NET Framework 4.8 COM, Task Pane) that talks to the desktop app over a named pipe
   clients/macos/        (later) File Provider extension, same folder layout
   supabase/             Supabase CLI project: migrations, RLS policies, local stack (`supabase start`)
   docker-compose.yml    SeaweedFS (R2 stand-in for local dev)
@@ -118,28 +117,22 @@ gigacad/                         (pnpm monorepo, domain: gigacad.site)
 - `PUT /projects/:id/exports` attaches an uploaded STEP or STL to a SolidWorks file (contributors and up). `POST /projects/:id/exports/lookup` lists a file's exports; `POST /projects/:id/thumbnails` returns thumbnail links.
 - Live updates: Supabase Realtime (Postgres changes on `branches`, `release_requests`, `approvals`) push checkout locks, RR status, and approvals to the web app, tray app, and add-in
 
-### Windows drive (`clients/windows`)
-- Registers a Cloud Files sync root (CsWin32/Vanara bindings) called **GigaCAD** in the Explorer sidebar.
-- **Layout:** `GigaCAD\<owner>\<project>\`
-  - `main\` and `releases\vN\`: read-only
-  - `branches\<name>\`: writable only if you hold the checkout
-  - `candidates\RR-<n>\`
-- Every branch or candidate folder holds the full project tree, so SolidWorks' relative reference resolution works inside it.
-- **Save pipeline:**
-  - Ignores `~$*.SLDxxx`, `*.bak`, and SolidWorks temp or rename-save artifacts.
-  - Waits for a 5 s debounce after the file handle closes.
-  - Hashes the file, uploads missing blobs, and posts an autosave.
-- **Explorer context menu** (`IExplorerCommand`, with a sparse package for the Windows 11 menu):
-  - Check Out / Check In
-  - Commit Version…
-  - New Branch…
-  - Open Release Request
-  - History
-  - Open on gigacad.site
-- Placeholder states show synced, uploading, read-only, and checked-out-by-other.
-- The tray app handles sign-in (device code), sync status, and the commit dialog.
+### Windows app (`clients/desktop`)
+The full plan is in [WINDOWS_APP_PLAN.md](WINDOWS_APP_PLAN.md).
 
-### SolidWorks add-in (`clients/solidworks`)
+- **One app for both systems:** Windows gets the macOS app (`clients/desktop`), ported. Projects are real folders in `%USERPROFILE%\GigaCAD`, laid out like the web directory: root files, `Branches\<name>\`, and `Releases\vN\`.
+- **Locks:** branches you don't hold, and releases, are locked with the read-only attribute and a deny-write ACL.
+- **Save pipeline:** saves in a branch you hold become autosaves after 5 s of quiet. It ignores `~$*`, `*.bak`, and SolidWorks temp and rename-save files.
+- **Explorer:**
+  - A GigaCAD submenu with Check Out / Check In, Commit Version…, Pull, Download, Copy Link, and Open on gigacad.site, plus plugin commands.
+  - Folder icons.
+  - A notification-area icon.
+- **Plugins:** CAD-specific behavior comes from built-in plugins (`clients/desktop/src/main/plugins`); SolidWorks is the first. CAD add-ins talk to the app over a named pipe.
+- **Later:** a Cloud Files sync root (CsWin32 bindings) for on-demand files, with placeholder states and an `IExplorerCommand` menu in a sparse package, when downloading whole branches gets too slow.
+
+### SolidWorks add-in (`clients/windows/src/GigaCAD.SolidWorks.AddIn`)
+A .NET Framework 4.8 COM add-in. It talks to the desktop app over the plugin pipe protocol (WINDOWS_APP_PLAN.md) using `clients/windows/src/GigaCAD.Plugins.Protocol`.
+
 - **Task Pane:**
   - the current project, branch, and checkout holder
   - Check Out / In, Commit Version, Open RR
@@ -169,7 +162,7 @@ gigacad/                         (pnpm monorepo, domain: gigacad.site)
    - Schema and migrations (including the releases immutability trigger), Supabase Auth (email + GitHub/Google OAuth) plus a device-code endpoint for the desktop client and add-in (user approves at app.gigacad.site/device; the API issues a Supabase session), blobs, checkout locks, commits and pruning, the RR/candidate/approval flow, change feed.
    - `giga` CLI covering all of it.
 2. **Web UI and marketing site:** every page above plus landing, pricing, and docs pages. Deploy per the Hosting section.
-3. **Windows Sync client:** sync root, hydration, save pipeline, read-only enforcement, context menu, tray app.
+3. **Windows app:** `clients/desktop` ported to Windows (folders, locks, save pipeline, context menu, tray), and the CAD plugin framework. A Cloud Files virtual drive comes later.
 4. **SolidWorks add-in:** Task Pane, read-only banner, references, STL export on version commits, STEP and STL export on candidate rebuilds, candidate rebuild.
 5. **Worker (done in the API):** thumbnails (rendered from STL/OBJ/3MF/STEP/IGES and from SolidWorks exports, or the preview picture saved in SolidWorks files), blob GC, stale-lock notifications. The server stores and serves exports (`file_exports`) for downloads and previews.
 6. **Public sharing:** explore, fork, stars.

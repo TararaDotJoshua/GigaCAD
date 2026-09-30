@@ -35,7 +35,8 @@ describe('workflows', () => {
     expect(command).not.toMatch(/node|nvm|python/);
   });
 
-  it('writes one workflow per action, marked with the version', async () => {
+  // Workflow folders are named like "GigaCAD: Check Out.workflow", which only macOS allows (':').
+  it.runIf(process.platform === 'darwin')('writes one workflow per action, marked with the version', async () => {
     dir = mkdtempSync(join(tmpdir(), 'gigacad-services-'));
     expect(quickActionsInstalled('1.0.0', dir)).toBe(false);
     await installQuickActions('1.0.0', dir);

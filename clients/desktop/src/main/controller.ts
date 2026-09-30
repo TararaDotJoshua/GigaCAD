@@ -7,12 +7,14 @@ import type { BundleRuntime } from '../shared/runtime.js';
 import { supportDir } from '../shared/runtime.js';
 import type { AppState, Commands, PluginState, Settings, UpdateState } from '../shared/types.js';
 import { apiClient } from './api.js';
+import { branchSignatures, changedFolders, registerAddInMethods } from './addInMethods.js';
 import { SignIn } from './auth.js';
 import { giga } from './cli.js';
 import { installCli, installWindowsCli, isOurCmdShim, isOurShim, SHIM_PATH, terminalGiga, windowsShimDir, windowsTerminalGiga } from './cliInstall.js';
 import { applyIcons } from './icons.js';
 import { locate, projectDir, treeUrl, webUrlFor } from './layout.js';
 import { createPluginHost, type PluginHost } from './plugins/index.js';
+import { METHODS } from './plugins/protocol.js';
 import { parseActionUrl, type QuickAction } from './quickActions.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { Setup } from './setup.js';
@@ -41,6 +43,8 @@ export class Controller {
   private rolledBackFrom: string | null;
   private plugins!: PluginHost;
   private installations = new Map<string, PluginState['installations']>();
+  /** Branch folder states last announced to CAD add-ins. */
+  private announced = new Map<string, string>();
 
   private constructor(private readonly runtime: BundleRuntime) {
     this.rolledBackFrom = runtime.rolledBackFrom ?? null;
@@ -91,6 +95,16 @@ export class Controller {
       log: (level, message, error) => (level === 'info' ? console.log : console.error)(`GigaCAD plugins: ${message}`, ...(error ? [error] : [])),
       onSessionsChanged: () => this.changed(),
     });
+    registerAddInMethods(this.plugins.server, {
+      folder: () => this.settings.folder,
+      user: () => this.engine.user,
+      projects: () => this.engine.projectStates(),
+      checkout: (projectId, branch) => this.engine.checkout(projectId, branch),
+      checkin: (projectId, branch) => this.engine.checkin(projectId, branch),
+      commitVersion: (projectId, branch, message, label) => this.engine.commitVersion(projectId, branch, message, label),
+      giga: (args, cwd) => giga(args, this.opts(cwd)),
+      put: async (path, body) => (await apiClient(this.settings.apiUrl)).put(path, body),
+    });
     // CAD add-ins (SolidWorks) run on Windows only; the pipe isn't opened elsewhere.
     if (isWindows) void this.plugins.server.listen().catch((error: unknown) => this.log(`CAD add-ins can’t connect: ${describe(error)}`));
     void this.refreshInstallations();
@@ -112,6 +126,14 @@ export class Controller {
       this.runtime.markHealthy();
       void this.plugins.server.close();
     });
+  }
+
+  /** Tells connected CAD add-ins which branch folders changed (checkouts, new versions, downloads). */
+  private announceToAddIns(state: AppState): void {
+    const now = branchSignatures(state.projects);
+    const changed = changedFolders(this.announced, now);
+    this.announced = now;
+    if (changed.length > 0 && this.plugins.server.sessions.length > 0) this.plugins.server.broadcast(METHODS.stateChanged, { paths: changed });
   }
 
   /** The giga a new terminal runs: GigaCAD's own shim when it's installed, else whatever is on PATH. */
@@ -173,6 +195,7 @@ export class Controller {
       const state = this.state();
       this.window?.webContents.send('gigacad:state', state);
       this.updateTray(state);
+      this.announceToAddIns(state);
     }, 100);
   }
 

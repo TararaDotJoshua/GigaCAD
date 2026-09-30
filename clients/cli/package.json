@@ -8,6 +8,12 @@
   "bin": {
     "giga": "dist/giga.js"
   },
+  "exports": {
+    "./lib": {
+      "@gigacad/source": "./src/lib.ts"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "dist"
   ],

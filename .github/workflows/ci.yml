@@ -33,15 +33,57 @@ jobs:
       - run: pnpm build
       - run: pnpm --filter @gigacad/cli smoke
 
-  # The Windows app's plugin framework, on .NET 10 and (for the SolidWorks add-in) .NET Framework 4.8.
+  # GigaCAD for macOS: its tests (the lock tests need macOS), the shell-version check, and a
+  # packaged DMG to try. Optional until it has proved stable.
+  desktop:
+    runs-on: macos-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # check-shell compares against where this branch left main.
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm vitest run clients/desktop
+      - run: node clients/desktop/scripts/check-shell.mjs origin/main
+      # Signed with a throwaway key: this DMG only runs bundles built on the same runner.
+      - run: pnpm --filter @gigacad/desktop dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GigaCAD-macOS
+          path: clients/desktop/dist/*.dmg
+
+  # The CAD plugin framework on Windows: the add-in protocol library on .NET 10 and .NET Framework
+  # 4.8 (the SolidWorks add-in's runtime), and the app's plugin tests over real named pipes,
+  # including the .NET Framework client talking to the app's pipe server.
   windows:
     runs-on: windows-latest
+    env:
+      # The plugin tests don't start Electron; skip its 100 MB download.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: clients/windows/global.json
+      # Also builds the interop client for both frameworks.
       - run: dotnet test clients/windows/GigaCAD.Windows.sln -c Release
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm vitest run clients/desktop/test/plugins
+        env:
+          GIGACAD_INTEROP: "1"
+          GIGACAD_INTEROP_TFM: net48
+          GIGACAD_INTEROP_CONFIGURATION: Release
 
   # The image Railway deploys. Building it catches files missing from its COPY lines.
   api-image:

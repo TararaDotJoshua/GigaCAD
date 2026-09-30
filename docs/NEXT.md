@@ -9,7 +9,7 @@ Live and verified in production:
 - Marketing site at `gigacad.site`, product at `app.gigacad.site` (Cloudflare Workers), API at `api.gigacad.site` (Railway), Supabase project `gaxicutwgacxekqcsnpg`.
 - Sign-up with confirmation email through Resend (`send.gigacad.site`).
 - `@gigacad/cli` 0.1.0 on npm.
-- CI on every pull request (`check`, `api-image`, `integration`, `e2e`, and `windows` for the .NET plugin framework). `main` is protected. Merges deploy the web app automatically, and Railway deploys the API after CI.
+- CI on every pull request (`check`, `api-image`, `integration`, `e2e`, `windows` for the CAD plugin framework on Windows, and the optional `desktop` job for macOS). `main` is protected. Merges deploy the web app automatically, and Railway deploys the API after CI.
 - The release flow, end to end. On `tararajoshua/smoke-test`: v1 and v2 from the CLI, v3 picked in the web app (keep main on a conflict, take a branch file, replace a part), approved, and released. `giga release export 3` matched every file byte for byte, and the replacement kept the old part's item ID.
 - Sharing. A second account viewed a project shared with it.
 - Live updates. Project pages refresh on their own when something happens, including on private projects (fixed in #13).
@@ -22,6 +22,7 @@ Live and verified in production:
 - Restoring deleted projects from Account within 30 days (#25).
 - Thumbnails for STL, OBJ, 3MF, STEP, and IGES files (#27), rendered by the API in a worker thread and shown in file lists and on Explore and profile cards.
 - GitHub-style user pages: an avatar, a bio, a location, and a website; a contribution graph of the last year (version commits, release requests, releases, and approvals); recent activity; and a Starred tab. Visitors only see activity in projects they can read.
+- GigaCAD for macOS (`clients/desktop`, #42 and the release PR after it): projects as Finder folders with locks, icons, autosaves, and Quick Actions, verified against production on `tararadotjoshua/test-bench`. Over-the-air updates were verified against a local update server (update, tampered download, crash rollback, needs-new-DMG). The R2 bucket `gigacad-downloads` is served at `downloads.gigacad.site`. Nothing is published there yet: see section 1.
 - Project file directory (#34): the project root holds files and folders with their own revisions, next to `Branches` and `Releases` folders. Tags, favorites, search, and recent files cover all three. Root entries are renamed, moved, and deleted from a right-click menu. Still open: whether to hide archived branches under `Branches` and in search.
 
 ## 1. Finish the launch checklist
@@ -36,6 +37,7 @@ These need the owner's accounts. Everything else before the next phase is done.
 - **Stripe follow-ups.** Paid plans are live. Set a support email in Stripe (Managed Payments forwards customer questions there), delete the sandbox's webhook to `api.gigacad.site`, and move the API to a restricted live key (`rk_live_`) with the permissions in deployment step 10.
 - **R2 spending alert (step 9).** Cloudflare dashboard → Notifications → Add → Usage Based Billing → R2 storage, with a monthly threshold. The API token agents can use has no notification permissions.
 - **Supabase Pro** before public sign-ups, for daily backups and no pausing.
+- **First macOS release.** Back up `~/.config/gigacad/desktop-update-key.pem` (the update signing key) in a password manager; losing it means every installed copy needs a new DMG. Store it with `gh secret set DESKTOP_UPDATE_KEY < ~/.config/gigacad/desktop-update-key.pem`, check that the `CLOUDFLARE_API_TOKEN` secret can write to R2 (add "Workers R2 Storage: Edit" if not), then run the `Desktop release` workflow from `main` with `dmg` checked. Until then, the download page's Mac link returns 404.
 
 ## 2. Cleanup
 
@@ -46,13 +48,14 @@ These need the owner's accounts. Everything else before the next phase is done.
 
 Following the phases in `docs/PLAN.md`:
 
-1. **Windows drive (phase 3).** A `GigaCAD\` drive in File Explorer where SolidWorks opens and saves files directly. It needs a sync root, file hydration, the save pipeline that produces autosaves, read-only enforcement for branches you haven't checked out, a context menu, and a tray app. Testing needs a Windows laptop with SolidWorks. The plan and milestones are in `docs/WINDOWS_APP_PLAN.md`. The CAD plugin framework it builds on is done (`clients/windows`): plugin contracts, loader, the add-in pipe protocol, and the SolidWorks plugin. Next is W1, the tray app and sign-in.
-2. **SolidWorks add-in (phase 4).** A task pane, a read-only banner, reference and preview export, and rebuilding release candidates.
-3. **macOS client and other CAD programs (phase 7).**
+1. **Windows app (phase 3).** Windows gets the macOS app (`clients/desktop`), ported: folders in Explorer, locks, autosaves, a right-click menu, and a notification-area icon. The plan and milestones are in `docs/WINDOWS_APP_PLAN.md`. The CAD plugin framework is done: plugin registry, add-in pipe server, the SolidWorks plugin (`clients/desktop/src/main/plugins`), and the add-in's protocol library (`clients/windows`), tested in CI on Windows with a .NET Framework 4.8 client. Next is W1: the app running on Windows. Testing needs the Windows laptop.
+2. **SolidWorks add-in (phase 4).** A task pane, a read-only banner, reference and preview export, and rebuilding release candidates. It uses `clients/windows/src/GigaCAD.Plugins.Protocol` to talk to the app, and it builds only on a computer with SolidWorks installed.
+3. **macOS client (phase 7).** The folder-based app is built (see above). Next: try it on a clean Mac account (no Node, Homebrew, or Command Line Tools), then decide whether viewers' root folders should be locked and whether local copies of archived branches should be removed. A File Provider version needs a Developer ID.
+4. **Other CAD programs (phase 7).** Fusion, FreeCAD, and Onshape exports through generic parsers.
 
 ## Working notes
 
-- Every change to `main` goes through a pull request. All five CI jobs must pass (`check`, `api-image`, `integration`, `e2e`, `windows`), and auto-merge is on.
+- Every change to `main` goes through a pull request. The required CI jobs must pass (`check`, `api-image`, `integration`, `e2e`, and `windows` once it's added as a required check), and auto-merge is on. `desktop` is optional for now.
 - Check deploys by HTTP status for each kind of page (marketing, docs, product signed out and signed in), not by looking for text in the page.
 - A CLI release means bumping the version in `clients/cli/package.json`, then running `pnpm --filter @gigacad/cli publish` from `main`. npm asks for a passkey confirmation in the browser.
 - Migrations are applied by hand with `supabase db push`, before merging the pull request that adds them. `supabase db query --linked "<sql>"` runs read-only checks against production.

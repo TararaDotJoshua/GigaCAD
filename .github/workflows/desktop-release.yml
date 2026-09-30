@@ -1,0 +1,68 @@
+name: Desktop release
+
+# Publishes an over-the-air update of GigaCAD for macOS: the signed code bundle, then the
+# manifest installed apps poll. Run by hand from main after CI passes, once
+# clients/desktop/package.json has the new version. With `dmg`, it also builds and uploads a
+# new DMG, which is needed when SHELL_VERSION changed.
+#
+# Needs the DESKTOP_UPDATE_KEY secret, and a CLOUDFLARE_API_TOKEN that can write to the R2
+# bucket gigacad-downloads (served at downloads.gigacad.site).
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: What's new (shown in the app's update banner)
+        required: true
+      dmg:
+        description: Also build and upload a new DMG
+        type: boolean
+        default: false
+
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-latest
+    environment: production
+    env:
+      DESKTOP_UPDATE_KEY: ${{ secrets.DESKTOP_UPDATE_KEY }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @gigacad/desktop icons
+      - name: Build and sign the update
+        run: pnpm --filter @gigacad/desktop release --notes "$NOTES"
+        env:
+          NOTES: ${{ inputs.notes }}
+      - name: Build the DMG
+        if: inputs.dmg
+        run: pnpm --filter @gigacad/desktop dist --skip-build
+      - name: Upload
+        working-directory: clients/desktop
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          put() { pnpm --filter @gigacad/web exec wrangler r2 object put "gigacad-downloads/desktop/$1" --file "$PWD/$2" --content-type "$3" --cache-control "$4" --remote; }
+          # The bundle first: the manifest must never point at a file that isn't there yet.
+          put "stable/bundles/bundle-$version.tar.gz" "release/bundle-$version.tar.gz" application/gzip "public, max-age=31536000, immutable"
+          if [ "${{ inputs.dmg }}" = "true" ]; then
+            put "GigaCAD-$version.dmg" "dist/GigaCAD-$version-universal.dmg" application/x-apple-diskimage "public, max-age=31536000, immutable"
+            put "GigaCAD.dmg" "dist/GigaCAD-$version-universal.dmg" application/x-apple-diskimage "public, max-age=300"
+          fi
+          put stable/manifest.json release/manifest.json application/json "public, max-age=60"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-release
+          path: |
+            clients/desktop/release
+            clients/desktop/dist/*.dmg

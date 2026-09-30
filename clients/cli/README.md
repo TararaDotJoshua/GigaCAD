@@ -4,6 +4,8 @@
 
 It does not provide the Explorer virtual drive or run SolidWorks rebuilds. Those come from the Windows app and the SolidWorks add-in.
 
+On a Mac, GigaCAD for macOS includes `giga` (Settings → Install Command Line Tool), so it needs no Node install, and it updates with the app. The app and the terminal share one sign-in and one machine name, so a checkout made in either one counts as this computer's.
+
 ## Install
 
 ```sh
@@ -73,16 +75,30 @@ Commands run from anywhere inside the workspace.
 | `giga status` | Lists local changes, who holds the lock, and whether the branch has newer commits |
 | `giga mv <from> <to>` | Moves or renames a file or folder so each file keeps its item ID |
 | `giga commit -m <message> [--label <label>]` | Uploads changed files and records a version of the whole folder |
+| `giga commit --autosave` | Records an autosave instead of a version. Autosaves need no message, and the branch's next version removes them. GigaCAD Desktop makes one each time you save. A version can follow autosaves with no new changes; it names the autosaved work |
 | `giga checkin [--force]` | Gives up the lock |
 | `giga export <file> <export>` | Attaches a STEP or STL exported from SolidWorks to a committed `.SLDPRT` or `.SLDASM`. It becomes the file's 3D preview and thumbnail, and a download option |
 
-**What gets committed.** A commit snapshots every file in the workspace except `.giga/` and ignored files. CAD lock and backup files are ignored by default, including `~$*`, `*.bak`, `Backup of *`, `.DS_Store`, and `Thumbs.db`. A `.gigaignore` file at the root adds more patterns in `.gitignore` syntax; the `.gigaignore` file itself is committed. Files already on the branch are never ignored.
+**What gets committed.** A commit snapshots every file in the workspace except `.giga/` and ignored files. CAD lock and backup files are ignored by default, including `~$*`, `*.bak`, `Backup of *`, `.DS_Store`, `Thumbs.db`, and the hidden `Icon` files macOS makes for custom folder icons. A `.gigaignore` file at the root adds more patterns in `.gitignore` syntax; the `.gigaignore` file itself is committed. Files already on the branch are never ignored.
 
 **What is refused.** Commits fail on symbolic links, on names Windows can't store (such as `a?.SLDPRT` or names ending in a dot or space), and on two paths that differ only in letter case.
 
 **Renames.** A file renamed with your file manager shows up as a deleted file plus a new one, so its history starts over. Use `giga mv` to keep the file's identity.
 
 **Protecting local work.** `giga pull` and `giga checkout` refuse to overwrite a file you changed if the branch also changed it. They also refuse to replace an untracked file that sits where a branch file would go. In either case nothing is changed. `giga checkin` refuses while you have uncommitted changes, unless you pass `--force`; your files stay on disk either way.
+
+## Project root files
+
+A project's root holds ordinary files and folders with their own revisions, next to `Branches` and `Releases`. `giga root` keeps a local folder in sync with them. It never touches branches or releases, and it skips any `Branches/` and `Releases/` folders inside it, so a branch workspace can live at `Branches/<name>/`.
+
+| Command | What it does |
+|---|---|
+| `giga root clone <owner>/<project> [directory]` | Downloads the root files and folders into a new or empty folder (one that holds only `Branches` or `Releases` is fine too) |
+| `giga root status` | Lists local changes waiting to be pushed, without contacting the server |
+| `giga root pull` | Downloads changes from the server: new files and revisions, renames, and deletions. Local edits are kept |
+| `giga root push` | Pulls, then uploads local changes: new files and folders, new revisions, renames and moves, and deletions |
+
+Renaming a file in Finder or Explorer keeps its identity and revisions, as long as its contents didn't change at the same time. When a file changed both here and on the server, nothing is lost: your version is renamed to `<name> (conflict).<ext>` and uploaded as a new file, and the server's version takes the original name. A folder deleted here is only deleted on the server if nothing new was added to it there in the meantime.
 
 ## Projects, branches, releases
 

@@ -2,6 +2,7 @@ import { BranchDiagram } from "../../components/BranchDiagram";
 import { DiffPickDemo } from "../../components/DiffPickDemo";
 import { PartArt, type PartName } from "../../components/parts";
 import {
+  AppleIcon,
   CheckIcon,
   DriveIcon,
   FolderIcon,
@@ -9,7 +10,7 @@ import {
   SyncIcon,
   WindowsIcon,
 } from "../../components/icons";
-import { APP_URL } from "../../components/site";
+import { APP_URL, MAC_DOWNLOAD_URL } from "../../components/site";
 
 const heroTiles: { part: PartName; className: string }[] = [
   { part: "gear", className: "tile-a" },
@@ -54,11 +55,19 @@ export default function Home() {
           <a className="button button-large" href={`${APP_URL}/signup`}>
             Start a project
           </a>
-          <a className="text-link hero-download" href="/download">
-            <WindowsIcon className="icon" />
-            Download the drive for Windows
-          </a>
-          <p className="hero-note">Works with SolidWorks on Windows. The macOS drive comes later.</p>
+          <div className="download-links">
+            <a className="text-link hero-download" href="/download">
+              <WindowsIcon className="icon" />
+              Download the drive for Windows
+            </a>
+            <a className="text-link hero-download" href={MAC_DOWNLOAD_URL}>
+              <AppleIcon className="icon" />
+              Download for Mac
+            </a>
+          </div>
+          <p className="hero-note">
+            Works with SolidWorks on Windows. On a Mac, your projects are folders in Finder.
+          </p>
         </div>
 
         <div className="container hero-demo">
@@ -342,10 +351,16 @@ export default function Home() {
           <a className="button button-large" href={`${APP_URL}/signup`}>
             Start a project
           </a>
-          <a className="text-link" href="/download">
-            <WindowsIcon className="icon" />
-            Download the drive for Windows
-          </a>
+          <div className="download-links">
+            <a className="text-link" href="/download">
+              <WindowsIcon className="icon" />
+              Download the drive for Windows
+            </a>
+            <a className="text-link" href={MAC_DOWNLOAD_URL}>
+              <AppleIcon className="icon" />
+              Download for Mac
+            </a>
+          </div>
         </div>
       </section>
     </>

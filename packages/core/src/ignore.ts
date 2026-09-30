@@ -20,6 +20,11 @@ export const DEFAULT_IGNORE_PATTERNS: readonly string[] = [
   '.DS_Store',
   'Thumbs.db',
   'desktop.ini',
+  // macOS AppleDouble files. Custom-icon files ("Icon" plus a carriage return) are matched in
+  // createIgnoreMatcher, because gitignore syntax trims the trailing carriage return.
+  '._*',
+  // GigaCAD Desktop: marks a branch or release folder that isn't downloaded yet
+  '.gigacad-placeholder',
 ];
 
 export type IgnoreMatcher = (path: string) => boolean;
@@ -27,5 +32,11 @@ export type IgnoreMatcher = (path: string) => boolean;
 /** Matches the default patterns plus a project's `.gigaignore` contents (gitignore syntax, case-insensitive). */
 export function createIgnoreMatcher(gigaignore = ''): IgnoreMatcher {
   const matcher = ignore({ ignorecase: true }).add([...DEFAULT_IGNORE_PATTERNS]).add(gigaignore);
-  return (path) => matcher.ignores(normalizePath(path));
+  return (path) => {
+    const normalized = normalizePath(path);
+    return isMacIconFile(normalized) || matcher.ignores(normalized);
+  };
 }
+
+/** Finder stores a folder's custom icon in a hidden file named "Icon\r" inside it. */
+const isMacIconFile = (path: string) => path === 'Icon\r' || path.endsWith('/Icon\r');

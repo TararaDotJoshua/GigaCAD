@@ -57,8 +57,9 @@ export function registerWorkspaceCommands(program: Command, bind: Bind): void {
   program
     .command('commit')
     .description('Upload every changed file and record a version on the branch')
-    .requiredOption('-m, --message <message>', 'What changed')
+    .option('-m, --message <message>', 'What changed (required unless --autosave)')
     .option('--label <label>', 'Version label, e.g. "rev B"')
+    .option('--autosave', 'Record an autosave instead of a version; autosaves are removed at the next version')
     .action(bind(commit));
 }
 
@@ -145,6 +146,7 @@ async function clone(rt: Runtime, projectInput: string, directory: string | unde
       branchName: branch.name,
       machine,
       headCommitId: detail.head.id,
+      headKind: detail.head.kind,
       base: detail.files,
       tracked: trackedFrom(detail.files),
       cache: await statCache(root, detail.files),
@@ -203,6 +205,7 @@ async function syncToHead(rt: Runtime, workspace: Workspace, api: Api): Promise<
   await saveWorkspace(root, {
     ...state,
     headCommitId: detail.head.id,
+    headKind: detail.head.kind,
     base: detail.files,
     tracked: plan.tracked,
     cache: { ...keptCache, ...(await statCache(root, plan.writes)) },
@@ -372,16 +375,24 @@ async function checkin(rt: Runtime, options: { force?: boolean }): Promise<void>
   rt.out.result(branch, `Checked in ${workspace.state.branchName}. Others can check it out now.`);
 }
 
-async function commit(rt: Runtime, options: { message: string; label?: string }): Promise<void> {
+async function commit(rt: Runtime, options: { message?: string; label?: string; autosave?: boolean }): Promise<void> {
+  if (options.autosave && options.label) {
+    throw new CliError('invalid_arguments', 'Autosaves can’t have a version label', { hint: 'Drop --label, or commit a version without --autosave.' });
+  }
+  if (!options.autosave && !options.message) {
+    throw new CliError('invalid_arguments', 'A version needs a message', { hint: 'Pass -m "what changed", or --autosave.' });
+  }
   const { workspace, session } = await workspaceSession(rt);
   requireSignedIn(session);
   const { root, state } = workspace;
   const hashed = await scan(workspace);
   const changes = localChanges(state, hashed);
-  if (changes.length === 0) throw new CliError('nothing_to_commit', 'No changes to commit');
+  // A version with no new changes is still worth recording on top of autosaves: it names them and prunes them.
+  const nothingNew = () => new CliError('nothing_to_commit', 'No changes to commit');
+  if (changes.length === 0 && (options.autosave || state.headKind === 'version')) throw nothingNew();
 
   // Check before uploading anything, so a stale workspace doesn't send gigabytes first.
-  const { branch } = await session.api.get<BranchDetail>(`/v1/branches/${state.branchId}`);
+  const { branch, head } = await session.api.get<BranchDetail>(`/v1/branches/${state.branchId}`);
   if (branch.headCommitId !== state.headCommitId) {
     throw new CliError('stale_head', 'The branch has commits you don’t have yet; nothing was committed', {
       hint: 'Run `giga pull`, then commit again. Your local files are unchanged.',
@@ -394,6 +405,8 @@ async function commit(rt: Runtime, options: { message: string; label?: string })
       { hint: branch.checkedOutBy ? 'Ask them to check it in.' : 'Run `giga checkout` first. Your local files are unchanged.' },
     );
   }
+
+  if (changes.length === 0 && head.kind !== 'autosave') throw nothingNew();
 
   // Blobs in the synced snapshot are already in the project; only offer the rest.
   const synced = new Set(state.base.map((file) => file.blob));
@@ -408,8 +421,8 @@ async function commit(rt: Runtime, options: { message: string; label?: string })
   const result = await session.api.post<CommitResult>(`/v1/branches/${state.branchId}/commits`, {
     parentId: state.headCommitId,
     machine: state.machine,
-    kind: 'version',
-    message: options.message,
+    kind: options.autosave ? 'autosave' : 'version',
+    ...(options.message ? { message: options.message } : {}),
     ...(options.label ? { versionLabel: options.label } : {}),
     files: commitFiles(state, hashed),
   });
@@ -417,6 +430,7 @@ async function commit(rt: Runtime, options: { message: string; label?: string })
   await saveWorkspace(root, {
     ...state,
     headCommitId: result.commit.id,
+    headKind: result.commit.kind,
     base: result.files,
     tracked: trackedFrom(result.files),
     cache: cacheFrom(hashed),
@@ -428,6 +442,6 @@ async function commit(rt: Runtime, options: { message: string; label?: string })
     .map(([kind, count]) => `${count} ${kind}`);
   rt.out.result(
     { commit: result.commit, changes, uploaded: uploads.uploaded, alreadyPresent: uploads.alreadyPresent },
-    `Committed ${result.commit.versionLabel ? `${result.commit.versionLabel} ` : ''}${shortId(result.commit.id)} on ${state.branchName}: ${counts.join(', ')}`,
+    `${options.autosave ? 'Autosaved' : 'Committed'} ${result.commit.versionLabel ? `${result.commit.versionLabel} ` : ''}${shortId(result.commit.id)} on ${state.branchName}: ${counts.join(', ') || 'no changes since the last autosave'}`,
   );
 }

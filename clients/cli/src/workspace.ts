@@ -27,6 +27,8 @@ export interface WorkspaceState {
   readonly machine: string;
   /** The branch commit the local files were last synced to; commits are made on top of it. */
   readonly headCommitId: string;
+  /** Whether that commit is an autosave. A version can then be committed without new changes. Missing in older workspaces. */
+  readonly headKind?: 'autosave' | 'version' | undefined;
   /** The files of `headCommitId`. */
   readonly base: readonly ManifestEntry[];
   /** Current path → item id. Starts equal to `base`; `giga mv` moves entries so renamed files keep their identity. */

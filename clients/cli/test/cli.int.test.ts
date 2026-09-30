@@ -133,6 +133,15 @@ describe('workspace round trip', () => {
     ]);
     const p1Item = head.body.files.find((file: { path: string }) => file.path === 'parts/P1.SLDPRT').itemId;
 
+    // Saving in the drive records autosaves: no message needed.
+    await write(root, { 'Robot.SLDASM': 'asm autosaved' });
+    const autosave = await ok(cli, ['commit', '--autosave'], root);
+    expect(autosave.commit).toMatchObject({ kind: 'autosave', versionLabel: null });
+    expect((await ok(cli, ['status'], root)).changes).toEqual([]);
+    // A version needs no new changes on top of an autosave: it names the autosaved work.
+    expect((await ok(cli, ['commit', '-m', 'Name the autosave'], root)).commit).toMatchObject({ kind: 'version', message: 'Name the autosave' });
+    expect((await fails(cli, ['commit', '-m', 'Nothing new'], root)).code).toBe('nothing_to_commit');
+
     // A rename with giga mv keeps the item; an unchanged file isn't uploaded again.
     await ok(cli, ['mv', 'parts/P1.SLDPRT', 'parts/Bracket.SLDPRT'], root);
     await write(root, { 'Robot.SLDASM': 'asm v2' });
@@ -356,5 +365,78 @@ describe('private projects', () => {
     await ok(alexCli, ['branch', 'create', 'dev', '--project', project]);
     const error = await fails(beaCli, ['clone', project, 'x', '--branch', 'dev'], await tempDir());
     expect(error.code).toBe('not_found');
+  });
+});
+
+describe('project root folders', () => {
+  it('syncs root files both ways, keeps identities across renames, and keeps both sides of a conflict', async () => {
+    const laptop = await computer(alex);
+    const desk = await computer(alex);
+    const project = await newProject(laptop, alex);
+    const projectId = (await ok(laptop, ['project', 'show', project])).project.id as string;
+    const rootFiles = async () =>
+      new Map(
+        ((await client(stack, alex).get(`/v1/projects/${projectId}/files?area=root&limit=500`)).body.entries as { path: string; entryId: string; blob: string }[]).map(
+          (file) => [file.path, file],
+        ),
+      );
+
+    // A folder that already holds GigaCAD's Branches folder can become the root folder; Branches is never synced.
+    const a = join(await tempDir(), 'robot');
+    await write(a, { 'Branches/dev/Arm.SLDPRT': 'branch file' });
+    await ok(laptop, ['root', 'clone', project, a]);
+    await write(a, { 'README.md': 'readme 1', 'Docs/Guide.pdf': 'guide 1' });
+    await mkdir(join(a, 'Empty'));
+    const pending = (await ok(laptop, ['root', 'status'], a)).changes;
+    expect(pending.added.sort()).toEqual(['Docs/Guide.pdf', 'README.md']);
+    expect(pending.addedFolders).toEqual(['Docs', 'Empty']);
+
+    const pushed = await ok(laptop, ['root', 'push'], a);
+    expect(pushed.created.sort()).toEqual(['Docs/Guide.pdf', 'README.md']);
+    const first = await rootFiles();
+    expect([...first.keys()].sort()).toEqual(['Docs/Guide.pdf', 'README.md']);
+    expect((await ok(laptop, ['root', 'status'], a)).changes.added).toEqual([]);
+
+    // A second computer gets the files and the empty folder.
+    const b = join(await tempDir(), 'robot');
+    await ok(desk, ['root', 'clone', project, b]);
+    expect(await read(b, 'README.md')).toBe('readme 1');
+    expect(await read(b, 'Docs/Guide.pdf')).toBe('guide 1');
+    await expect(readFile(join(b, 'Branches', 'dev', 'Arm.SLDPRT'))).rejects.toThrow();
+
+    // An edit and a Finder-style rename on the desk. The rename keeps the entry.
+    await write(b, { 'README.md': 'readme 2' });
+    await rm(join(b, 'Docs', 'Guide.pdf'));
+    await write(b, { 'Guide.pdf': 'guide 1' });
+    const synced = await ok(desk, ['root', 'push'], b);
+    expect(synced).toMatchObject({ updated: ['README.md'], moved: [{ from: 'Docs/Guide.pdf', to: 'Guide.pdf' }], created: [] });
+    const second = await rootFiles();
+    expect(second.get('Guide.pdf')!.entryId).toBe(first.get('Docs/Guide.pdf')!.entryId);
+    expect(second.get('README.md')!.blob).toBe(sha256('readme 2'));
+
+    // The laptop pulls both.
+    const pulled = await ok(laptop, ['root', 'pull'], a);
+    expect(pulled.downloaded).toEqual(['README.md']);
+    expect(pulled.movedHere).toEqual([{ from: 'Docs/Guide.pdf', to: 'Guide.pdf' }]);
+    expect(await read(a, 'README.md')).toBe('readme 2');
+    expect(await read(a, 'Guide.pdf')).toBe('guide 1');
+
+    // Both edit the README. The second push keeps the laptop's version as a conflict copy.
+    await write(b, { 'README.md': 'desk edit' });
+    await ok(desk, ['root', 'push'], b);
+    await write(a, { 'README.md': 'laptop edit' });
+    const conflicted = await ok(laptop, ['root', 'push'], a);
+    expect(conflicted.conflicts).toEqual([{ path: 'README.md', copy: 'README (conflict).md' }]);
+    expect(await read(a, 'README.md')).toBe('desk edit');
+    expect(await read(a, 'README (conflict).md')).toBe('laptop edit');
+    expect((await rootFiles()).get('README (conflict).md')!.blob).toBe(sha256('laptop edit'));
+
+    // A delete travels too.
+    await rm(join(a, 'Guide.pdf'));
+    expect((await ok(laptop, ['root', 'push'], a)).deleted).toEqual(['Guide.pdf']);
+    const caughtUp = await ok(desk, ['root', 'pull'], b);
+    expect(caughtUp).toMatchObject({ deletedHere: ['Guide.pdf'], downloaded: ['README (conflict).md'] });
+    await expect(readFile(join(b, 'Guide.pdf'))).rejects.toThrow();
+    expect((await ok(desk, ['root', 'status'], b)).changes).toEqual({ added: [], modified: [], moved: [], deleted: [], addedFolders: [], deletedFolders: [] });
   });
 });

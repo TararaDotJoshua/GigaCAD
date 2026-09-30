@@ -78,9 +78,17 @@ The same app runs on Windows ([docs/WINDOWS_APP_PLAN.md](../../docs/WINDOWS_APP_
   - Settings, bundles, and caches are in `%LOCALAPPDATA%\GigaCAD`, and projects are in `%USERPROFILE%\GigaCAD`.
   - The window draws Windows' caption buttons over its toolbar.
   - The tray icon opens the window on click.
-- **Launching:**
-  - `gigacad://` links, and later the File Explorer menu, start the app with arguments (`launchArgs.ts`) instead of macOS's `open-url`.
-  - Settings lists the CAD programs GigaCAD's plugins found, SolidWorks for now.
+- **Launching:** `gigacad://` links and the File Explorer menu start the app with arguments (`launchArgs.ts`) instead of macOS's `open-url`.
+- **File Explorer menu** (`explorerMenu.ts`):
+  - A **GigaCAD** submenu with the Quick Actions' entries, under `HKCU\Software\Classes`, so no administrator is needed.
+  - `AppliesTo` limits it to items inside the GigaCAD folder.
+  - On Windows 11 it's under "Show more options". The uninstaller removes it (`installer/uninstall.nsh`).
+- **Locks:** files get the read-only attribute, and folders get a deny entry for add, rename, and delete (`locks.ts`).
+- **Icons:**
+  - Folders get icons through a hidden `desktop.ini` naming an `.ico`. `pnpm icons` packs those `.ico` files on a Mac.
+  - Windows can't give single files their own icons.
+- **Terminal:** `giga.cmd` in `%LOCALAPPDATA%\GigaCAD\bin`, added to the user's PATH, runs the CLI with the app's own Node.
+- **Plugins:** Settings lists the CAD programs GigaCAD's plugins found, SolidWorks for now.
 - **Package it on Windows:**
 
   ```sh

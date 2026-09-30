@@ -1,8 +1,11 @@
 import { app } from 'electron';
 import { mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import { platformWords } from '../shared/platform.js';
 import type { SetupStep, SetupStepId } from '../shared/types.js';
-import { appBundlePath, isOurShim, SHIM_PATH, terminalGiga } from './cliInstall.js';
+import { supportDir } from '../shared/runtime.js';
+import { appBundlePath, isOurCmdShim, isOurShim, SHIM_PATH, terminalGiga, windowsShimDir, windowsTerminalGiga } from './cliInstall.js';
+import { explorerMenuInstalled, installExplorerMenu } from './explorerMenu.js';
 import { installQuickActions, quickActionsInstalled } from './quickActions.js';
 
 export interface SetupHost {
@@ -31,8 +34,6 @@ const STEPS: Record<string, readonly SetupStepId[]> = {
   win32: ['signin', 'folder', 'quickActions', 'urlScheme', 'cli', 'login'],
   default: ['applications', 'signin', 'folder', 'quickActions', 'urlScheme', 'cli', 'login'],
 };
-/** Not built for Windows yet (docs/WINDOWS_APP_PLAN.md, milestone W3). */
-const NOT_YET_ON_WINDOWS = 'Not available on Windows yet';
 const OPTIONAL = new Set<SetupStepId>(['cli', 'applications']);
 
 /**
@@ -78,7 +79,13 @@ export class Setup {
       return 'done';
     });
     await this.step('quickActions', async () => {
-      if (this.platform === 'win32') return ['skipped', NOT_YET_ON_WINDOWS];
+      if (this.platform === 'win32') {
+        // The menu runs GigaCAD.exe; in development that's the stock Electron binary.
+        if (!app.isPackaged) return ['skipped', 'Only from the installed app'];
+        const menu = { exe: process.execPath, folder: this.host.folder(), version: this.host.version };
+        if (!(await explorerMenuInstalled(menu))) await installExplorerMenu(menu);
+        return 'done';
+      }
       if (!quickActionsInstalled(this.host.version)) await installQuickActions(this.host.version);
       return 'done';
     });
@@ -94,7 +101,13 @@ export class Setup {
     });
     await this.step('signin', async () => (this.host.signedIn() ? 'done' : 'todo'));
     await this.step('cli', async () => {
-      if (this.platform === 'win32') return ['skipped', NOT_YET_ON_WINDOWS];
+      if (this.platform === 'win32') {
+        const shim = join(windowsShimDir(supportDir()), 'giga.cmd');
+        if (isOurCmdShim(shim)) return ['done', shim];
+        if (!app.isPackaged) return ['skipped', 'Only from the installed app'];
+        const other = await windowsTerminalGiga();
+        return other ? ['skipped', `The terminal already has giga at ${other}`] : 'todo';
+      }
       if (isOurShim(SHIM_PATH)) return ['done', SHIM_PATH];
       if (!appBundlePath()) return ['skipped', 'Only from the installed app'];
       const other = await terminalGiga();

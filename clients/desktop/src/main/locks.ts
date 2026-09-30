@@ -41,8 +41,9 @@ async function walk(dir: string): Promise<Tree> {
  * it. `.giga/` and icon files stay writable.
  *
  * - macOS: files get mode 444 and Finder's Locked flag, then folders get mode 555.
- * - Windows: files get the read-only attribute (SolidWorks then opens them read-only), and each
- *   folder gets a deny entry for this user covering add file, add folder, and delete child.
+ * - Windows: files get the read-only attribute (SolidWorks then opens them read-only), each
+ *   folder gets a deny entry for this user covering add file, add folder, and delete child, and
+ *   everything inside a locked folder gets one denying delete.
  */
 export async function lock(dir: string): Promise<void> {
   if (process.platform === 'win32') return windows.lock(dir);
@@ -101,10 +102,15 @@ async function chflags(flag: 'uchg' | 'nouchg', paths: readonly string[]): Promi
 // --- Windows --------------------------------------------------------------------------------
 
 /**
- * The folder rights a lock denies: WD (add file), AD (add subfolder), DC (delete child, which also
- * covers renaming what's inside). File contents are protected by the read-only attribute.
+ * The folder rights a lock denies: WD (add file), AD (add subfolder), DC (delete child).
+ * File contents are protected by the read-only attribute.
  */
 export const DENIED_FOLDER_RIGHTS = '(WD,AD,DC)';
+/**
+ * Denied on everything inside a locked folder. Windows lets a file be deleted by anyone with
+ * delete on the file itself, whatever its folder says, and the owner has it; renaming needs it too.
+ */
+export const DENIED_ITEM_RIGHTS = '(D)';
 
 /** This user's SID from `whoami /user /fo csv /nh`: `"pc\alex","S-1-5-21-…"`. */
 export function parseUserSid(output: string): string {
@@ -134,7 +140,10 @@ const windows = {
     const account = `*${await sid()}`;
     for (const folder of dirs) {
       const { stdout } = await icacls([folder]);
-      if (!hasDenyEntry(stdout)) await icacls([folder, '/deny', `${account}:${DENIED_FOLDER_RIGHTS}`]);
+      if (hasDenyEntry(stdout)) continue;
+      await icacls([folder, '/deny', `${account}:${DENIED_FOLDER_RIGHTS}`]);
+      // One call covers every item in the folder (icacls expands the wildcard, hidden ones included).
+      if ((await readdir(folder)).length > 0) await icacls([join(folder, '*'), '/deny', `${account}:${DENIED_ITEM_RIGHTS}`]);
     }
   },
 
@@ -142,7 +151,10 @@ const windows = {
     const { files, dirs } = await walk(dir);
     const account = `*${await sid()}`;
     // Folders first, so the files inside can change.
-    for (const folder of dirs.reverse()) await icacls([folder, '/remove:d', account]);
+    for (const folder of dirs.reverse()) {
+      await icacls([folder, '/remove:d', account]);
+      if ((await readdir(folder)).length > 0) await icacls([join(folder, '*'), '/remove:d', account]);
+    }
     for (const file of files) {
       const { mode } = await lstat(file);
       if ((mode & 0o200) === 0) await chmod(file, 0o666);

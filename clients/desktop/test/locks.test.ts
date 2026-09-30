@@ -111,6 +111,8 @@ windowsOnly('locks on Windows', () => {
     expect(() => mkdirSync(join(root, 'parts', 'more'))).toThrow();
     expect(() => renameSync(join(root, 'parts', 'Arm.SLDPRT'), join(root, 'parts', 'Renamed.SLDPRT'))).toThrow();
     expect(() => unlinkSync(join(root, 'Bench.SLDASM'))).toThrow();
+    expect(() => unlinkSync(join(root, 'parts', 'Arm.SLDPRT'))).toThrow();
+    expect(() => rmSync(join(root, 'parts'), { recursive: true })).toThrow();
     writeFileSync(join(root, '.giga', 'workspace.json'), '{"head":"x"}');
     writeFileSync(join(root, '.giga', 'new.json'), '{}');
     writeFileSync(join(root, 'desktop.ini'), '[.ShellClassInfo]\r\nIconResource=x.ico,0');
@@ -127,6 +129,8 @@ windowsOnly('locks on Windows', () => {
     writeFileSync(join(root, 'parts', 'New.SLDPRT'), 'new');
     renameSync(join(root, 'parts', 'New.SLDPRT'), join(root, 'parts', 'Renamed.SLDPRT'));
     unlinkSync(join(root, 'parts', 'Renamed.SLDPRT'));
+    unlinkSync(join(root, 'Bench.SLDASM'));
+    rmSync(join(root, 'parts'), { recursive: true });
   });
 
   it('locks again after a change, even one that fails, including new files', async () => {

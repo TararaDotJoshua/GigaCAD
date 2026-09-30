@@ -1,5 +1,5 @@
 import { hostname, tmpdir, userInfo } from 'node:os';
-import { join } from 'node:path';
+import { posix } from 'node:path';
 
 export const PIPE_PREFIX = 'GigaCAD.Host.';
 
@@ -20,5 +20,6 @@ export function currentPipeName(env: NodeJS.ProcessEnv = process.env): string {
  * `NamedPipeClientStream` looks for, so the C# client can reach the app in tests on any OS.
  */
 export function pipePath(name: string, platform: NodeJS.Platform = process.platform, tempDir: string = tmpdir()): string {
-  return platform === 'win32' ? `\\\\.\\pipe\\${name}` : join(tempDir, `CoreFxPipe_${name}`);
+  // posix.join: the socket path is for a Unix system even when this code is running on Windows.
+  return platform === 'win32' ? `\\\\.\\pipe\\${name}` : posix.join(tempDir, `CoreFxPipe_${name}`);
 }

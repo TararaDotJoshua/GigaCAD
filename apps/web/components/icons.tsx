@@ -88,11 +88,12 @@ export const AssemblyIcon = ({ className }: IconProps) => (
   </svg>
 );
 
-/** A single part: a block with a hole. */
+/** A single part: an isometric plate with a hole, flatter than the assembly's cube. */
 export const PartIcon = ({ className }: IconProps) => (
   <svg className={className} {...base}>
-    <rect x="2.5" y="4" width="11" height="8" rx="1" />
-    <circle cx="8" cy="8" r="1.8" />
+    <path d="M1.8 7 8 3.6 14.2 7 8 10.4Z" />
+    <path d="M1.8 7v2.6L8 13l6.2-3.4V7M8 10.4V13" />
+    <ellipse cx="8" cy="7" rx="1.9" ry="1" />
   </svg>
 );
 
@@ -180,5 +181,14 @@ export const LogOutIcon = ({ className }: IconProps) => (
 export const MenuIcon = ({ className }: IconProps) => (
   <svg className={className} {...base}>
     <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" />
+  </svg>
+);
+
+/** Three dots: more actions for a row. */
+export const MoreIcon = ({ className }: IconProps) => (
+  <svg className={className} {...base} fill="currentColor" stroke="none">
+    <circle cx="3.5" cy="8" r="1.3" />
+    <circle cx="8" cy="8" r="1.3" />
+    <circle cx="12.5" cy="8" r="1.3" />
   </svg>
 );

@@ -477,6 +477,8 @@ export interface SearchQuery {
   readonly tagIds?: readonly string[] | undefined;
   readonly favorites?: boolean | undefined;
   readonly area?: FileArea | undefined;
+  /** Only files inside this directory folder, like `Designs`, `Branches/main/parts`, or `Releases/v2`. */
+  readonly under?: string | undefined;
 }
 
 /**
@@ -490,6 +492,8 @@ export async function searchFiles(sql: Sql, projectId: string, viewerId: string 
   const q = query.q?.trim() ?? '';
   const pattern = `%${q.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
   const tagIds = [...new Set(query.tagIds ?? [])];
+  const under = (query.under ?? '').replace(/^\/+|\/+$/g, '');
+  const underPattern = `${under.replace(/[\\%_]/g, (char) => `\\${char}`)}/%`;
   const order = (paging.order ?? DEFAULT_ORDER[paging.sort]) === 'asc' ? sql`asc` : sql`desc`;
   const sortKey =
     paging.sort === 'modified' ? sql`l.modified_at ${order}, lower(l.name)` : paging.sort === 'size' ? sql`b.size ${order}, lower(l.name)` : sql`lower(l.name) ${order}`;
@@ -531,6 +535,11 @@ export async function searchFiles(sql: Sql, projectId: string, viewerId: string 
     join blobs b on b.sha256 = l.blob
     left join profiles p on p.id = l.modified_by
     where (${q} = '' or l.inner_path ilike ${pattern})
+      and (${under} = '' or (case l.area
+        when 'root' then l.inner_path
+        when 'branch' then 'Branches/' || l.branch_name || '/' || l.inner_path
+        else 'Releases/v' || l.release_number || '/' || l.inner_path
+      end) like ${underPattern})
       and (${tagIds.length} = 0 or (
         select count(*) from file_tags ft where ft.item_id = l.item_id and ft.tag_id = any(${tagIds}::uuid[])
       ) = ${tagIds.length})

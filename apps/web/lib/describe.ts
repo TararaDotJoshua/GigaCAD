@@ -161,3 +161,45 @@ export function describeEvent(
       return undefined;
   }
 }
+
+const BRANCH_WORK = new Set(['branch_checked_out', 'branch_checked_in', 'commit_created']);
+
+/**
+ * Folds a run of one person's checkouts, check-ins, and commits on one branch into a single
+ * line, so a day of work reads as "committed 2 versions on longer-arms", not six events.
+ * Entries are newest first, as the feed shows them; each run keeps its newest time.
+ */
+export function collapseActivity<T extends { event: ProjectEvent; text: string }>(
+  entries: readonly T[],
+  names: { handle: (userId: string | null) => string; branch: (branchId: string | null) => string | undefined },
+): T[] {
+  const out: T[] = [];
+  let run: T[] = [];
+  const flush = () => {
+    if (run.length === 0) return;
+    const first = run[0]!;
+    if (run.length === 1) out.push(first);
+    else {
+      const who = names.handle(first.event.actorId);
+      const branch = names.branch(first.event.subjectId) ?? 'a branch';
+      const versions = run.filter((entry) => entry.event.kind === 'commit_created' && entry.event.payload?.kind === 'version').length;
+      const text = versions ? `${who} committed ${versions === 1 ? 'a version' : `${versions} versions`} on ${branch}` : `${who} worked on ${branch}`;
+      out.push({ ...first, text });
+    }
+    run = [];
+  };
+  for (const entry of entries) {
+    const head = run[0];
+    const joins = BRANCH_WORK.has(entry.event.kind) && head && entry.event.actorId === head.event.actorId && entry.event.subjectId === head.event.subjectId;
+    if (!joins) flush();
+    if (BRANCH_WORK.has(entry.event.kind)) run.push(entry);
+    else out.push(entry);
+  }
+  flush();
+  return out;
+}
+
+/** A release's display name: its release request's title, or just its number. */
+export function releaseName(release: { number: number; title?: string | null }): string {
+  return release.title ? `v${release.number}: ${release.title}` : `v${release.number}`;
+}

@@ -20,14 +20,16 @@ export function PageHead({
   return (
     <header className="page-header">
       <div className="page-header-text">
-        <nav className="app-crumbs" aria-label="Breadcrumbs">
-          {crumbs.map((crumb, index) => (
-            <span key={`${crumb.label}-${index}`}>
-              {index > 0 && <span className="crumb-sep"> / </span>}
-              {crumb.href ? <Link href={crumb.href}>{crumb.label}</Link> : crumb.label}
-            </span>
-          ))}
-        </nav>
+        {crumbs.length > 0 && (
+          <nav className="app-crumbs" aria-label="Breadcrumbs">
+            {crumbs.map((crumb, index) => (
+              <span key={`${crumb.label}-${index}`}>
+                {index > 0 && <span className="crumb-sep"> / </span>}
+                {crumb.href ? <Link href={crumb.href}>{crumb.label}</Link> : crumb.label}
+              </span>
+            ))}
+          </nav>
+        )}
         <h1 className="app-title">{title}</h1>
         {meta && <div className="app-meta">{meta}</div>}
       </div>

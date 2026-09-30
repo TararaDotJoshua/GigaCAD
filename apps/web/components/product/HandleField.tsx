@@ -2,6 +2,7 @@
 
 import { HANDLE_PATTERN, isReservedHandle } from '@gigacad/core';
 import { useState } from 'react';
+import { APP_URL } from '../site';
 
 /** The handle input, checked as you type with the same rules as the API. */
 export function HandleField({ defaultValue }: { defaultValue: string }) {
@@ -31,7 +32,7 @@ export function HandleField({ defaultValue }: { defaultValue: string }) {
         required
       />
       <small className={problem ? 'field-hint is-error' : 'field-hint'}>
-        {problem || `Your projects will live at app.gigacad.site/${value || 'handle'}/…`}
+        {problem || `Your projects will live at ${new URL(APP_URL).host}/${value || 'handle'}/…`}
       </small>
     </label>
   );

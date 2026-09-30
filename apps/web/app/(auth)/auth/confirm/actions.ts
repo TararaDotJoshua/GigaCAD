@@ -2,6 +2,7 @@
 
 import { redirect } from 'next/navigation';
 import { createClient } from '../../../../lib/supabase/server';
+import { dashboardPath } from '../../../../lib/hosts';
 import { safeReturnPath } from '../../../../lib/return-path';
 
 export async function confirmEmail(form: FormData) {
@@ -13,7 +14,7 @@ export async function confirmEmail(form: FormData) {
   if (error) redirect(type === 'recovery' ? '/forgot-password?error=recovery' : '/login?error=confirmation');
 
   const appOrigin = process.env.NEXT_PUBLIC_GIGACAD_APP_URL ?? 'https://app.gigacad.site';
-  let next = type === 'recovery' ? '/reset-password' : '/app';
+  let next = type === 'recovery' ? '/reset-password' : dashboardPath();
   if (typeof rawNext === 'string') {
     try {
       const parsed = new URL(rawNext);

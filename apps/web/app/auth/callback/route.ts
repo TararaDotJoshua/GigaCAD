@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '../../../lib/supabase/server';
+import { dashboardPath } from '../../../lib/hosts';
 import { safeReturnPath } from '../../../lib/return-path';
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const next = safeReturnPath(url.searchParams.get('next'));
+  const next = safeReturnPath(url.searchParams.get('next'), dashboardPath());
   const code = url.searchParams.get('code');
   if (code) {
     const { error } = await (await createClient()).auth.exchangeCodeForSession(code);

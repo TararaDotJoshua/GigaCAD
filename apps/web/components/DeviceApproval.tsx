@@ -1,12 +1,12 @@
 'use client';
 
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { FormEvent, useEffect, useState } from 'react';
 import { apiRequest } from '../lib/api';
 import { createClient } from '../lib/supabase/client';
 
-export function DeviceApproval() {
-  const router = useRouter();
+/** `handle` is who the device will sign in as; null while it's still the generated placeholder. */
+export function DeviceApproval({ handle }: { handle: string | null }) {
   const search = useSearchParams();
   const [code, setCode] = useState((search.get('code') ?? '').toUpperCase());
   const [pendingCode, setPendingCode] = useState('');
@@ -14,6 +14,7 @@ export function DeviceApproval() {
   const [expiresAt, setExpiresAt] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [approved, setApproved] = useState('');
 
   async function token() {
     const supabase = createClient();
@@ -44,10 +45,14 @@ export function DeviceApproval() {
     setBusy(true); setError('');
     try {
       await apiRequest(await token(), '/v1/auth/device/approve', { method: 'POST', body: JSON.stringify({ userCode: pendingCode }) });
-      router.push('/app?device=approved'); router.refresh();
+      setApproved(clientName);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not approve this device.'); }
     finally { setBusy(false); }
   }
 
-  return <div className="auth-shell"><div className="auth-card"><p className="auth-kicker">GigaCAD</p><h1>Approve a device.</h1><p className="auth-intro">Only approve a code shown on a device you are using.</p><form onSubmit={lookUp} className="auth-form"><label>Sign-in code<input value={code} onChange={(event) => { setCode(event.target.value.toUpperCase()); setClientName(''); setPendingCode(''); }} placeholder="ABCD-2345" maxLength={9} required /></label><button type="submit" className="button auth-submit" disabled={busy}>Look up code</button></form>{error && <p className="form-message form-error" role="alert">{error}</p>}{clientName && pendingCode === code && <div className="device-request"><p><strong>{clientName}</strong> wants to sign in to your GigaCAD account.</p><p>Code <span className="mono">{pendingCode}</span> · Expires {new Date(expiresAt).toLocaleTimeString()}</p><button type="button" className="button auth-submit" disabled={busy} onClick={approve}>Approve {clientName}</button></div>}</div></div>;
+  if (approved) {
+    return <div className="auth-shell"><div className="auth-card"><h1>Device approved.</h1><p className="auth-intro">{approved} is signed in{handle ? ` as @${handle}` : ''}. You can close this tab and go back to it.</p><p className="auth-hint">You can sign devices out any time from Account settings.</p></div></div>;
+  }
+
+  return <div className="auth-shell"><div className="auth-card"><h1>Approve a device.</h1><p className="auth-intro">Only approve a code shown on a device you are using.</p>{handle && <p className="auth-hint">Signed in as <strong>@{handle}</strong>. Not you? Log out first.</p>}<form onSubmit={lookUp} className="auth-form"><label>Sign-in code<input value={code} onChange={(event) => { setCode(event.target.value.toUpperCase()); setClientName(''); setPendingCode(''); }} placeholder="ABCD-2345" maxLength={9} required /></label><button type="submit" className="button auth-submit" disabled={busy}>Look up code</button>{error && <p className="form-message form-error" role="alert">{error}</p>}</form>{clientName && pendingCode === code && <div className="device-request"><p><strong>{clientName}</strong> wants to sign in to your GigaCAD account{handle ? <> as <strong>@{handle}</strong></> : null}.</p><p>Code <span className="mono">{pendingCode}</span> · Expires {new Date(expiresAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</p><button type="button" className="button auth-submit" disabled={busy} onClick={approve}>Approve {clientName}</button></div>}</div></div>;
 }

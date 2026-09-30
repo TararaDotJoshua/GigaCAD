@@ -24,3 +24,6 @@ export function freeSlug(slug: string, taken: Iterable<string>): string {
     if (!used.has(candidate)) return candidate;
   }
 }
+
+/** A release's files as one zip, streamed through the web app. */
+export const releaseDownloadPath = (owner: string, slug: string, number: number) => projectPath(owner, slug, 'releases', number, 'download');

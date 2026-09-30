@@ -52,7 +52,7 @@ export async function requireStorageFor(db: Db, ownerId: string, blobs: readonly
   throw new HttpError(
     403,
     'storage_full',
-    `@${account.handle} is out of storage: ${formatBytes(account.usedBytes)} of ${formatBytes(account.quotaBytes)} used, and this needs ${formatBytes(adding)} more. Delete projects or upgrade the plan in Account settings on gigacad.site.`,
+    `@${account.handle} is out of storage: ${formatBytes(account.usedBytes)} of ${formatBytes(account.quotaBytes)} used, and this needs ${formatBytes(adding)} more. Delete projects or upgrade the plan at app.gigacad.site/settings/billing.`,
     { usedBytes: account.usedBytes, quotaBytes: account.quotaBytes, neededBytes: adding },
   );
 }

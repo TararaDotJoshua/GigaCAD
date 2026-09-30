@@ -18,7 +18,8 @@ import {
   setMember,
   updateProject,
 } from '../services/projects.js';
-import { getRelease, listReleases } from '../services/releases.js';
+import { getRelease, listReleases, releaseArchive } from '../services/releases.js';
+import { contentDisposition } from '../storage.js';
 
 const role = z.enum(['owner', 'maintainer', 'contributor', 'viewer']);
 export const visibility = z.enum(['public', 'private']);
@@ -136,5 +137,12 @@ export function projectRoutes(app: FastifyInstance, { sql, storage }: AppDeps): 
   app.get('/v1/projects/:id/releases/:number', async (request) => {
     const { id, number } = parse(idParams.extend({ number: z.coerce.number().int().positive() }), request.params);
     return getRelease(sql, id, number, viewerId(request));
+  });
+
+  /** Every file in a release as one stored (uncompressed) ZIP, streamed. */
+  app.get('/v1/projects/:id/releases/:number/archive', async (request, reply) => {
+    const { id, number } = parse(idParams.extend({ number: z.coerce.number().int().positive() }), request.params);
+    const archive = await releaseArchive(sql, storage, id, number, viewerId(request));
+    return reply.header('content-type', 'application/zip').header('content-disposition', contentDisposition(archive.filename)).send(archive.stream);
   });
 }

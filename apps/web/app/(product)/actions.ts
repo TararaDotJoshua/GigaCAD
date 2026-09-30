@@ -4,6 +4,7 @@ import { isPlanId, type ApprovalRules, type Picks, type ProjectRole } from '@gig
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError, apiRequest, type Project, type ReleaseRequestDetail } from '../../lib/api';
+import { dashboardPath } from '../../lib/hosts';
 import { messageFor } from '../../lib/messages';
 import { projectPath, releasePath, releaseRequestPath, treePath } from '../../lib/paths';
 import { requireAccessToken } from '../../lib/session';
@@ -16,6 +17,15 @@ import { requireAccessToken } from '../../lib/session';
 export interface ActionState {
   readonly error?: string;
   readonly message?: string;
+  /** Set when an upload was refused because the project owner's storage is full. */
+  readonly storageFull?: { readonly usedBytes: number; readonly quotaBytes: number };
+}
+
+/** The storage numbers from a `storage_full` refusal, so the page can offer the right next step. */
+function storageFull(error: unknown): ActionState['storageFull'] {
+  if (!(error instanceof ApiError) || error.code !== 'storage_full') return undefined;
+  const details = (error.details ?? {}) as { usedBytes?: number; quotaBytes?: number };
+  return { usedBytes: details.usedBytes ?? 0, quotaBytes: details.quotaBytes ?? 0 };
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -36,7 +46,7 @@ async function mutate(run: (token: string) => Promise<unknown>, message?: string
   try {
     await run(token);
   } catch (error) {
-    return { error: messageFor(error) };
+    return { error: messageFor(error), storageFull: storageFull(error) };
   }
   refresh();
   return message ? { message } : {};
@@ -178,7 +188,7 @@ export async function deleteProject(projectId: string, slug: string, _state: Act
   } catch (error) {
     return { error: messageFor(error) };
   }
-  redirect('/app');
+  redirect(`${dashboardPath()}?deleted=${encodeURIComponent(slug)}`);
 }
 
 export async function restoreProject(projectId: string): Promise<ActionState> {
@@ -323,6 +333,7 @@ const parent = (value: string | null) => (value === null || value === '' ? null 
 
 export interface UploadStart {
   readonly error?: string;
+  readonly storageFull?: ActionState['storageFull'];
   /** Null when the project already has these contents, so nothing needs uploading. */
   readonly upload?: { readonly uploadId: string; readonly url: string; readonly headers: Record<string, string> } | null;
 }
@@ -342,7 +353,7 @@ export async function startUpload(projectId: string, sha256: string, size: numbe
     const upload = plan.uploads[0];
     return { upload: upload ? { uploadId: upload.uploadId, url: upload.url, headers: upload.headers } : null };
   } catch (error) {
-    return { error: messageFor(error) };
+    return { error: messageFor(error), storageFull: storageFull(error) };
   }
 }
 
@@ -355,7 +366,7 @@ export async function finishUpload(projectId: string, uploadId: string): Promise
       json('POST', { uploadIds: [id(uploadId)] }),
     );
     const failed = result.failed[0]?.reason;
-    if (failed === 'storage_full') return { error: 'The project owner is out of storage.' };
+    if (failed === 'storage_full') return { error: 'The project owner is out of storage.', storageFull: { usedBytes: 0, quotaBytes: 0 } };
     if (failed) return { error: 'The upload didn’t arrive intact. Try again.' };
     return {};
   } catch (error) {
@@ -370,7 +381,7 @@ export async function addRootFile(projectId: string, parentId: string | null, na
     await apiRequest(token, `/v1/projects/${id(projectId)}/directory/files`, json('POST', { parentId: parent(parentId), name, blob: sha(sha256) }));
   } catch (error) {
     if (error instanceof ApiError && error.code === 'name_taken') return { error: messageFor(error), taken: true };
-    return { error: messageFor(error) };
+    return { error: messageFor(error), storageFull: storageFull(error) };
   }
   refresh();
   return {};

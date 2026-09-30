@@ -228,6 +228,9 @@ export interface Release {
   manifestId: string;
   notes: string;
   releaseRequestId: string | null;
+  /** The release request's title, which names the release. Null for releases made without one. */
+  title: string | null;
+  releaseRequestNumber: number | null;
   createdBy: string | null;
   createdByHandle: string | null;
   createdAt: string;

@@ -6,14 +6,16 @@ import { BRANCH_STATUS_LABEL, branchTone } from '../../lib/describe';
 import { exportFilename, isSolidWorks, previewFormat } from '../../lib/preview';
 import { branchPath, entryPath, projectPath, releasePath, treePath } from '../../lib/paths';
 import { getDirectory, getFileExports, getReadme, getRootFolders, getTags, getThumbnails, searchFiles, type FileQuery } from '../../lib/product';
-import { BranchIcon, CubeIcon, FolderIcon, LockIcon, SearchIcon } from '../icons';
+import { BranchIcon, FolderIcon, LockIcon, MoreIcon, SearchIcon } from '../icons';
 import { ActionButton } from './ActionButton';
 import { ActionForm } from './ActionForm';
 import { DownloadButton } from './DownloadButton';
+import { DropZone } from './DropZone';
 import { EntryMenu } from './EntryMenu';
 import { EmptyState } from './EmptyState';
 import { FavoriteButton } from './FavoriteButton';
 import { FileGlyph } from './FileGlyph';
+import { GettingStarted } from './GettingStarted';
 import { PreviewButton } from './PreviewButton';
 import { ProjectReadme } from './ProjectReadme';
 import { RelativeTime } from './RelativeTime';
@@ -31,6 +33,10 @@ export interface DirectoryParams {
   sort?: string;
   order?: string;
   offset?: string;
+  /** Search inside this folder only. */
+  under?: string;
+  /** `released` shows released and archived branches in the Branches folder. */
+  show?: string;
 }
 
 type Sort = NonNullable<FileQuery['sort']>;
@@ -42,7 +48,8 @@ function readParams(params: DirectoryParams) {
   const sort: Sort = params.sort === 'modified' || params.sort === 'size' ? params.sort : view === 'recent' ? 'modified' : 'name';
   const order: 'asc' | 'desc' | undefined = params.order === 'asc' || params.order === 'desc' ? params.order : undefined;
   const offset = Math.max(0, Math.floor(Number(params.offset) || 0));
-  return { q, tagIds, view, sort, order, offset };
+  const under = (params.under ?? '').trim().replace(/^\/+|\/+$/g, '').slice(0, 1024);
+  return { q, tagIds, view, sort, order, offset, under, showReleased: params.show === 'released' };
 }
 
 /**
@@ -50,21 +57,43 @@ function readParams(params: DirectoryParams) {
  * With a search, a tag, or the Recent or Favorites view, it lists matching files from the
  * whole project instead, each with where it lives.
  */
-export async function ProjectDirectory({ project, path, params, signedIn }: { project: Project; path: string; params: DirectoryParams; signedIn: boolean }) {
+export async function ProjectDirectory({
+  project,
+  path,
+  params,
+  signedIn,
+  viewerHandle,
+  counts,
+}: {
+  project: Project;
+  path: string;
+  params: DirectoryParams;
+  signedIn: boolean;
+  viewerHandle: string | null;
+  /** Shown on the Branches and Releases rows at the root, so those rows aren't blank. */
+  counts?: { branches: number; releases: number };
+}) {
   const owner = project.ownerHandle;
   const slug = project.slug;
-  const { q, tagIds, view, sort, order, offset } = readParams(params);
+  const { q, tagIds, view, sort, order, offset, under, showReleased } = readParams(params);
   const searching = Boolean(q || tagIds.length || view);
   const paging = { sort, order, offset, limit: PAGE_SIZE };
 
   const [listing, results, tags] = await Promise.all([
     searching ? null : getDirectory(project.id, path, paging),
     searching
-      ? searchFiles(project.id, { ...paging, q, tags: tagIds.join(','), favorites: view === 'favorites' })
+      ? searchFiles(project.id, { ...paging, q, tags: tagIds.join(','), favorites: view === 'favorites', under: view ? undefined : under })
       : null,
     getTags(project.id),
   ]);
-  const page: FilePage<DirectoryItem> = listing ?? results!;
+  const listed: FilePage<DirectoryItem> = listing ?? results!;
+  // Released and archived branches are history; the Branches folder shows them only on request.
+  const hiddenBranches = listing?.location.area === 'branches' && !showReleased
+    ? listing.entries.filter((entry) => entry.kind === 'folder' && (entry.branch?.status === 'released' || entry.branch?.status === 'archived')).length
+    : 0;
+  const page: FilePage<DirectoryItem> = hiddenBranches
+    ? { ...listed, entries: listed.entries.filter((entry) => !(entry.kind === 'folder' && (entry.branch?.status === 'released' || entry.branch?.status === 'archived'))) }
+    : listed;
   // The project root shows its README.md or README.txt under the files.
   const readme =
     listing && listing.location.area === 'root' && listing.location.path === ''
@@ -75,7 +104,7 @@ export async function ProjectDirectory({ project, path, params, signedIn }: { pr
 
   /** A link to this view with some parameters changed. */
   const href = (changes: Partial<Record<keyof DirectoryParams, string | undefined>>) => {
-    const next = { q, tags: tagIds.join(','), view: view ?? '', sort: params.sort, order: params.order, offset: undefined, ...changes };
+    const next = { q, tags: tagIds.join(','), view: view ?? '', under: q || tagIds.length ? under : undefined, sort: params.sort, order: params.order, show: params.show, offset: undefined, ...changes };
     const query = new URLSearchParams(Object.entries(next).flatMap(([key, value]) => (value ? [[key, value]] : [])));
     const base = next.q || next.tags || next.view ? projectPath(owner, slug) : here;
     return query.size ? `${base}?${query}` : base;
@@ -90,6 +119,10 @@ export async function ProjectDirectory({ project, path, params, signedIn }: { pr
     </Link>
   );
   const tagNames = new Map(tags.map((tag) => [tag.id, tag.name]));
+  // Searching from inside a folder searches that folder, until you widen it.
+  const scope = searching ? (q || tagIds.length ? under : '') : (listing?.location.path ?? '');
+  const writable = !searching && Boolean(listing?.location.writable);
+  const storageOwner = { handle: owner, isYou: viewerHandle === owner };
 
   return (
     <div className="directory">
@@ -99,7 +132,8 @@ export async function ProjectDirectory({ project, path, params, signedIn }: { pr
           <label className="sr-only" htmlFor="directory-q">
             Search files in this project
           </label>
-          <input id="directory-q" name="q" defaultValue={q} placeholder="Search files by name or path" />
+          <input id="directory-q" name="q" defaultValue={q} placeholder={scope ? `Search in ${scope.split('/').pop()}` : 'Search files by name or path'} />
+          {scope && <input type="hidden" name="under" value={scope} />}
           {tagIds.length > 0 && <input type="hidden" name="tags" value={tagIds.join(',')} />}
           {view && <input type="hidden" name="view" value={view} />}
         </form>
@@ -115,6 +149,11 @@ export async function ProjectDirectory({ project, path, params, signedIn }: { pr
           {page.total} {page.total === 1 ? 'file' : 'files'}
           {view === 'favorites' ? ' in your favorites' : view === 'recent' ? ', most recently changed first' : ''}
           {q && <> matching “{q}”</>}
+          {under && (q || tagIds.length > 0) && (
+            <>
+              {' '}in <span className="mono">{under}</span> (<Link href={href({ under: undefined })}>search the whole project</Link>)
+            </>
+          )}
           {tagIds.length > 0 && (
             <>
               {' '}tagged{' '}
@@ -128,12 +167,24 @@ export async function ProjectDirectory({ project, path, params, signedIn }: { pr
           . <Link href={projectPath(owner, slug)}>Back to all files</Link>
         </p>
       ) : (
-        <FolderBar project={project} listing={listing!} />
+        <FolderBar project={project} listing={listing!} owner={storageOwner} />
+      )}
+
+      {/* A brand-new project: nothing at the root but the two built-in folders, and no releases. */}
+      {writable && listing?.location.path === '' && counts?.releases === 0 && !listing.entries.some((entry) => !(entry.kind === 'folder' && entry.virtual)) && (
+        <GettingStarted project={`${owner}/${slug}`} />
       )}
 
       {page.entries.length === 0 ? (
-        <EmptyFolder searching={searching} view={view} listing={listing} />
+        writable ? (
+          <DropZone>
+            <EmptyFolder searching={searching} view={view} listing={listing} />
+          </DropZone>
+        ) : (
+          <EmptyFolder searching={searching} view={view} listing={listing} />
+        )
       ) : (
+        <MaybeDropZone enabled={writable}>
         <DirectoryTable
           project={project}
           entries={page.entries}
@@ -150,7 +201,15 @@ export async function ProjectDirectory({ project, path, params, signedIn }: { pr
             };
           }}
           tagLink={(tagId) => href({ tags: [...new Set([...tagIds, tagId])].join(','), offset: undefined })}
+          counts={counts}
         />
+        </MaybeDropZone>
+      )}
+
+      {hiddenBranches > 0 && (
+        <p className="toolbar-note">
+          {hiddenBranches} released or archived {hiddenBranches === 1 ? 'branch is' : 'branches are'} hidden. <Link href={href({ show: 'released' })}>Show them</Link>
+        </p>
       )}
 
       {(offset > 0 || page.nextOffset !== null) && (
@@ -177,7 +236,7 @@ export async function ProjectDirectory({ project, path, params, signedIn }: { pr
 }
 
 /** Breadcrumbs for the folder, what can be done here, and the branch or release it belongs to. */
-function FolderBar({ project, listing }: { project: Project; listing: DirectoryListing }) {
+function FolderBar({ project, listing, owner: storageOwner }: { project: Project; listing: DirectoryListing; owner: { handle: string; isYou: boolean } }) {
   const owner = project.ownerHandle;
   const slug = project.slug;
   const { location } = listing;
@@ -186,12 +245,10 @@ function FolderBar({ project, listing }: { project: Project; listing: DirectoryL
   );
   return (
     <div className="folder-bar">
+      {/* At the root, the page heading already names the project. */}
+      {location.crumbs.length > 0 && (
       <nav className="app-crumbs folder-crumbs" aria-label="Folder">
-        {location.crumbs.length === 0 ? (
-          <span aria-current="page">{project.name}</span>
-        ) : (
-          <Link href={projectPath(owner, slug)}>{project.name}</Link>
-        )}
+        <Link href={projectPath(owner, slug)}>{project.name}</Link>
         {location.crumbs.map((crumb, index) => (
           <span key={crumb.path}>
             <span className="crumb-sep"> / </span>
@@ -207,6 +264,7 @@ function FolderBar({ project, listing }: { project: Project; listing: DirectoryL
           </span>
         ))}
       </nav>
+      )}
 
       {location.writable && (
         <div className="folder-actions">
@@ -224,7 +282,7 @@ function FolderBar({ project, listing }: { project: Project; listing: DirectoryL
               </ActionForm>
             </div>
           </details>
-          <UploadFiles projectId={project.id} parentId={location.folderId} existing={existing} />
+          <UploadFiles projectId={project.id} parentId={location.folderId} existing={existing} owner={storageOwner} />
         </div>
       )}
 
@@ -276,6 +334,7 @@ async function DirectoryTable({
   showLocation,
   sortLink,
   tagLink,
+  counts,
 }: {
   project: Project;
   entries: DirectoryItem[];
@@ -285,6 +344,7 @@ async function DirectoryTable({
   showLocation: boolean;
   sortLink: (column: Sort) => { href: string; active: 'ascending' | 'descending' | undefined };
   tagLink: (tagId: string) => string;
+  counts?: { branches: number; releases: number };
 }) {
   const owner = project.ownerHandle;
   const slug = project.slug;
@@ -341,9 +401,7 @@ async function DirectoryTable({
                     <span className="file-glyph" aria-hidden="true">
                       {entry.virtual === 'branches' ? (
                         <BranchIcon className="icon" />
-                      ) : entry.virtual === 'releases' ? (
-                        <CubeIcon className="icon" />
-                      ) : entry.virtual === 'release' ? (
+                      ) : entry.virtual === 'releases' || entry.virtual === 'release' ? (
                         <LockIcon className="icon" />
                       ) : (
                         <FolderIcon className="icon" />
@@ -368,8 +426,10 @@ async function DirectoryTable({
                 <td className="muted">
                   <RelativeTime value={entry.modifiedAt} />
                 </td>
-                <td />
-                <td className="cell-action" />
+                <td className="muted nowrap">
+                  {entry.virtual === 'branches' && counts ? `${counts.branches} ${counts.branches === 1 ? 'branch' : 'branches'}` : entry.virtual === 'releases' && counts ? `${counts.releases} ${counts.releases === 1 ? 'release' : 'releases'}` : null}
+                </td>
+                <td className="cell-action">{editable && entry.entryId && <RowMenuButton name={entry.name} />}</td>
               </tr>
             ) : (
               <FileRow
@@ -395,7 +455,7 @@ async function DirectoryTable({
   return (
     <EntryMenu projectId={project.id} folders={folders}>
       {table}
-      <p className="muted entry-menu-hint">Right-click a file or folder to rename, move, or delete it.</p>
+      <p className="muted entry-menu-hint">Right-click a file or folder, or use its ⋯ button, to rename, move, or delete it.</p>
     </EntryMenu>
   );
 }
@@ -492,6 +552,7 @@ function FileRow({
         <DownloadButton projectId={project.id} sha256={file.blob} path={file.name} />
         {signedIn && <FavoriteButton projectId={project.id} itemId={file.itemId} favorite={file.favorite} name={file.name} />}
         {canTag && <TagPicker key={file.tags.map((tag) => tag.id).join()} projectId={project.id} itemId={file.itemId} name={file.name} tags={tags} selected={file.tags} />}
+        {menuData['data-entry-id'] && <RowMenuButton name={file.name} />}
       </td>
     </tr>
   );
@@ -547,4 +608,17 @@ export function TagsCard({ project, tags }: { project: Project; tags: ProjectTag
       )}
     </section>
   );
+}
+
+/** Opens the row's rename, move, and delete menu, for people who can't or don't right-click. */
+function RowMenuButton({ name }: { name: string }) {
+  return (
+    <button type="button" className="icon-button" data-entry-menu-button aria-label={`More actions for ${name}`} title="More actions">
+      <MoreIcon className="icon" />
+    </button>
+  );
+}
+
+function MaybeDropZone({ enabled, children }: { enabled: boolean; children: React.ReactNode }) {
+  return enabled ? <DropZone>{children}</DropZone> : <>{children}</>;
 }

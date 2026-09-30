@@ -120,13 +120,13 @@ Every method except `host.hello` answers `not_implemented` until the app registe
 | # | Milestone | Done when |
 |---|---|---|
 | — | Plugin framework | **Built.** Registry, pipe server, SolidWorks plugin, the C# protocol library, and shared fixtures. Tested on macOS and in CI on Windows, including a .NET Framework 4.8 client talking to the app's pipe |
-| W1 | App runs on Windows | Paths, tray, `second-instance` actions, `gigacad://`, NSIS build in CI. The plugin host starts with the app, and Settings lists plugins with their installations and add-in status |
-| W2 | Locks | Attribute and ACL locks with tests on `windows-latest`; `isLocked` and `whileUnlocked` behave as on macOS |
-| W3 | Explorer | Context menu, folder icons, `giga.cmd` |
-| W4 | Add-in methods | Pipe handlers backed by the sync engine; `files.stateChanged` broadcasts |
-| W5 | Add-in basics | Task Pane, read-only banner, references, reconnecting, pipe server check |
-| W6 | Exports and rebuild | STL on version commits; candidate rebuild with STEP and STL |
-| W7 | Ship | Signing, per-platform update manifest, installer registers the add-in, download page |
+| W1 | App runs on Windows | **Built (#46).** Paths, window chrome, tray, `gigacad://` and `--action` launches, Windows update manifest and `tar.exe`, NSIS installer in CI, plugin host started, Settings → CAD programs |
+| W2 | Locks | **Built (#47).** Read-only attribute on files, `icacls` deny entries on folders, tested on `windows-latest` |
+| W3 | Explorer | **Built (#48).** GigaCAD submenu in HKCU limited to the GigaCAD folder, `desktop.ini` folder icons, `giga.cmd` on PATH, uninstaller cleanup |
+| W4 | Add-in methods | **Built (#49).** Pipe handlers backed by the sync engine; `files.stateChanged` broadcasts. Rebuild reports wait for candidates in the folder |
+| W5 | Add-in basics | Task Pane, read-only banner, references, reconnecting, pipe server check. **Needs the Windows PC with SolidWorks.** |
+| W6 | Exports and rebuild | STL on version commits; candidate rebuild with STEP and STL. **Needs the Windows PC with SolidWorks.** |
+| W7 | Ship | Release workflow builds and uploads the installer and the Windows manifest, and the website links it (**built, #50**). Still to do: code signing, and the installer registering the add-in |
 | Later | Virtual drive | Cloud Files sync root for on-demand files (the original PLAN.md design), when downloading whole branches gets too slow |
 
 ## Verification

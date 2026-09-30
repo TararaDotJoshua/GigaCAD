@@ -279,6 +279,10 @@ export interface ReleaseRequestDetail {
     updatedAt: string;
   };
   latestRelease: { id: string; number: number } | null;
+  /** The main the candidate was generated against. Finished requests show their picks against it. */
+  targetRelease: { id: string; number: number } | null;
+  /** The release this request produced. */
+  releasedRelease: { id: string; number: number } | null;
   preview: {
     rows: PickRow[];
     replacements: AppliedReplacement[];

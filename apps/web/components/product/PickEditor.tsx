@@ -10,11 +10,20 @@ import { FileGlyph } from './FileGlyph';
 import type { ActionState } from '../../app/(product)/actions';
 
 export function PickEditor({ requestId, rows, picks, mainFiles, latestNumber, readOnly }: { requestId: string; rows: PickRow[]; picks: Picks; mainFiles: ManifestEntry[]; latestNumber: number | null; readOnly: boolean }) {
-  const saved = draftFromPicks(rows, picks);
-  const [draft, setDraft] = useState(saved);
+  // `saved` is the server's picks this draft started from. Live refreshes can bring newer ones:
+  // take them over an untouched draft, but never silently over unsaved changes.
+  const incoming = draftFromPicks(rows, picks);
+  const [saved, setSaved] = useState(incoming);
+  const [draft, setDraft] = useState(incoming);
   const [pending, start] = useTransition();
   const [state, setState] = useState<ActionState>({});
   const dirty = !samePicks(rows, saved, draft);
+  const changedElsewhere = !samePicks(rows, saved, incoming);
+  if (changedElsewhere && (!dirty || samePicks(rows, incoming, draft))) {
+    setSaved(incoming);
+    setDraft(incoming);
+  }
+  const reload = () => { setSaved(incoming); setDraft(incoming); setState({}); };
   const replacements = Object.values(draft).filter(pick => pick.kind === 'replace').map(pick => pick.mainItemId);
   const duplicate = replacements.length !== new Set(replacements).size;
   const set = (id: string, pick: RowPick) => { setDraft(current => ({ ...current, [id]: pick })); setState({}); };
@@ -28,6 +37,7 @@ export function PickEditor({ requestId, rows, picks, mainFiles, latestNumber, re
       </div>{canReplace(row) && mainFiles.length > 0 && <select className="pick-replace" aria-label={`Replace main item with ${row.path}`} value={pick.kind === 'replace' ? pick.mainItemId : ''} onChange={event => set(row.itemId,event.target.value ? {kind:'replace',mainItemId:event.target.value} : {kind:'action',action:'take_branch'})}><option value="">Replace a main file…</option>{mainFiles.map(file => <option key={file.itemId} value={file.itemId}>{file.path}</option>)}</select>}</div>}
     </div>; })}
   </div>
+    {!readOnly && changedElsewhere && dirty && <p className="notice notice-caution" role="status">Someone else saved different picks while you were editing. <button type="button" className="link-button" onClick={reload}>Load their picks</button> or save yours to replace them.</p>}
     {!readOnly && <div className="pick-actions">{dirty && <span className="badge badge-caution">Unsaved picks · candidate out of date</span>}{duplicate && <span className="form-status is-error">Two files cannot replace the same main item.</span>}<button className="btn btn-primary" type="button" disabled={!dirty || duplicate || pending} onClick={() => start(async () => setState(await savePicks(requestId,picksFromDraft(rows,draft))))}>Save picks</button><button className="btn btn-secondary" type="button" disabled={!dirty || pending} onClick={() => {setDraft(saved);setState({});}}>Discard</button><FormStatus state={state} /></div>}
   </div>;
 }

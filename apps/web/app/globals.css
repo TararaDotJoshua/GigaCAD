@@ -939,6 +939,18 @@ button {
   height: auto;
 }
 
+/* On narrow screens the diagram scrolls sideways; say so, since the cut-off edge looks final. */
+.diagram-hint {
+  display: none;
+  margin-top: 8px;
+  color: var(--paper-faint);
+  font-size: var(--t-small);
+}
+
+@media (max-width: 800px) {
+  .diagram-hint { display: block; position: sticky; left: 0; }
+}
+
 .diagram-main {
   stroke: var(--paper);
   stroke-width: 2;

@@ -434,3 +434,13 @@ test('keeps files at the project root, with folders, revisions, tags, and favori
   await menuFor(/Laser files/, 'Delete');
   await expect(main.getByRole('link', { name: 'Laser files', exact: true })).toHaveCount(0);
 });
+
+test('sign-in pages link back to the marketing site, not the dashboard', async ({ browser }) => {
+  const visitor = await (await browser.newContext()).newPage();
+  const site = process.env.NEXT_PUBLIC_GIGACAD_SITE_URL ?? 'http://localhost:3000';
+  for (const path of ['/login', '/signup', '/forgot-password']) {
+    await visitor.goto(path);
+    await expect(visitor.getByRole('link', { name: 'Back to site' })).toHaveAttribute('href', site);
+  }
+  await visitor.context().close();
+});

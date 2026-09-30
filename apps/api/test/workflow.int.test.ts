@@ -176,6 +176,33 @@ describe('release workflow', () => {
     await asAlex.post(`/v1/release-requests/${opened.body.releaseRequest.id}/close`);
     expect((await asAlex.get(`/v1/branches/${branch}`)).body.branch.status).toBe('open');
   });
+
+  it('keeps a released request’s picks and approvals readable against the main it targeted', async () => {
+    const projectId = await newProject(asAlex);
+    const first = await newBranch(asAlex, projectId, 'initial');
+    await commitVersion(harness, asAlex, projectId, first, { 'A.SLDPRT': 'a v1', 'B.SLDPRT': 'b v1' });
+    await releaseBranch(asAlex, first);
+
+    const work = await newBranch(asAlex, projectId, 'work', 1);
+    await commitVersion(harness, asAlex, projectId, work, { 'A.SLDPRT': 'a v2', 'B.SLDPRT': 'b v2' });
+    const opened = await asAlex.post(`/v1/branches/${work}/release-requests`, { title: 'Edit A and B' });
+    const id = opened.body.releaseRequest.id as string;
+    const bItem = opened.body.preview.rows.find((row: { path: string }) => row.path === 'B.SLDPRT').itemId as string;
+    expect((await asAlex.put(`/v1/release-requests/${id}/picks`, { actions: { [bItem]: 'keep_main' } })).status).toBe(200);
+    await asAlex.post(`/v1/release-requests/${id}/candidate`);
+    await asAlex.post(`/v1/release-requests/${id}/approvals`);
+    expect((await asAlex.post(`/v1/release-requests/${id}/release`)).status).toBe(201);
+
+    // Main is now v2, yet the finished request still shows its two rows against v1.
+    const detail = (await asAlex.get(`/v1/release-requests/${id}`)).body;
+    expect(detail.releaseRequest.status).toBe('released');
+    expect(detail.latestRelease.number).toBe(2);
+    expect(detail.targetRelease.number).toBe(1);
+    expect(detail.releasedRelease.number).toBe(2);
+    expect(detail.preview.rows.map((row: { path: string }) => row.path).sort()).toEqual(['A.SLDPRT', 'B.SLDPRT']);
+    expect(detail.releaseRequest.picks.actions).toEqual({ [bItem]: 'keep_main' });
+    expect(detail.approvals.evaluation.countedUserIds).toEqual([alex.id]);
+  });
 });
 
 describe('main is permanently locked', () => {

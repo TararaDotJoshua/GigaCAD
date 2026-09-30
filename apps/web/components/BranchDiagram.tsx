@@ -96,6 +96,7 @@ export function BranchDiagram() {
           autosaves, cleared at each version
         </text>
       </svg>
+      <p className="diagram-hint" aria-hidden="true">Swipe to follow the branch</p>
     </div>
   );
 }

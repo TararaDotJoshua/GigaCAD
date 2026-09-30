@@ -13,3 +13,14 @@ export const treePath = (owner: string, slug: string, path: string) =>
   path ? projectPath(owner, slug, 'tree', ...path.split('/').filter(Boolean)) : projectPath(owner, slug);
 /** A root file or folder's own page: revisions, tags, rename, move. */
 export const entryPath = (owner: string, slug: string, entryId: string) => projectPath(owner, slug, 'entries', entryId);
+
+/** The first of `slug`, `slug-2`, `slug-3`, … that isn't in `taken`, kept within the 100-character limit. */
+export function freeSlug(slug: string, taken: Iterable<string>): string {
+  const used = new Set(taken);
+  if (!used.has(slug)) return slug;
+  for (let n = 2; ; n++) {
+    const suffix = `-${n}`;
+    const candidate = `${slug.slice(0, 100 - suffix.length).replace(/[._-]+$/, '')}${suffix}`;
+    if (!used.has(candidate)) return candidate;
+  }
+}

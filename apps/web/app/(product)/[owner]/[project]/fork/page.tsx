@@ -3,8 +3,8 @@ import { forkProject } from '../../../actions';
 import { ActionForm } from '../../../../../components/product/ActionForm';
 import { EmptyState } from '../../../../../components/product/EmptyState';
 import { PageHead } from '../../../../../components/product/PageHead';
-import { projectPath } from '../../../../../lib/paths';
-import { getProject, getReleases, getViewer } from '../../../../../lib/product';
+import { freeSlug, projectPath } from '../../../../../lib/paths';
+import { getMyProjects, getProject, getReleases, getViewer } from '../../../../../lib/product';
 import type { ProjectParams } from '../layout';
 
 export const metadata = { title: 'Fork' };
@@ -13,7 +13,9 @@ export default async function ForkPage({ params }: { params: Promise<ProjectPara
   const { owner, project: slug } = await params;
   const [project, viewer] = await Promise.all([getProject(owner, slug), getViewer()]);
   if (!viewer) redirect(`/login?next=${encodeURIComponent(projectPath(owner, slug, 'fork'))}`);
-  const releases = await getReleases(project.id);
+  const [releases, mine] = await Promise.all([getReleases(project.id), getMyProjects()]);
+  // Forking into an address you already use would fail, so suggest the next free one.
+  const suggested = freeSlug(project.slug, mine.filter((own) => own.ownerHandle === viewer.handle).map((own) => own.slug));
   const mustStayPrivate = project.visibility === 'private';
   return (
     <div className="page page-narrow">
@@ -46,7 +48,7 @@ export default async function ForkPage({ params }: { params: Promise<ProjectPara
               <span>Address</span>
               <span className="field-prefixed">
                 <span className="mono muted">{viewer.handle}/</span>
-                <input name="slug" required maxLength={100} pattern="[a-z0-9](?:[a-z0-9._\-]{0,98}[a-z0-9])?" defaultValue={project.slug} className="mono" title="Lowercase letters, digits, dots, dashes, or underscores" spellCheck={false} />
+                <input name="slug" required maxLength={100} pattern="[a-z0-9](?:[a-z0-9._\-]{0,98}[a-z0-9])?" defaultValue={suggested} className="mono" title="Lowercase letters, digits, dots, dashes, or underscores" spellCheck={false} />
               </span>
             </label>
             <label className="field">

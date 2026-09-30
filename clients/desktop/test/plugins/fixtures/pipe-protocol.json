@@ -1,0 +1,45 @@
+{
+  "about": "Messages between CAD add-ins and the GigaCAD app. Both the TypeScript host (clients/desktop/test/plugins/protocol.test.ts) and the C# add-in library (clients/windows/tests/GigaCAD.Plugins.Tests/Protocol/FixtureTests.cs) must produce and read these exactly. Key order doesn't matter.",
+  "cases": {
+    "helloRequest": {
+      "id": "1",
+      "method": "host.hello",
+      "params": { "clientId": "solidworks", "clientVersion": "0.1.0", "protocolVersion": 1, "cadName": "SolidWorks", "cadVersion": "2025", "processId": 4242 }
+    },
+    "helloResult": { "id": "1", "result": { "hostVersion": "0.2.0", "protocolVersion": 1, "signedInAs": "alex" } },
+    "helloResultSignedOut": { "id": "1", "result": { "hostVersion": "0.2.0", "protocolVersion": 1 } },
+    "getFileStateRequest": {
+      "id": "2",
+      "method": "files.getState",
+      "params": { "paths": ["C:\\Users\\alex\\GigaCAD\\alex\\arm\\Branches\\dev\\Arm.SLDPRT"] }
+    },
+    "getFileStateResult": {
+      "id": "2",
+      "result": [
+        { "path": "C:\\Users\\alex\\GigaCAD\\alex\\arm\\Branches\\dev\\Arm.SLDPRT", "isGigaPath": true, "project": "alex/arm", "branch": "dev", "writable": false, "checkedOutBy": "sam" }
+      ]
+    },
+    "commitVersionRequest": {
+      "id": "3",
+      "method": "branch.commitVersion",
+      "params": { "path": "C:\\Users\\alex\\GigaCAD\\alex\\arm\\Branches\\dev", "message": "Stronger gripper" }
+    },
+    "errorResponse": {
+      "id": "4",
+      "error": { "code": "protocol_version", "message": "Update GigaCAD", "details": { "hostProtocolVersion": 1 } }
+    },
+    "submitRebuildReportRequest": {
+      "id": "5",
+      "method": "candidate.submitRebuildReport",
+      "params": {
+        "path": "C:\\Users\\alex\\GigaCAD\\alex\\arm\\Candidates\\RR-3",
+        "report": {
+          "candidateManifestId": "0b9a6c1e-0000-4000-8000-000000000000",
+          "status": "passed_with_warnings",
+          "messages": [{ "level": "warning", "message": "Mate is over-defined", "path": "Robot.SLDASM" }]
+        }
+      }
+    },
+    "stateChangedNotification": { "method": "files.stateChanged", "params": { "paths": ["C:\\Users\\alex\\GigaCAD\\alex\\arm\\Branches\\dev"] } }
+  }
+}

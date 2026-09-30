@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { Navigate } from '../preload/index.js';
 import type { AppState, BranchState, ProjectState } from '../shared/types.js';
 import { useAppState, useNavigate } from './api.js';
@@ -27,6 +27,12 @@ export function App() {
       else if (to.projectId) setSelection({ kind: 'project', projectId: to.projectId, branch: to.branch, commit: to.commit });
     }, []),
   );
+
+  // The title bar differs by system (styles.css): macOS's buttons sit left, Windows' right.
+  const platform = state?.app.platform;
+  useEffect(() => {
+    if (platform) document.documentElement.dataset.platform = platform;
+  }, [platform]);
 
   if (!state) return <div className="app-loading" />;
   if (!state.user) {

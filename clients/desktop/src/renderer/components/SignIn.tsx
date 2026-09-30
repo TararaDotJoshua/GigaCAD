@@ -1,9 +1,11 @@
 import type { AppState } from '../../shared/types.js';
+import { platformWords } from '../../shared/platform.js';
 import { act } from '../api.js';
 import { Logo } from '../icons.js';
 
 /** Device sign-in through `giga login`: the code shows here and the browser opens to approve it. */
 export function SignIn({ state }: { state: AppState }) {
+  const words = platformWords(state.app.platform);
   const pending = state.signIn;
   return (
     <div className="center drag">
@@ -29,8 +31,8 @@ export function SignIn({ state }: { state: AppState }) {
           <>
             <h2 className="card-title">Sign in to GigaCAD</h2>
             <p className="lede">
-              Your projects appear in Finder, in the GigaCAD folder. Signing in here also signs in the <span className="mono">giga</span> command
-              line tool on this Mac.
+              Your projects appear in {words.fileManager}, in the GigaCAD folder. Signing in here also signs in the <span className="mono">giga</span> command
+              line tool on {words.thisComputer}.
             </p>
             <button type="button" className="btn btn-primary" onClick={() => void act('signIn')}>
               Sign in with your browser

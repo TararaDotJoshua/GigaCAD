@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { signBytes, verifyBundle } from '../src/shared/bundle.js';
 import type { UpdateState } from '../src/shared/types.js';
-import { canonicalManifest, Updater, verifyManifest, type UpdateManifest } from '../src/main/updates.js';
+import { canonicalManifest, defaultManifestUrl, tarPath, Updater, verifyManifest, type UpdateManifest } from '../src/main/updates.js';
 import { keyPair, makeBundle } from './helpers.js';
 
 const key = keyPair();
@@ -26,7 +26,7 @@ function signed(fields: Omit<UpdateManifest, 'signature'>, privateKey = key.priv
 function release(version: string, options: { shellMin?: number; tamper?: boolean } = {}) {
   const dir = makeBundle(join(temp, `src-${version}`), version, key.privateKey, options.shellMin ?? 1);
   const archive = join(temp, `bundle-${version}.tar.gz`);
-  execFileSync('/usr/bin/tar', ['-czf', archive, '-C', dir, '.']);
+  execFileSync(tarPath(), ['-czf', archive, '-C', dir, '.']);
   const bytes = readFileSync(archive);
   const manifest = signed({
     version,
@@ -114,7 +114,7 @@ describe('Updater', () => {
     const fetchImpl = server(manifest, archive);
     const { instance } = updater(fetchImpl);
     await instance.check();
-    expect(instance.state).toMatchObject({ kind: 'needsReinstall', version: '2.0.0', dmgUrl: 'https://downloads.example/GigaCAD.dmg' });
+    expect(instance.state).toMatchObject({ kind: 'needsReinstall', version: '2.0.0', downloadUrl: 'https://downloads.example/GigaCAD.dmg' });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
@@ -137,5 +137,18 @@ describe('Updater', () => {
     busy = false;
     await restarting;
     expect(relaunch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('per-platform', () => {
+  it('reads the Windows manifest on Windows and the original one elsewhere', () => {
+    expect(defaultManifestUrl('darwin')).toBe('https://downloads.gigacad.site/desktop/stable/manifest.json');
+    expect(defaultManifestUrl('win32')).toBe('https://downloads.gigacad.site/desktop/stable/win32/manifest.json');
+  });
+
+  it('uses the tar that ships with each system', () => {
+    expect(tarPath('darwin')).toBe('/usr/bin/tar');
+    expect(tarPath('win32', { SystemRoot: 'D:\\Windows' })).toBe('D:\\Windows\\System32\\tar.exe');
+    expect(tarPath('win32', {})).toBe('C:\\Windows\\System32\\tar.exe');
   });
 });

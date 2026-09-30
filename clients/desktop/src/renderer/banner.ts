@@ -5,7 +5,7 @@ export type Banner =
   | { readonly kind: 'rollback'; readonly version: string }
   | { readonly kind: 'downloading'; readonly percent: number }
   | { readonly kind: 'ready'; readonly version: string; readonly notes: string; readonly notesUrl: string | null; readonly restarting: boolean }
-  | { readonly kind: 'reinstall'; readonly version: string; readonly notes: string; readonly dmgUrl: string };
+  | { readonly kind: 'reinstall'; readonly version: string; readonly notes: string; readonly downloadUrl: string };
 
 /**
  * The rollback notice comes first. Checking, idle, and errors show nothing (errors are in
@@ -21,7 +21,7 @@ export function bannerFor(updates: UpdateState, dismissedUpdate: string | null, 
       return { kind: 'ready', version: updates.version, notes: updates.notes, notesUrl: updates.notesUrl, restarting: updates.restarting };
     case 'needsReinstall':
       if (updates.version === dismissedUpdate) return null;
-      return { kind: 'reinstall', version: updates.version, notes: updates.notes, dmgUrl: updates.dmgUrl };
+      return { kind: 'reinstall', version: updates.version, notes: updates.notes, downloadUrl: updates.downloadUrl };
     default:
       return null;
   }

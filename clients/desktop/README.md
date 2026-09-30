@@ -1,4 +1,4 @@
-# GigaCAD for macOS
+# GigaCAD for macOS and Windows
 
 Your GigaCAD projects as folders in Finder, like the web directory:
 
@@ -69,6 +69,26 @@ with `GIGACAD_DOWNLOADS_URL=http://127.0.0.1:<port>/desktop` so the manifest poi
 The signing key: `scripts/keygen.mjs` makes one; its public half is in
 `src/bootstrap/publicKey.ts`. Keep the private half in the `DESKTOP_UPDATE_KEY` secret and a
 backup. Losing it means shipping a new DMG to change keys.
+
+## Windows
+
+The same app runs on Windows ([docs/WINDOWS_APP_PLAN.md](../../docs/WINDOWS_APP_PLAN.md) tracks the port).
+
+- **Where things live:**
+  - Settings, bundles, and caches are in `%LOCALAPPDATA%\GigaCAD`, and projects are in `%USERPROFILE%\GigaCAD`.
+  - The window draws Windows' caption buttons over its toolbar.
+  - The tray icon opens the window on click.
+- **Launching:**
+  - `gigacad://` links, and later the File Explorer menu, start the app with arguments (`launchArgs.ts`) instead of macOS's `open-url`.
+  - Settings lists the CAD programs GigaCAD's plugins found, SolidWorks for now.
+- **Package it on Windows:**
+
+  ```sh
+  pnpm --filter @gigacad/desktop dist                       # dist/GigaCAD-Setup-<version>.exe
+  ```
+
+  Icons are rendered on a Mac (`pnpm icons` writes `build/`); copy `build/` over, or pass `--allow-missing-icons`.
+- **CI:** the `windows` job runs the desktop tests on Windows and uploads an unsigned installer (the `GigaCAD-Windows` artifact) to try. It uses a throwaway update key and has no icons.
 
 ## Plugins
 

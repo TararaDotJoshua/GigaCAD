@@ -89,8 +89,11 @@ export async function renderIcons(keys: readonly string[], outDir: string, pixel
  * Sets Finder icons. Icons come pre-rendered from the bundle; an icon it doesn't have (a new
  * file extension) is drawn into `cacheDir` once. If that fails, the plain file icon is used.
  */
-export async function applyIcons(jobs: readonly IconJob[], bundleIconsDir: string, cacheDir: string): Promise<IconResult> {
+export async function applyIcons(jobs: readonly IconJob[], bundleIconsDir: string, cacheDir: string, platform: NodeJS.Platform = process.platform): Promise<IconResult> {
   if (jobs.length === 0) return { rendered: 0, applied: 0, failed: [] };
+  // Custom icons are drawn and set with macOS's own tools. Elsewhere (Windows, until its icons
+  // land) nothing is applied, and nothing is cached as applied, so no sync ever fails over icons.
+  if (platform !== 'darwin') return { rendered: 0, applied: 0, failed: jobs.map((job) => job.target) };
   const pngFor = new Map<string, string>();
   const missing: string[] = [];
   for (const key of new Set(jobs.map((job) => job.key))) {

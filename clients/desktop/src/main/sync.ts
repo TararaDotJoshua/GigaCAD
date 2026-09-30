@@ -3,6 +3,7 @@ import { lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'no
 import { basename, dirname, join } from 'node:path';
 import { createIgnoreMatcher } from '@gigacad/core';
 import type { Api, BranchView, ProjectSummary, ReleaseView, WorkspaceState } from '@gigacad/cli/lib';
+import { platformWords } from '../shared/platform.js';
 import type { ActivityItem, BranchState, Holder, ProjectState, ReleaseState, Settings, SyncStatus } from '../shared/types.js';
 import { apiClient, thisMachine } from './api.js';
 import { giga, GigaError, isGigaError } from './cli.js';
@@ -409,7 +410,7 @@ export class SyncEngine {
 
   private findProject(projectId: string): ProjectRuntime {
     const project = this.projects.get(projectId);
-    if (!project) throw new GigaError({ code: 'not_found', message: 'That project isn’t synced to this Mac' });
+    if (!project) throw new GigaError({ code: 'not_found', message: `That project isn’t synced to ${platformWords(process.platform).thisComputer}` });
     return project;
   }
 
@@ -480,7 +481,7 @@ export class SyncEngine {
       }
       await this.refreshBranches(project);
       await this.iconPass(bdir, [{ target: bdir, key: 'folder-branch-yours' }]);
-      this.log(`Checked out ${name}. Its files are editable on this Mac.`);
+      this.log(`Checked out ${name}. Its files are editable on ${platformWords(process.platform).thisComputer}.`);
     });
   }
 
@@ -604,9 +605,8 @@ export class SyncEngine {
   private onFileEvent(path: string): void {
     const settings = this.host.settings();
     if (settings.paused) return;
+    if (isAppFile(path)) return;
     const name = basename(path);
-    if (name === ICON_FILE || name === PLACEHOLDER || name === RELEASE_MARKER || path.includes(`${'/'}.giga${'/'}`) || path.endsWith('/.giga')) return;
-    if (path.includes('.downloading/') || name.endsWith('.downloading')) return;
     try {
       if (isDefaultIgnored(name)) return;
     } catch {
@@ -739,6 +739,18 @@ async function fileStamp(path: string): Promise<string> {
   } catch {
     return 'missing';
   }
+}
+
+/**
+ * Files the app and giga write themselves, which must never look like a save: giga's `.giga`
+ * state, downloads in progress, and GigaCAD's markers and icon files. Paths may use either
+ * separator; Windows paths use backslashes.
+ */
+export function isAppFile(path: string): boolean {
+  const parts = path.split(/[\\/]/);
+  const name = parts[parts.length - 1] ?? '';
+  if (name === ICON_FILE || name === PLACEHOLDER || name === RELEASE_MARKER) return true;
+  return parts.some((part) => part === '.giga' || part.endsWith('.downloading'));
 }
 
 function isIgnoredName(name: string): boolean {

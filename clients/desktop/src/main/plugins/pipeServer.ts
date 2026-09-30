@@ -30,6 +30,8 @@ export interface PipeServerOptions {
   readonly signedInAs: () => string | null;
   readonly log: PluginLog;
   readonly platform?: NodeJS.Platform;
+  /** Called after an add-in connects or disconnects. */
+  readonly onSessionsChanged?: () => void;
 }
 
 interface Connection {
@@ -139,6 +141,7 @@ export class PluginPipeServer {
           this.connections.set(accepted.session.sessionId, connection);
           this.options.registry.notifyConnected(accepted.plugin, accepted.session);
           this.options.log('info', `${accepted.session.cadName} ${accepted.session.cadVersion} add-in connected (process ${accepted.session.processId})`);
+          this.options.onSessionsChanged?.();
         } else if (isRequest(message)) {
           // Requests run side by side, so a long commit doesn't hold up file-state lookups.
           void this.respond(connection.session, message, send);
@@ -151,6 +154,7 @@ export class PluginPipeServer {
       if (connection && this.connections.delete(connection.session.sessionId)) {
         this.options.registry.notifyDisconnected(connection.plugin, connection.session);
         this.options.log('info', `${connection.session.cadName} add-in disconnected (process ${connection.session.processId})`);
+        this.options.onSessionsChanged?.();
       }
     });
   }

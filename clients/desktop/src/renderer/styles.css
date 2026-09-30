@@ -120,6 +120,15 @@ select {
   padding: 0 18px 8px 84px;
 }
 
+/* Windows: no traffic lights on the left; the caption buttons (about 138 px) cover the toolbar's right end. */
+[data-platform='win32'] .sidebar-top {
+  padding-left: 18px;
+}
+
+[data-platform='win32'] .toolbar {
+  padding-right: 150px;
+}
+
 .logo {
   display: inline-flex;
   align-items: center;

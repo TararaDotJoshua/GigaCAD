@@ -1,5 +1,5 @@
 // Pre-renders every known Finder icon into build/icons/ (folders at 512 px, files at 256 px),
-// the menu bar template icon, and the app icon (build/app-icon.png) for electron-builder.
+// the menu bar template icon, the Windows tray icon, and the app icon (build/app-icon.png) for electron-builder.
 // Needs macOS: it uses the system's own SVG renderer through osascript, like the app does.
 import { mkdtempSync, renameSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -27,9 +27,17 @@ for (const [pixels, name] of [[16, 'trayTemplate.png'], [32, 'trayTemplate@2x.pn
   rmSync(temp, { recursive: true, force: true });
 }
 
+// Windows' notification area shows icons in color: the app icon, small.
+for (const [pixels, name] of [[16, 'trayWin.png'], [32, 'trayWin@2x.png']]) {
+  const temp = mkdtempSync(join(tmpdir(), 'gigacad-tray-win-'));
+  await renderIcons(['app'], temp, () => pixels);
+  renameSync(join(temp, 'app.png'), join(iconsBuild, name));
+  rmSync(temp, { recursive: true, force: true });
+}
+
 const temp = mkdtempSync(join(tmpdir(), 'gigacad-app-'));
 await renderIcons(['app'], temp, () => 1024);
 renameSync(join(temp, 'app.png'), join(root, 'build', 'app-icon.png'));
 rmSync(temp, { recursive: true, force: true });
 
-console.log(`Rendered ${keys.length} Finder icons, the menu bar icon, and the app icon.`);
+console.log(`Rendered ${keys.length} Finder icons, the menu bar and Windows tray icons, and the app icon.`);

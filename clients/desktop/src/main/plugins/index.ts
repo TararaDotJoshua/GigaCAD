@@ -20,6 +20,7 @@ export interface PluginHostOptions {
   readonly plugins?: readonly GigaPlugin[];
   /** Defaults to this user's pipe (pipePath(currentPipeName())). */
   readonly pipePath?: string;
+  readonly onSessionsChanged?: () => void;
 }
 
 export interface PluginHost {
@@ -42,6 +43,7 @@ export function createPluginHost(options: PluginHostOptions): PluginHost {
     signedInAs: options.signedInAs,
     log: options.log,
     platform,
+    ...(options.onSessionsChanged ? { onSessionsChanged: options.onSessionsChanged } : {}),
   });
   return { registry, server };
 }

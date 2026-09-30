@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AppState, BranchState, ProjectState } from '../../shared/types.js';
+import { platformWords } from '../../shared/platform.js';
 import { act, ago, call, useLoad } from '../api.js';
 import { groupHistory, type Commit } from '../history.js';
 import { DownloadIcon, FolderIcon, LockIcon, SyncIcon } from '../icons.js';
@@ -19,6 +20,7 @@ interface Status {
 }
 
 export function BranchView({ state, project, branch, focusCommit }: Props) {
+  const words = platformWords(state.app.platform);
   const [tab, setTab] = useState<'changes' | 'history'>('changes');
   useEffect(() => {
     if (focusCommit) setTab('changes');
@@ -52,7 +54,7 @@ export function BranchView({ state, project, branch, focusCommit }: Props) {
             </button>
             <button type="button" className="btn btn-secondary" onClick={() => void act('reveal', branch.dir)}>
               <FolderIcon className="icon" />
-              Show in Finder
+              {words.showInFileManager}
             </button>
           </>
         ) : null}
@@ -67,9 +69,9 @@ export function BranchView({ state, project, branch, focusCommit }: Props) {
       </div>
       <div className="content">
         {!branch.downloaded ? (
-          <NotDownloaded project={project} branch={branch} />
+          <NotDownloaded project={project} branch={branch} thisComputer={words.thisComputer} />
         ) : tab === 'changes' ? (
-          <Changes project={project} branch={branch} focusCommit={focusCommit} />
+          <Changes project={project} branch={branch} focusCommit={focusCommit} thisComputer={words.thisComputer} />
         ) : (
           <History state={state} project={project} branch={branch} />
         )}
@@ -78,11 +80,13 @@ export function BranchView({ state, project, branch, focusCommit }: Props) {
   );
 }
 
-function NotDownloaded({ project, branch }: { project: ProjectState; branch: BranchState }) {
+function NotDownloaded({ project, branch, thisComputer }: { project: ProjectState; branch: BranchState; thisComputer: string }) {
   return (
     <div className="panel">
       <div className="empty">
-        <p>{branch.name} isn’t downloaded to this Mac.</p>
+        <p>
+          {branch.name} isn’t downloaded to {thisComputer}.
+        </p>
         <button type="button" className="btn btn-primary" disabled={branch.busy} onClick={() => void act('downloadBranch', project.id, branch.name)}>
           <DownloadIcon className="icon" />
           Download
@@ -92,7 +96,7 @@ function NotDownloaded({ project, branch }: { project: ProjectState; branch: Bra
   );
 }
 
-function Changes({ project, branch, focusCommit }: { project: ProjectState; branch: BranchState; focusCommit: boolean }) {
+function Changes({ project, branch, focusCommit, thisComputer }: { project: ProjectState; branch: BranchState; focusCommit: boolean; thisComputer: string }) {
   const status = useLoad(() => call('branchStatus', project.id, branch.name) as Promise<Status>, [project.id, branch.name, branch.headCommitId, branch.busy]);
   const [message, setMessage] = useState('');
   const [label, setLabel] = useState('');
@@ -179,7 +183,7 @@ function Changes({ project, branch, focusCommit }: { project: ProjectState; bran
             {committing ? 'Committing…' : 'Commit Version'}
           </button>
           <p className="field-note">
-            {mine ? 'A version replaces the autosaves since the last one.' : 'Check out the branch to commit versions from this Mac.'}
+            {mine ? 'A version replaces the autosaves since the last one.' : `Check out the branch to commit versions from ${thisComputer}.`}
           </p>
         </form>
       </section>

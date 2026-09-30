@@ -3,8 +3,11 @@ import { app, ipcMain } from 'electron';
 import { COMMAND_NAMES, type CommandName, type CommandResult } from '../shared/types.js';
 import { Controller } from './controller.js';
 import { GigaError } from './cli.js';
+import { actionUrlFromArgv } from './launchArgs.js';
 
 app.setName('GigaCAD');
+// Windows ties notifications and taskbar entries to this id; it matches appId in electron-builder.yml.
+if (process.platform === 'win32') app.setAppUserModelId('site.gigacad.desktop');
 const runtime = globalThis.__gigacad;
 
 if (!runtime || !app.requestSingleInstanceLock()) {
@@ -12,14 +15,25 @@ if (!runtime || !app.requestSingleInstanceLock()) {
 } else {
   let controller: Controller | undefined;
   const waiting: string[] = [];
-
-  // Quick Actions open gigacad:// links. They can arrive before the app is ready.
-  app.on('open-url', (event, url) => {
-    event.preventDefault();
+  const handle = (url: string) => {
     if (controller) void controller.handleUrl(url);
     else waiting.push(url);
+  };
+
+  // macOS: Quick Actions and links open gigacad:// URLs, which can arrive before the app is ready.
+  app.on('open-url', (event, url) => {
+    event.preventDefault();
+    handle(url);
   });
-  app.on('second-instance', () => controller?.showWindow());
+  // Windows: links and the right-click menu start the app with arguments (launchArgs.ts). The
+  // first launch reads its own; later ones reach this instance as second-instance.
+  const launchUrl = process.platform === 'win32' ? actionUrlFromArgv(process.argv) : undefined;
+  if (launchUrl) waiting.push(launchUrl);
+  app.on('second-instance', (_event, argv) => {
+    const url = process.platform === 'win32' ? actionUrlFromArgv(argv) : undefined;
+    if (url) handle(url);
+    else controller?.showWindow();
+  });
   app.on('activate', () => controller?.showWindow());
   // A stray error in a background task (a dropped connection, say) shouldn't stop syncing or put
   // up Electron's modal error dialog. It goes to the activity list instead.

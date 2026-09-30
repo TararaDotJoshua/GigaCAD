@@ -1,5 +1,7 @@
 import type { AppState } from '../../shared/types.js';
+import { platformWords } from '../../shared/platform.js';
 import { act, ago } from '../api.js';
+import { pluginSummary } from '../plugins.js';
 import { Setup } from './Setup.js';
 import { Toolbar } from './Toolbar.js';
 
@@ -7,6 +9,7 @@ export function Settings({ state }: { state: AppState }) {
   const { settings, updates, app } = state;
   const hidden = state.projects.filter((project) => project.hidden);
   const checking = updates.kind === 'checking' || updates.kind === 'downloading';
+  const words = platformWords(state.app.platform);
 
   return (
     <>
@@ -21,13 +24,13 @@ export function Settings({ state }: { state: AppState }) {
             Sign Out
           </button>
         </div>
-        <p className="field-note">The giga command line tool on this Mac uses the same sign-in.</p>
+        <p className="field-note">The giga command line tool on {words.thisComputer} uses the same sign-in.</p>
 
         <h3>GigaCAD folder</h3>
         <div className="inline">
           <span className="mono">{settings.folder}</span>
           <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('reveal', settings.folder)}>
-            Show in Finder
+            {words.showInFileManager}
           </button>
           <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('chooseFolder')}>
             Change…
@@ -45,7 +48,7 @@ export function Settings({ state }: { state: AppState }) {
         </label>
         {hidden.length > 0 ? (
           <>
-            <p className="field-note">Not synced to this Mac:</p>
+            <p className="field-note">Not synced to {words.thisComputer}:</p>
             <ul className="rows panel">
               {hidden.map((project) => (
                 <li key={project.id}>
@@ -64,16 +67,18 @@ export function Settings({ state }: { state: AppState }) {
         <h3>Command line tool</h3>
         {app.cliInstalled ? (
           <p className="field-note">
-            Terminal runs <span className="mono">giga</span> from <span className="mono">{app.cliInstalled}</span>.
+            {words.terminal === 'Terminal' ? 'Terminal' : 'The terminal'} runs <span className="mono">giga</span> from <span className="mono">{app.cliInstalled}</span>.
           </p>
         ) : (
           <div className="inline">
-            <span className="muted">Use giga in Terminal without installing Node.</span>
+            <span className="muted">Use giga in {words.terminal} without installing Node.</span>
             <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('installCli')}>
               Install Command Line Tool…
             </button>
           </div>
         )}
+
+        {app.platform === 'win32' ? <Plugins state={state} /> : null}
 
         <h3>Updates</h3>
         <div className="inline">
@@ -92,9 +97,31 @@ export function Settings({ state }: { state: AppState }) {
         </p>
 
         <h3>Repair</h3>
-        <p className="field-note">Checks the GigaCAD folder, Finder’s Quick Actions, gigacad:// links, and the rest of setup, and fixes what it can.</p>
+        <p className="field-note">Checks the GigaCAD folder, {words.rightClickMenu}, gigacad:// links, and the rest of setup, and fixes what it can.</p>
         <Setup state={state} />
       </div>
+    </>
+  );
+}
+
+/** CAD programs GigaCAD works with (SolidWorks for now), and whether their add-ins are set up and running. */
+function Plugins({ state }: { state: AppState }) {
+  return (
+    <>
+      <h3>CAD programs</h3>
+      <ul className="rows panel">
+        {state.plugins.map((plugin) => (
+          <li key={plugin.id}>
+            <span className="grow">
+              <strong>{plugin.name}</strong>
+              <br />
+              <span className="faint">{pluginSummary(plugin)}</span>
+            </span>
+            {plugin.addInsConnected > 0 ? <span className="dot dot-signal" title="Add-in connected" /> : null}
+          </li>
+        ))}
+      </ul>
+      <p className="field-note">Repair looks for newly installed CAD programs.</p>
     </>
   );
 }

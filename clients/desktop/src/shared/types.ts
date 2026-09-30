@@ -86,8 +86,29 @@ export type UpdateState =
       readonly restarting: boolean;
       readonly lastChecked: string | null;
     }
-  | { readonly kind: 'needsReinstall'; readonly version: string; readonly notes: string; readonly dmgUrl: string; readonly lastChecked: string | null }
+  | {
+      readonly kind: 'needsReinstall';
+      readonly version: string;
+      readonly notes: string;
+      /** The full app to download again: the DMG on macOS, the installer on Windows. */
+      readonly downloadUrl: string;
+      readonly lastChecked: string | null;
+    }
   | { readonly kind: 'error'; readonly message: string; readonly lastChecked: string | null };
+
+/** A CAD plugin (src/main/plugins), for the plugin list in Settings. */
+export interface PluginState {
+  readonly id: string;
+  readonly name: string;
+  readonly version: string;
+  readonly state: 'active' | 'failed';
+  readonly error: string | null;
+  /** Capabilities turned off after an error, until GigaCAD restarts. */
+  readonly turnedOff: readonly string[];
+  readonly installations: readonly { readonly version: string; readonly installPath: string; readonly addInRegistered: boolean }[];
+  /** How many copies of the CAD program have GigaCAD's add-in connected. */
+  readonly addInsConnected: number;
+}
 
 export interface AppState {
   readonly user: { readonly handle: string; readonly apiUrl: string } | null;
@@ -100,7 +121,15 @@ export interface AppState {
   readonly setup: readonly SetupStep[];
   readonly updates: UpdateState;
   readonly rolledBackFrom: string | null;
-  readonly app: { readonly version: string; readonly shellVersion: number; readonly source: string; readonly cliInstalled: string | null };
+  readonly plugins: readonly PluginState[];
+  readonly app: {
+    readonly version: string;
+    readonly shellVersion: number;
+    readonly source: string;
+    readonly cliInstalled: string | null;
+    /** process.platform: 'darwin' or 'win32'. */
+    readonly platform: string;
+  };
 }
 
 /** A giga error, as the CLI reports it with --json. */

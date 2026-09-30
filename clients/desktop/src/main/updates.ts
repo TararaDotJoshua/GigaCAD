@@ -10,6 +10,21 @@ import type { UpdateState } from '../shared/types.js';
 const run = promisify(execFile);
 
 export const DEFAULT_MANIFEST_URL = 'https://downloads.gigacad.site/desktop/stable/manifest.json';
+
+/**
+ * Each system reads its own manifest. The code bundle is the same JavaScript on both, but the
+ * manifest also names the full-app download (dmgUrl: the DMG on macOS, the installer on
+ * Windows). Its signed fields can't change without breaking installed apps, so Windows gets a
+ * second file rather than a new field.
+ */
+export function defaultManifestUrl(platform: NodeJS.Platform = process.platform): string {
+  return platform === 'win32' ? 'https://downloads.gigacad.site/desktop/stable/win32/manifest.json' : DEFAULT_MANIFEST_URL;
+}
+
+/** tar ships with macOS and with Windows 10 1803 and later; neither needs anything installed. */
+export function tarPath(platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env): string {
+  return platform === 'win32' ? `${env.SystemRoot ?? 'C:\\Windows'}\\System32\\tar.exe` : '/usr/bin/tar';
+}
 const CHECK_INTERVAL = 6 * 60 * 60_000;
 const FOCUS_INTERVAL = 60 * 60_000;
 
@@ -22,7 +37,7 @@ export interface UpdateManifest {
   readonly size: number;
   readonly notes: string;
   readonly notesUrl: string | null;
-  /** The DMG to download when the update needs a newer shell. */
+  /** The full app to download when the update needs a newer shell: the DMG, or the Windows installer in the Windows manifest. */
   readonly dmgUrl: string;
   readonly publishedAt: string;
   readonly signature: string;
@@ -109,7 +124,7 @@ export class Updater {
         return;
       }
       if (manifest.shellMin > shellVersion) {
-        this.set({ kind: 'needsReinstall', version: manifest.version, notes: manifest.notes, dmgUrl: manifest.dmgUrl, lastChecked });
+        this.set({ kind: 'needsReinstall', version: manifest.version, notes: manifest.notes, downloadUrl: manifest.dmgUrl, lastChecked });
         return;
       }
       const target = join(bundlesDir, manifest.version);
@@ -156,7 +171,7 @@ export class Updater {
 
       await rm(staging, { recursive: true, force: true });
       await mkdir(staging, { recursive: true });
-      await run('/usr/bin/tar', ['-xzf', archive, '-C', staging]);
+      await run(tarPath(), ['-xzf', archive, '-C', staging]);
       const verified = verifyBundle(staging, publicKey);
       if (!verified.ok) throw new Error(`The update didn’t verify (${verified.reason})`);
       if (verified.manifest.version !== manifest.version || verified.manifest.shellMin > shellVersion) throw new Error('The update doesn’t match its description');

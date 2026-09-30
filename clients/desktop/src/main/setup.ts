@@ -1,5 +1,6 @@
 import { app } from 'electron';
 import { mkdir } from 'node:fs/promises';
+import { platformWords } from '../shared/platform.js';
 import type { SetupStep, SetupStepId } from '../shared/types.js';
 import { appBundlePath, isOurShim, SHIM_PATH, terminalGiga } from './cliInstall.js';
 import { installQuickActions, quickActionsInstalled } from './quickActions.js';
@@ -11,19 +12,27 @@ export interface SetupHost {
   startAtLogin(): boolean;
   /** Gives the GigaCAD folder its icon. */
   iconFolder(): Promise<void>;
+  readonly platform?: NodeJS.Platform;
 }
 
 type Status = SetupStep['status'];
 
-const TITLES: Record<SetupStepId, string> = {
+const titles = (platform: string): Record<SetupStepId, string> => ({
   applications: 'Move GigaCAD to Applications',
   signin: 'Sign in to GigaCAD',
   folder: 'Create the GigaCAD folder',
-  quickActions: 'Add GigaCAD to Finder’s right-click menu',
+  quickActions: `Add GigaCAD to ${platformWords(platform).rightClickMenu}`,
   urlScheme: 'Open gigacad:// links in GigaCAD',
   cli: 'Install the giga command line tool',
   login: 'Start GigaCAD when you log in',
+});
+/** Windows installs apps where they belong, so there's no Applications step. */
+const STEPS: Record<string, readonly SetupStepId[]> = {
+  win32: ['signin', 'folder', 'quickActions', 'urlScheme', 'cli', 'login'],
+  default: ['applications', 'signin', 'folder', 'quickActions', 'urlScheme', 'cli', 'login'],
 };
+/** Not built for Windows yet (docs/WINDOWS_APP_PLAN.md, milestone W3). */
+const NOT_YET_ON_WINDOWS = 'Not available on Windows yet';
 const OPTIONAL = new Set<SetupStepId>(['cli', 'applications']);
 
 /**
@@ -32,20 +41,25 @@ const OPTIONAL = new Set<SetupStepId>(['cli', 'applications']);
  */
 export class Setup {
   private readonly steps = new Map<SetupStepId, { status: Status; detail: string | null }>();
+  private readonly platform: NodeJS.Platform;
+  private readonly titles: Record<SetupStepId, string>;
 
   constructor(private readonly host: SetupHost) {
-    for (const id of Object.keys(TITLES) as SetupStepId[]) this.steps.set(id, { status: 'todo', detail: null });
+    this.platform = host.platform ?? process.platform;
+    this.titles = titles(this.platform);
+    for (const id of STEPS[this.platform] ?? STEPS.default!) this.steps.set(id, { status: 'todo', detail: null });
   }
 
   list(): SetupStep[] {
-    return [...this.steps].map(([id, step]) => ({ id, title: TITLES[id], optional: OPTIONAL.has(id), ...step }));
+    return [...this.steps].map(([id, step]) => ({ id, title: this.titles[id], optional: OPTIONAL.has(id), ...step }));
   }
 
   private mark(id: SetupStepId, status: Status, detail: string | null = null): void {
-    this.steps.set(id, { status, detail });
+    if (this.steps.has(id)) this.steps.set(id, { status, detail });
   }
 
   private async step(id: SetupStepId, work: () => Promise<[Status, string | null] | Status>): Promise<void> {
+    if (!this.steps.has(id)) return;
     this.mark(id, 'running');
     try {
       const result = await work();
@@ -64,6 +78,7 @@ export class Setup {
       return 'done';
     });
     await this.step('quickActions', async () => {
+      if (this.platform === 'win32') return ['skipped', NOT_YET_ON_WINDOWS];
       if (!quickActionsInstalled(this.host.version)) await installQuickActions(this.host.version);
       return 'done';
     });
@@ -79,6 +94,7 @@ export class Setup {
     });
     await this.step('signin', async () => (this.host.signedIn() ? 'done' : 'todo'));
     await this.step('cli', async () => {
+      if (this.platform === 'win32') return ['skipped', NOT_YET_ON_WINDOWS];
       if (isOurShim(SHIM_PATH)) return ['done', SHIM_PATH];
       if (!appBundlePath()) return ['skipped', 'Only from the installed app'];
       const other = await terminalGiga();
@@ -87,7 +103,7 @@ export class Setup {
     await this.step('login', async () => (this.host.startAtLogin() ? 'done' : ['skipped', 'Off in Settings']));
   }
 
-  /** The whole checklist. Moving to Applications relaunches the app, so it's offered, not forced. */
+  /** The whole checklist. Moving to Applications (macOS) relaunches the app, so it's offered, not forced. */
   async runAll(): Promise<void> {
     app.setLoginItemSettings({ openAtLogin: this.host.startAtLogin() });
     await this.check();

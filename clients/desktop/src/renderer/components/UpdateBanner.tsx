@@ -72,7 +72,7 @@ export function UpdateBanner({ state }: { state: AppState }) {
       {showNotes && banner.kind === 'ready' ? <div className="notes">{banner.notes}</div> : null}
       <div className="update-actions">
         {reinstall ? (
-          <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('openExternal', banner.dmgUrl)}>
+          <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('openExternal', banner.downloadUrl)}>
             Download
           </button>
         ) : (

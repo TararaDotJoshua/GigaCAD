@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { AppState, ProjectState, ReleasesToKeep } from '../../shared/types.js';
+import { platformWords } from '../../shared/platform.js';
 import { act, ago, call, useLoad } from '../api.js';
 import { BranchIcon, DownloadIcon, FolderIcon, MergeIcon, PlusIcon, TagIcon } from '../icons.js';
 import { BranchNote } from './Sidebar.js';
@@ -12,13 +13,14 @@ interface Props {
 }
 
 export function ProjectView({ state, project, onOpenBranch }: Props) {
+  const words = platformWords(state.app.platform);
   const [tab, setTab] = useState<'branches' | 'requests'>('branches');
   return (
     <>
       <Toolbar state={state} eyebrow={project.owner} title={project.name}>
         <button type="button" className="btn btn-secondary" onClick={() => void act('reveal', project.dir)}>
           <FolderIcon className="icon" />
-          Show in Finder
+          {words.showInFileManager}
         </button>
         <button type="button" className="btn btn-secondary" onClick={() => void act('openExternal', `${state.settings.appUrl}/${project.owner}/${project.slug}`)}>
           Open on gigacad.site
@@ -43,6 +45,7 @@ export function ProjectView({ state, project, onOpenBranch }: Props) {
 const canEdit = (project: ProjectState) => project.role !== null && project.role !== 'viewer';
 
 function Branches({ state, project, onOpenBranch }: Props) {
+  const words = platformWords(state.app.platform);
   const [name, setName] = useState('');
   const [from, setFrom] = useState('latest');
   const [creating, setCreating] = useState(false);
@@ -73,7 +76,7 @@ function Branches({ state, project, onOpenBranch }: Props) {
                   {branch.name}
                 </button>
                 {branch.status !== 'open' ? <span className="badge">{branch.status}</span> : null}
-                <BranchNote branch={branch} />
+                <BranchNote branch={branch} thisComputer={words.thisComputer} />
                 {branch.downloaded ? (
                   branch.holder === 'me' ? null : (
                     <button type="button" className="btn btn-secondary btn-small" disabled={branch.busy} onClick={() => void act('removeBranch', project.id, branch.name)}>
@@ -97,7 +100,7 @@ function Branches({ state, project, onOpenBranch }: Props) {
             <TagIcon className="icon" />
             Releases
             <label className="push inline faint">
-              Keep on this Mac
+              Keep on {words.thisComputer}
               <select className="select" value={keep} onChange={(event) => void act('setReleasesToKeep', project.id, event.target.value as ReleasesToKeep)}>
                 <option value="latest">Latest</option>
                 <option value="all">All</option>
@@ -166,7 +169,7 @@ function Branches({ state, project, onOpenBranch }: Props) {
           </section>
         ) : null}
         <section className="panel gap">
-          <div className="panel-head">On this Mac</div>
+          <div className="panel-head">On {words.thisComputer}</div>
           <div className="panel-body">
             <p className="field-note">Hiding a project stops syncing it. Its folder stays where it is.</p>
             <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('setProjectHidden', project.id, true)}>

@@ -34,6 +34,20 @@ mac:
   minimumSystemVersion: '13.0'
   target: dmg
   artifactName: GigaCAD-${version}-${arch}.${ext}
+# Windows: a per-user installer, no administrator needed. Its icon is set by scripts/dist.mjs
+# when build/app-icon.png exists (it's rendered on a Mac).
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: GigaCAD-Setup-${version}.${ext}
+nsis:
+  oneClick: true
+  perMachine: false
+  runAfterFinish: true
+  createDesktopShortcut: false
+  shortcutName: GigaCAD
+  artifactName: GigaCAD-Setup-${version}.${ext}
 dmg:
   title: GigaCAD
   artifactName: GigaCAD-${version}-${arch}.${ext}

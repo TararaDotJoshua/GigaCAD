@@ -58,9 +58,9 @@ jobs:
           name: GigaCAD-macOS
           path: clients/desktop/dist/*.dmg
 
-  # The CAD plugin framework on Windows: the add-in protocol library on .NET 10 and .NET Framework
-  # 4.8 (the SolidWorks add-in's runtime), and the app's plugin tests over real named pipes,
-  # including the .NET Framework client talking to the app's pipe server.
+  # GigaCAD on Windows: the desktop app's tests (with its plugin pipe on real named pipes), the
+  # add-in protocol library on .NET 10 and .NET Framework 4.8 (the SolidWorks add-in's runtime),
+  # the .NET Framework client talking to the app's pipe server, and an installer to try.
   windows:
     runs-on: windows-latest
     env:
@@ -79,11 +79,18 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm vitest run clients/desktop/test/plugins
+      - run: pnpm vitest run clients/desktop
         env:
           GIGACAD_INTEROP: "1"
           GIGACAD_INTEROP_TFM: net48
           GIGACAD_INTEROP_CONFIGURATION: Release
+      # Unsigned, with a throwaway update key and no icons (they're rendered on a Mac): for trying
+      # the app on a PC, not for shipping. The desktop-release workflow builds the real one.
+      - run: node clients/desktop/scripts/dist.mjs --allow-missing-icons
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GigaCAD-Windows
+          path: clients/desktop/dist/*.exe
 
   # The image Railway deploys. Building it catches files missing from its COPY lines.
   api-image:

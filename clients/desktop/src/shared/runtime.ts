@@ -25,9 +25,14 @@ declare global {
   var __gigacadStartFailed: ((error: unknown) => void) | undefined;
 }
 
-/** ~/Library/Application Support/GigaCAD: settings, bundles, and caches. Survives reinstalling the app. */
+/**
+ * Settings, bundles, and caches; survives reinstalling the app. ~/Library/Application Support/GigaCAD
+ * on macOS, %LOCALAPPDATA%\GigaCAD on Windows.
+ */
 export function supportDir(): string {
-  return process.env.GIGACAD_SUPPORT_DIR ?? join(homedir(), 'Library', 'Application Support', 'GigaCAD');
+  if (process.env.GIGACAD_SUPPORT_DIR) return process.env.GIGACAD_SUPPORT_DIR;
+  if (process.platform === 'win32') return join(process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'), 'GigaCAD');
+  return join(homedir(), 'Library', 'Application Support', 'GigaCAD');
 }
 
 export const bundlesDir = () => join(supportDir(), 'bundles');

@@ -23,8 +23,8 @@ describe('bannerFor', () => {
   });
 
   it('offers the DMG when the update needs a new shell', () => {
-    const state: UpdateState = { kind: 'needsReinstall', version: '1.0.0', notes: '', dmgUrl: 'https://x/GigaCAD.dmg', lastChecked: null };
-    expect(bannerFor(state, null, null)).toMatchObject({ kind: 'reinstall', dmgUrl: 'https://x/GigaCAD.dmg' });
+    const state: UpdateState = { kind: 'needsReinstall', version: '1.0.0', notes: '', downloadUrl: 'https://x/GigaCAD.dmg', lastChecked: null };
+    expect(bannerFor(state, null, null)).toMatchObject({ kind: 'reinstall', downloadUrl: 'https://x/GigaCAD.dmg' });
   });
 
   it('puts the rollback notice first', () => {

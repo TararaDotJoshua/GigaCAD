@@ -77,6 +77,11 @@ class TestClient {
   }
 }
 
+async function eventually(condition: () => boolean): Promise<void> {
+  for (let tries = 0; !condition() && tries < 150; tries++) await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(condition()).toBe(true);
+}
+
 const servers: PluginPipeServer[] = [];
 const clients: TestClient[] = [];
 
@@ -133,6 +138,29 @@ describe('PluginPipeServer', () => {
     addIn.socket.end();
     await addIn.until(() => disconnected.length === 1, 'onDisconnected');
     expect(server.sessions).toEqual([]);
+  });
+
+  it('says when add-ins come and go', async () => {
+    let changes = 0;
+    const cad: GigaPlugin = { id: 'cad', name: 'Cad', version: '1.0.0', addIn: { clientId: 'cad-addin' } };
+    const path = pipePath(`gc-test-${randomBytes(4).toString('hex')}`);
+    const server = new PluginPipeServer({
+      path,
+      hostVersion: '1',
+      registry: new PluginRegistry([cad], () => undefined),
+      signedInAs: () => null,
+      log: () => undefined,
+      onSessionsChanged: () => changes++,
+    });
+    await server.listen();
+    servers.push(server);
+    const addIn = await TestClient.connect(path);
+    clients.push(addIn);
+
+    await addIn.request('0', METHODS.hello, hello().params);
+    await eventually(() => changes === 1);
+    addIn.socket.end();
+    await eventually(() => changes === 2);
   });
 
   it('leaves signedInAs out when signed out', async () => {

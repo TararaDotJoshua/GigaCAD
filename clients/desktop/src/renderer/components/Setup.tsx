@@ -1,10 +1,12 @@
 import { useEffect } from 'react';
 import type { AppState, SetupStep } from '../../shared/types.js';
+import { platformWords } from '../../shared/platform.js';
 import { act } from '../api.js';
 import { CheckIcon } from '../icons.js';
 
 /** The first-run checklist, and Settings → Repair. Every step can be run again. */
 export function Setup({ state, firstRun = false }: { state: AppState; firstRun?: boolean }) {
+  const words = platformWords(state.app.platform);
   // The first-run screen checks everything as soon as it appears.
   useEffect(() => {
     if (firstRun) void act('runSetup');
@@ -44,7 +46,7 @@ export function Setup({ state, firstRun = false }: { state: AppState; firstRun?:
   return (
     <div className="center drag">
       <div className="card card-wide">
-        <h2 className="card-title">Set up GigaCAD on this Mac</h2>
+        <h2 className="card-title">Set up GigaCAD on {words.thisComputer}</h2>
         <p className="lede">Each step can be run again later from Settings → Repair.</p>
         {body}
       </div>

@@ -1,3 +1,4 @@
+import { platformWords } from '../../shared/platform.js';
 import type { AppState, BranchState, ProjectState } from '../../shared/types.js';
 import type { Selection } from '../App.js';
 import { act } from '../api.js';
@@ -29,7 +30,7 @@ export function Sidebar({ state, selection, onSelect }: Props) {
               {projects
                 .filter((project) => project.owner === owner)
                 .map((project) => (
-                  <ProjectRows key={project.id} project={project} selection={selection} fallback={fallback} onSelect={onSelect} />
+                  <ProjectRows key={project.id} project={project} selection={selection} fallback={fallback} onSelect={onSelect} thisComputer={platformWords(state.app.platform).thisComputer} />
                 ))}
             </ul>
           </section>
@@ -54,7 +55,19 @@ export function Sidebar({ state, selection, onSelect }: Props) {
   );
 }
 
-function ProjectRows({ project, selection, fallback, onSelect }: { project: ProjectState; selection: Selection; fallback: string | undefined; onSelect: Props['onSelect'] }) {
+function ProjectRows({
+  project,
+  selection,
+  fallback,
+  onSelect,
+  thisComputer,
+}: {
+  project: ProjectState;
+  selection: Selection;
+  fallback: string | undefined;
+  onSelect: Props['onSelect'];
+  thisComputer: string;
+}) {
   const selected = selection.kind === 'project' && selection.projectId === project.id;
   const shown = project.branches.filter((branch) => branch.downloaded || branch.holder === 'me');
   return (
@@ -80,7 +93,7 @@ function ProjectRows({ project, selection, fallback, onSelect }: { project: Proj
               >
                 <BranchIcon className="icon" />
                 <span className="name">{branch.name}</span>
-                <BranchNote branch={branch} />
+                <BranchNote branch={branch} thisComputer={thisComputer} />
               </button>
             </li>
           ))}
@@ -91,8 +104,8 @@ function ProjectRows({ project, selection, fallback, onSelect }: { project: Proj
 }
 
 /** Signal green marks your checkout; someone else's shows their lock. */
-export function BranchNote({ branch }: { branch: BranchState }) {
-  if (branch.holder === 'me') return <span className="dot dot-signal" title="Checked out on this Mac" />;
+export function BranchNote({ branch, thisComputer = 'this computer' }: { branch: BranchState; thisComputer?: string }) {
+  if (branch.holder === 'me') return <span className="dot dot-signal" title={`Checked out on ${thisComputer}`} />;
   if (branch.holder === 'other') {
     return (
       <span className="nav-note" title={`Checked out by @${branch.holderHandle} on ${branch.holderMachine}`}>

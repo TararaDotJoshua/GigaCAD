@@ -1,25 +1,30 @@
 import { app, BrowserWindow, clipboard, dialog, Menu, nativeImage, Notification, shell, Tray, type MenuItemConstructorOptions } from 'electron';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { platformWords } from '../shared/platform.js';
 import type { BundleRuntime } from '../shared/runtime.js';
 import { supportDir } from '../shared/runtime.js';
-import type { AppState, Commands, Settings, UpdateState } from '../shared/types.js';
+import type { AppState, Commands, PluginState, Settings, UpdateState } from '../shared/types.js';
 import { apiClient } from './api.js';
 import { SignIn } from './auth.js';
 import { giga } from './cli.js';
 import { installCli, isOurShim, SHIM_PATH, terminalGiga } from './cliInstall.js';
 import { applyIcons } from './icons.js';
 import { locate, projectDir, treeUrl, webUrlFor } from './layout.js';
+import { createPluginHost, type PluginHost } from './plugins/index.js';
 import { parseActionUrl, type QuickAction } from './quickActions.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { Setup } from './setup.js';
 import { describe, SyncEngine } from './sync.js';
-import { DEFAULT_MANIFEST_URL, Updater } from './updates.js';
+import { defaultManifestUrl, Updater } from './updates.js';
 
 declare const __GIGACAD_VERSION__: string;
 
 const FOREST = '#0A2922';
+const PAPER = '#F5F5F7';
+const isWindows = process.platform === 'win32';
+const words = platformWords(process.platform);
 
 /** The app: owns the settings, the sync engine, sign-in, the updater, the window, and the menu bar item. */
 export class Controller {
@@ -34,6 +39,8 @@ export class Controller {
   private stateTimer: NodeJS.Timeout | undefined;
   private healthyTimer: NodeJS.Timeout | undefined;
   private rolledBackFrom: string | null;
+  private plugins!: PluginHost;
+  private installations = new Map<string, PluginState['installations']>();
 
   private constructor(private readonly runtime: BundleRuntime) {
     this.rolledBackFrom = runtime.rolledBackFrom ?? null;
@@ -69,7 +76,7 @@ export class Controller {
       shellVersion: this.runtime.shellVersion,
       bundlesDir: this.runtime.bundlesDir,
       publicKey: this.runtime.publicKey,
-      manifestUrl: process.env.GIGACAD_UPDATE_URL ?? DEFAULT_MANIFEST_URL,
+      manifestUrl: process.env.GIGACAD_UPDATE_URL ?? defaultManifestUrl(),
       canRestart: () => this.engine.idle(),
       relaunch: () => {
         app.relaunch();
@@ -77,6 +84,16 @@ export class Controller {
       },
       onChange: (state) => this.onUpdateState(state),
     });
+
+    this.plugins = createPluginHost({
+      hostVersion: this.runtime.version,
+      signedInAs: () => this.engine.user?.handle ?? null,
+      log: (level, message, error) => (level === 'info' ? console.log : console.error)(`GigaCAD plugins: ${message}`, ...(error ? [error] : [])),
+      onSessionsChanged: () => this.changed(),
+    });
+    // CAD add-ins (SolidWorks) run on Windows only; the pipe isn't opened elsewhere.
+    if (isWindows) void this.plugins.server.listen().catch((error: unknown) => this.log(`CAD add-ins can’t connect: ${describe(error)}`));
+    void this.refreshInstallations();
 
     this.buildAppMenu();
     this.createTray();
@@ -91,7 +108,34 @@ export class Controller {
 
     // The bundle is healthy once the window has loaded and syncing has started, or after 20 s without a crash.
     this.healthyTimer = setTimeout(() => this.runtime.markHealthy(), 20_000);
-    app.on('will-quit', () => this.runtime.markHealthy());
+    app.on('will-quit', () => {
+      this.runtime.markHealthy();
+      void this.plugins.server.close();
+    });
+  }
+
+  /** Asks each plugin where its CAD program is installed; for the plugin list in Settings. */
+  private async refreshInstallations(): Promise<void> {
+    const found = await this.plugins.registry.findInstallations();
+    this.installations = new Map();
+    for (const { pluginId, version, installPath, addInRegistered } of found) {
+      this.installations.set(pluginId, [...(this.installations.get(pluginId) ?? []), { version, installPath, addInRegistered }]);
+    }
+    this.changed();
+  }
+
+  private pluginStates(): PluginState[] {
+    const sessions = this.plugins?.server.sessions ?? [];
+    return (this.plugins?.registry.status ?? []).map((plugin) => ({
+      id: plugin.id,
+      name: plugin.name,
+      version: plugin.version,
+      state: plugin.state,
+      error: plugin.error ?? null,
+      turnedOff: plugin.turnedOff,
+      installations: this.installations.get(plugin.id) ?? [],
+      addInsConnected: sessions.filter((session) => session.pluginId === plugin.id).length,
+    }));
   }
 
   // --- State ---------------------------------------------------------------------------------
@@ -107,7 +151,8 @@ export class Controller {
       setup: this.setup.list(),
       updates: this.updater.state,
       rolledBackFrom: this.rolledBackFrom,
-      app: { version: this.runtime.version, shellVersion: this.runtime.shellVersion, source: this.runtime.source, cliInstalled: this.cliPath },
+      plugins: this.pluginStates(),
+      app: { version: this.runtime.version, shellVersion: this.runtime.shellVersion, source: this.runtime.source, cliInstalled: this.cliPath, platform: process.platform },
     };
   }
 
@@ -145,7 +190,9 @@ export class Controller {
         minWidth: 860,
         minHeight: 560,
         title: 'GigaCAD',
-        titleBarStyle: 'hiddenInset',
+        // macOS: the traffic lights sit in the sidebar. Windows: the caption buttons are drawn over
+        // the toolbar in its own colors, so the window keeps one dark surface.
+        ...(isWindows ? { titleBarStyle: 'hidden' as const, titleBarOverlay: { color: FOREST, symbolColor: PAPER, height: 52 } } : { titleBarStyle: 'hiddenInset' as const }),
         backgroundColor: FOREST,
         show: false,
         webPreferences: {
@@ -202,10 +249,18 @@ export class Controller {
   // --- Menu bar item ---------------------------------------------------------------------------
 
   private createTray(): void {
-    const image = nativeImage.createFromPath(join(this.runtime.dir, 'icons', 'trayTemplate.png'));
-    image.setTemplateImage(true);
-    this.tray = new Tray(image.isEmpty() ? nativeImage.createEmpty() : image);
-    if (image.isEmpty()) this.tray.setTitle('GigaCAD');
+    if (isWindows) {
+      // The notification area shows colored icons; a click opens the window, as Windows apps do.
+      const image = nativeImage.createFromPath(join(this.runtime.dir, 'icons', 'trayWin.png'));
+      this.tray = new Tray(image);
+      if (image.isEmpty()) void app.getFileIcon(process.execPath, { size: 'small' }).then((icon) => this.tray?.setImage(icon));
+      this.tray.on('click', () => this.showWindow());
+    } else {
+      const image = nativeImage.createFromPath(join(this.runtime.dir, 'icons', 'trayTemplate.png'));
+      image.setTemplateImage(true);
+      this.tray = new Tray(image.isEmpty() ? nativeImage.createEmpty() : image);
+      if (image.isEmpty()) this.tray.setTitle('GigaCAD');
+    }
     this.tray.setToolTip('GigaCAD');
     this.updateTray(this.state());
   }
@@ -244,6 +299,11 @@ export class Controller {
   }
 
   private buildAppMenu(): void {
+    // Windows apps don't have an app menu; Settings is in the sidebar, and text editing works without one.
+    if (isWindows) {
+      Menu.setApplicationMenu(null);
+      return;
+    }
     Menu.setApplicationMenu(
       Menu.buildFromTemplate([
         {
@@ -363,7 +423,7 @@ export class Controller {
     openExternal: (url) => {
       if (/^https:\/\//.test(url)) void shell.openExternal(url);
     },
-    openTerminal: (path) => void execFile('/usr/bin/open', ['-a', 'Terminal', path]),
+    openTerminal: (path) => openTerminal(path),
     webUrl: (projectId, path) => {
       const project = this.project(projectId);
       return treeUrl(this.settings.appUrl, project.owner, project.slug, path);
@@ -371,6 +431,7 @@ export class Controller {
 
     runSetup: async () => {
       await this.setup.runAll();
+      await this.refreshInstallations();
       this.changed();
     },
     finishSetup: async () => {
@@ -405,7 +466,7 @@ export class Controller {
 
   private project(projectId: string) {
     const project = this.engine.projectStates().find((candidate) => candidate.id === projectId);
-    if (!project) throw new Error('That project isn’t synced to this Mac');
+    if (!project) throw new Error(`That project isn’t synced to ${words.thisComputer}`);
     return project;
   }
 
@@ -479,7 +540,7 @@ export class Controller {
     const branch = location.name;
     if (action === 'checkout') {
       await this.engine.checkout(project.id, branch);
-      this.notify(`Checked out ${branch}`, 'Its files are now editable on this Mac.');
+      this.notify(`Checked out ${branch}`, `Its files are now editable on ${words.thisComputer}.`);
     } else if (action === 'checkin') {
       await this.engine.checkin(project.id, branch);
       this.notify(`Checked in ${branch}`, 'Others can check it out now.');
@@ -498,6 +559,17 @@ export class Controller {
   private tell(title: string, message: string): void {
     void dialog.showMessageBox({ type: 'info', title: 'GigaCAD', message: title, detail: message, buttons: ['OK'] });
   }
+}
+
+/** A terminal in `path`: Terminal on macOS; Windows Terminal, or Command Prompt without it. */
+function openTerminal(path: string): void {
+  if (!isWindows) {
+    execFile('/usr/bin/open', ['-a', 'Terminal', path]);
+    return;
+  }
+  const terminal = spawn('wt.exe', ['-d', path], { detached: true, stdio: 'ignore' });
+  terminal.on('error', () => spawn('cmd.exe', ['/c', 'start', '', '/d', path, 'cmd.exe'], { detached: true, stdio: 'ignore', windowsHide: true }).unref());
+  terminal.unref();
 }
 
 function truncate(text: string, length: number): string {

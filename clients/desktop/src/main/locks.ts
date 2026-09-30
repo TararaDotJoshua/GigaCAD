@@ -41,9 +41,9 @@ async function walk(dir: string): Promise<Tree> {
  * it. `.giga/` and icon files stay writable.
  *
  * - macOS: files get mode 444 and Finder's Locked flag, then folders get mode 555.
- * - Windows: files get the read-only attribute (SolidWorks then opens them read-only), each
- *   folder gets a deny entry for this user covering add file, add folder, and delete child, and
- *   everything inside a locked folder gets one denying delete.
+ * - Windows: files get the read-only attribute (SolidWorks then opens them read-only), and each
+ *   folder gets deny entries for this user: add file, add folder, and delete child on the folder,
+ *   plus delete on everything directly inside it (inherited, so files a pull adds get it too).
  */
 export async function lock(dir: string): Promise<void> {
   if (process.platform === 'win32') return windows.lock(dir);
@@ -107,10 +107,12 @@ async function chflags(flag: 'uchg' | 'nouchg', paths: readonly string[]): Promi
  */
 export const DENIED_FOLDER_RIGHTS = '(WD,AD,DC)';
 /**
- * Denied on everything inside a locked folder. Windows lets a file be deleted by anyone with
- * delete on the file itself, whatever its folder says, and the owner has it; renaming needs it too.
+ * Delete, denied on everything directly inside a locked folder: Windows lets a file be deleted
+ * through delete permission on the file itself, whatever its folder says, and the owner has it.
+ * Inherited to files and folders (OI, CI) one level down only (NP), not to the folder itself (IO),
+ * so `.giga`'s contents stay free, and removing it from the folder removes every inherited copy.
  */
-export const DENIED_ITEM_RIGHTS = '(D)';
+export const DENIED_CHILD_RIGHTS = '(OI)(CI)(NP)(IO)(D)';
 
 /** This user's SID from `whoami /user /fo csv /nh`: `"pc\alex","S-1-5-21-…"`. */
 export function parseUserSid(output: string): string {
@@ -119,9 +121,13 @@ export function parseUserSid(output: string): string {
   return sid;
 }
 
-/** icacls lists deny entries as `DOMAIN\user:(DENY)(…)`. A locked folder is the only place GigaCAD adds one. */
+/**
+ * Whether icacls lists a deny entry of the folder's own, like `DOMAIN\user:(DENY)(WD,AD,DC)`. A locked
+ * folder is the only place GigaCAD adds one. Inherited entries (marked `(I)`) come from a locked parent
+ * and don't make the folder itself locked.
+ */
 export function hasDenyEntry(icaclsOutput: string): boolean {
-  return /:\(DENY\)/i.test(icaclsOutput);
+  return icaclsOutput.split(/\r?\n/).some((line) => /\(DENY\)/i.test(line) && !/\(I\)/.test(line));
 }
 
 const system32 = (tool: string) => `${process.env.SystemRoot ?? 'C:\\Windows'}\\System32\\${tool}`;
@@ -141,20 +147,16 @@ const windows = {
     for (const folder of dirs) {
       const { stdout } = await icacls([folder]);
       if (hasDenyEntry(stdout)) continue;
-      await icacls([folder, '/deny', `${account}:${DENIED_FOLDER_RIGHTS}`]);
-      // One call covers every item in the folder (icacls expands the wildcard, hidden ones included).
-      if ((await readdir(folder)).length > 0) await icacls([join(folder, '*'), '/deny', `${account}:${DENIED_ITEM_RIGHTS}`]);
+      await icacls([folder, '/deny', `${account}:${DENIED_FOLDER_RIGHTS}`, `${account}:${DENIED_CHILD_RIGHTS}`]);
     }
   },
 
   async unlock(dir: string): Promise<void> {
     const { files, dirs } = await walk(dir);
     const account = `*${await sid()}`;
-    // Folders first, so the files inside can change.
-    for (const folder of dirs.reverse()) {
-      await icacls([folder, '/remove:d', account]);
-      if ((await readdir(folder)).length > 0) await icacls([join(folder, '*'), '/remove:d', account]);
-    }
+    // Folders first, so the files inside can change. Removing a folder's entries removes the
+    // copies its children inherited.
+    for (const folder of dirs.reverse()) await icacls([folder, '/remove:d', account]);
     for (const file of files) {
       const { mode } = await lstat(file);
       if ((mode & 0o200) === 0) await chmod(file, 0o666);

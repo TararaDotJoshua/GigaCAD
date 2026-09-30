@@ -74,9 +74,11 @@ describe('Windows lock helpers', () => {
     expect(() => parseUserSid('nothing here')).toThrow(/SID/);
   });
 
-  it('spots the deny entry a lock adds', () => {
+  it('spots the deny entry a lock adds, but not ones inherited from a locked parent', () => {
     expect(hasDenyEntry('C:\\x DESKTOP-7\\alex:(DENY)(WD,AD,DC)\r\n   NT AUTHORITY\\SYSTEM:(OI)(CI)(F)\r\n')).toBe(true);
+    expect(hasDenyEntry('C:\\x DESKTOP-7\\alex:(OI)(CI)(NP)(IO)(DENY)(D)\r\n')).toBe(true);
     expect(hasDenyEntry('C:\\x NT AUTHORITY\\SYSTEM:(OI)(CI)(F)\r\n    DESKTOP-7\\alex:(OI)(CI)(F)\r\n')).toBe(false);
+    expect(hasDenyEntry('C:\\x\\parts DESKTOP-7\\alex:(I)(DENY)(D)\r\n    DESKTOP-7\\alex:(I)(OI)(CI)(F)\r\n')).toBe(false);
   });
 });
 
@@ -115,7 +117,8 @@ windowsOnly('locks on Windows', () => {
     expect(() => rmSync(join(root, 'parts'), { recursive: true })).toThrow();
     writeFileSync(join(root, '.giga', 'workspace.json'), '{"head":"x"}');
     writeFileSync(join(root, '.giga', 'new.json'), '{}');
-    writeFileSync(join(root, 'desktop.ini'), '[.ShellClassInfo]\r\nIconResource=x.ico,0');
+    // desktop.ini isn't made read-only; icons change while the folder is unlocked (sync.ts).
+    expect(writable(join(root, 'desktop.ini'))).toBe(true);
   });
 
   it('unlocks everything it locked, and can lock twice', async () => {

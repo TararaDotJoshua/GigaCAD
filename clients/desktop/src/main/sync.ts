@@ -605,9 +605,8 @@ export class SyncEngine {
   private onFileEvent(path: string): void {
     const settings = this.host.settings();
     if (settings.paused) return;
+    if (isAppFile(path)) return;
     const name = basename(path);
-    if (name === ICON_FILE || name === PLACEHOLDER || name === RELEASE_MARKER || path.includes(`${'/'}.giga${'/'}`) || path.endsWith('/.giga')) return;
-    if (path.includes('.downloading/') || name.endsWith('.downloading')) return;
     try {
       if (isDefaultIgnored(name)) return;
     } catch {
@@ -740,6 +739,18 @@ async function fileStamp(path: string): Promise<string> {
   } catch {
     return 'missing';
   }
+}
+
+/**
+ * Files the app and giga write themselves, which must never look like a save: giga's `.giga`
+ * state, downloads in progress, and GigaCAD's markers and icon files. Paths may use either
+ * separator; Windows paths use backslashes.
+ */
+export function isAppFile(path: string): boolean {
+  const parts = path.split(/[\\/]/);
+  const name = parts[parts.length - 1] ?? '';
+  if (name === ICON_FILE || name === PLACEHOLDER || name === RELEASE_MARKER) return true;
+  return parts.some((part) => part === '.giga' || part.endsWith('.downloading'));
 }
 
 function isIgnoredName(name: string): boolean {

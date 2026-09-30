@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -91,8 +91,9 @@ export async function renderIcons(keys: readonly string[], outDir: string, pixel
  */
 export async function applyIcons(jobs: readonly IconJob[], bundleIconsDir: string, cacheDir: string, platform: NodeJS.Platform = process.platform): Promise<IconResult> {
   if (jobs.length === 0) return { rendered: 0, applied: 0, failed: [] };
-  // Custom icons are drawn and set with macOS's own tools. Elsewhere (Windows, until its icons
-  // land) nothing is applied, and nothing is cached as applied, so no sync ever fails over icons.
+  if (platform === 'win32') return applyWindowsIcons(jobs, bundleIconsDir, cacheDir);
+  // Custom icons are drawn and set with macOS's own tools. On other systems nothing is applied,
+  // and nothing is cached as applied, so no sync ever fails over icons.
   if (platform !== 'darwin') return { rendered: 0, applied: 0, failed: jobs.map((job) => job.target) };
   const pngFor = new Map<string, string>();
   const missing: string[] = [];
@@ -115,3 +116,57 @@ export async function applyIcons(jobs: readonly IconJob[], bundleIconsDir: strin
   const result = await runScript({ apply: jobs.map((job) => ({ target: job.target, png: pngFor.get(job.key) })) });
   return { ...result, rendered };
 }
+
+// --- Windows -------------------------------------------------------------------------------
+
+/** The file that gives a Windows folder its icon. */
+export const DESKTOP_INI = 'desktop.ini';
+
+/** desktop.ini pointing a folder at an .ico. UTF-16 with a BOM, so any path works. */
+export function desktopIni(icoPath: string): Buffer {
+  const text = `[.ShellClassInfo]\r\nIconResource=${icoPath},0\r\n`;
+  return Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(text, 'utf16le')]);
+}
+
+const attrib = (args: string[]) => run(`${process.env.SystemRoot ?? 'C:\\Windows'}\\System32\\attrib.exe`, args, { windowsHide: true });
+
+/**
+ * Sets File Explorer folder icons: each folder gets a hidden, system desktop.ini naming an .ico,
+ * and the folder is marked as customized (the read-only attribute on a folder means just that).
+ * The .ico files come pre-rendered in the bundle and are copied to `cacheDir`, which outlives
+ * updates, so desktop.ini keeps pointing somewhere real. Windows can't give single files their own
+ * icons, so file jobs count as applied with nothing to do.
+ */
+async function applyWindowsIcons(jobs: readonly IconJob[], bundleIconsDir: string, cacheDir: string): Promise<IconResult> {
+  let applied = 0;
+  const failed: string[] = [];
+  await mkdir(cacheDir, { recursive: true });
+  for (const job of jobs) {
+    try {
+      if (!(await lstat(job.target)).isDirectory()) {
+        applied++;
+        continue;
+      }
+      const shipped = join(bundleIconsDir, `${job.key}.ico`);
+      if (!existsSync(shipped)) {
+        failed.push(job.target);
+        continue;
+      }
+      const ico = join(cacheDir, `${job.key}.ico`);
+      const cachedSize = await stat(ico).then((info) => info.size, () => -1);
+      if (cachedSize !== (await stat(shipped)).size) await copyFile(shipped, ico);
+
+      const ini = join(job.target, DESKTOP_INI);
+      // A hidden, system file can't be overwritten until those attributes are cleared.
+      if (existsSync(ini)) await attrib(['-h', '-s', ini]);
+      await writeFile(ini, desktopIni(ico));
+      await attrib(['+h', '+s', ini]);
+      await attrib(['+r', job.target]);
+      applied++;
+    } catch {
+      failed.push(job.target);
+    }
+  }
+  return { rendered: 0, applied, failed };
+}
+

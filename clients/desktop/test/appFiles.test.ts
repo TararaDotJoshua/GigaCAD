@@ -18,9 +18,9 @@ describe('isAppFile', () => {
   });
 });
 
-describe('applyIcons off macOS', () => {
+describe('applyIcons where there are no custom icons', () => {
   it('applies nothing and reports every target, without failing', async () => {
-    const result = await applyIcons([{ target: 'C:\\x', key: 'folder-plain' }], '/nowhere', '/nowhere', 'win32');
-    expect(result).toEqual({ rendered: 0, applied: 0, failed: ['C:\\x'] });
+    const result = await applyIcons([{ target: '/srv/x', key: 'folder-plain' }], '/nowhere', '/nowhere', 'linux');
+    expect(result).toEqual({ rendered: 0, applied: 0, failed: ['/srv/x'] });
   });
 });

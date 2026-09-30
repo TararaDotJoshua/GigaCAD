@@ -5,8 +5,11 @@ import { promisify } from 'node:util';
 
 const run = promisify(execFile);
 
-/** Finder's custom-icon file ("Icon" + carriage return). It stays writable so icons can change. */
-const ICON_FILE = 'Icon\r';
+/**
+ * Custom-icon files stay writable so icons can change: Finder's "Icon" + carriage return, and
+ * Windows' desktop.ini.
+ */
+const ICON_FILES = new Set(['Icon\r', 'desktop.ini']);
 /** giga's own state folder must stay writable: pulls into a locked branch update it. */
 const STATE_DIR = '.giga';
 
@@ -21,7 +24,7 @@ async function walk(dir: string): Promise<Tree> {
   const dirs: string[] = [];
   async function visit(current: string): Promise<void> {
     for (const entry of await readdir(current, { withFileTypes: true })) {
-      if (entry.name === STATE_DIR || entry.name === ICON_FILE) continue;
+      if (entry.name === STATE_DIR || ICON_FILES.has(entry.name)) continue;
       const path = join(current, entry.name);
       if (entry.isDirectory()) await visit(path);
       else if (entry.isFile()) files.push(path);
@@ -32,19 +35,17 @@ async function walk(dir: string): Promise<Tree> {
   return { files, dirs };
 }
 
-async function chflags(flag: 'uchg' | 'nouchg', paths: readonly string[]): Promise<void> {
-  // Batches keep each command line well under the system's argument limit.
-  for (let start = 0; start < paths.length; start += 500) {
-    await run('/usr/bin/chflags', [flag, ...paths.slice(start, start + 500)]);
-  }
-}
-
 /**
- * Makes a release, or a branch this Mac doesn't hold, read-only: files get mode 444 and
- * Finder's Locked flag, then folders get mode 555 so nothing can be added, renamed, or
- * deleted. The order matters: a file that is already Locked refuses mode changes.
+ * Makes a release, or a branch this computer doesn't hold, read-only, so nothing in it can be
+ * changed, added, renamed, or deleted by accident. It's a guard, not security: the owner can undo
+ * it. `.giga/` and icon files stay writable.
+ *
+ * - macOS: files get mode 444 and Finder's Locked flag, then folders get mode 555.
+ * - Windows: files get the read-only attribute (SolidWorks then opens them read-only), and each
+ *   folder gets a deny entry for this user covering add file, add folder, and delete child.
  */
 export async function lock(dir: string): Promise<void> {
+  if (process.platform === 'win32') return windows.lock(dir);
   const { files, dirs } = await walk(dir);
   for (const file of files) {
     const { mode } = await lstat(file);
@@ -58,8 +59,9 @@ export async function lock(dir: string): Promise<void> {
   }
 }
 
-/** Undoes `lock`: folders first (so their contents can change), then the Locked flag, then write bits. */
+/** Undoes `lock`. On macOS: folders first (so their contents can change), then the Locked flag, then write bits. */
 export async function unlock(dir: string): Promise<void> {
+  if (process.platform === 'win32') return windows.unlock(dir);
   const { files, dirs } = await walk(dir);
   for (const folder of dirs.reverse()) {
     const { mode } = await lstat(folder);
@@ -72,8 +74,9 @@ export async function unlock(dir: string): Promise<void> {
   }
 }
 
-/** Whether `dir` is currently locked (its own folder isn't writable). */
+/** Whether `dir` is currently locked (its own folder can't be written). */
 export async function isLocked(dir: string): Promise<boolean> {
+  if (process.platform === 'win32') return windows.isLocked(dir);
   const { mode } = await lstat(dir);
   return (mode & 0o200) === 0;
 }
@@ -87,3 +90,66 @@ export async function whileUnlocked<T>(dir: string, change: () => Promise<T>): P
     await lock(dir);
   }
 }
+
+async function chflags(flag: 'uchg' | 'nouchg', paths: readonly string[]): Promise<void> {
+  // Batches keep each command line well under the system's argument limit.
+  for (let start = 0; start < paths.length; start += 500) {
+    await run('/usr/bin/chflags', [flag, ...paths.slice(start, start + 500)]);
+  }
+}
+
+// --- Windows --------------------------------------------------------------------------------
+
+/**
+ * The folder rights a lock denies: WD (add file), AD (add subfolder), DC (delete child, which also
+ * covers renaming what's inside). File contents are protected by the read-only attribute.
+ */
+export const DENIED_FOLDER_RIGHTS = '(WD,AD,DC)';
+
+/** This user's SID from `whoami /user /fo csv /nh`: `"pc\alex","S-1-5-21-…"`. */
+export function parseUserSid(output: string): string {
+  const sid = /"?(S-1-[0-9-]+)"?\s*$/m.exec(output.trim())?.[1];
+  if (!sid) throw new Error(`Couldn't read this user's SID from whoami: ${output.trim()}`);
+  return sid;
+}
+
+/** icacls lists deny entries as `DOMAIN\user:(DENY)(…)`. A locked folder is the only place GigaCAD adds one. */
+export function hasDenyEntry(icaclsOutput: string): boolean {
+  return /:\(DENY\)/i.test(icaclsOutput);
+}
+
+const system32 = (tool: string) => `${process.env.SystemRoot ?? 'C:\\Windows'}\\System32\\${tool}`;
+let userSid: Promise<string> | undefined;
+const sid = () => (userSid ??= run(system32('whoami.exe'), ['/user', '/fo', 'csv', '/nh']).then(({ stdout }) => parseUserSid(stdout)));
+const icacls = (args: string[]) => run(system32('icacls.exe'), args, { windowsHide: true });
+
+const windows = {
+  async lock(dir: string): Promise<void> {
+    const { files, dirs } = await walk(dir);
+    // chmod on Windows sets or clears the read-only attribute.
+    for (const file of files) {
+      const { mode } = await lstat(file);
+      if ((mode & 0o222) !== 0) await chmod(file, 0o444);
+    }
+    const account = `*${await sid()}`;
+    for (const folder of dirs) {
+      const { stdout } = await icacls([folder]);
+      if (!hasDenyEntry(stdout)) await icacls([folder, '/deny', `${account}:${DENIED_FOLDER_RIGHTS}`]);
+    }
+  },
+
+  async unlock(dir: string): Promise<void> {
+    const { files, dirs } = await walk(dir);
+    const account = `*${await sid()}`;
+    // Folders first, so the files inside can change.
+    for (const folder of dirs.reverse()) await icacls([folder, '/remove:d', account]);
+    for (const file of files) {
+      const { mode } = await lstat(file);
+      if ((mode & 0o200) === 0) await chmod(file, 0o666);
+    }
+  },
+
+  async isLocked(dir: string): Promise<boolean> {
+    return hasDenyEntry((await icacls([dir])).stdout);
+  },
+};

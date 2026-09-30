@@ -384,7 +384,8 @@ export class SyncEngine {
     }
     if (await exists(dir)) return; // Something else is there; leave it alone.
     await mkdir(dir, { recursive: true });
-    await writeFile(join(dir, PLACEHOLDER), 'Not downloaded. Use GigaCAD’s Download action (right-click → Quick Actions) to get these files.\n');
+    const where = process.platform === 'win32' ? 'right-click → GigaCAD' : 'right-click → Quick Actions';
+    await writeFile(join(dir, PLACEHOLDER), `Not downloaded. Use GigaCAD’s Download action (${where}) to get these files.\n`);
     await this.iconPass(dir, [{ target: dir, key }], () => false);
     await lock(dir);
   }

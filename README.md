@@ -11,7 +11,8 @@ GitHub-style version control for CAD files (SolidWorks first), hosted at gigacad
 | `supabase` | Database schema and row-level security (migrations), run locally with `supabase start` |
 | `apps/web` | Next.js site: the marketing page at gigacad.site (product pages come later). Follows [docs/DESIGN.md](docs/DESIGN.md) |
 | `clients/cli` | `giga`, the command line (npm package `@gigacad/cli`): sign-in, clone, check-out locks, commits, release requests, releases. See [its README](clients/cli/README.md) |
-| `clients/windows` | The Windows app (.NET 10). So far the CAD plugin framework and the SolidWorks plugin; the drive, tray app, and add-in are planned in [docs/WINDOWS_APP_PLAN.md](docs/WINDOWS_APP_PLAN.md). See [its README](clients/windows/README.md) |
+| `clients/desktop` | GigaCAD for macOS (Windows next): projects as folders with locks, autosaves, and right-click actions, and the CAD plugin host (SolidWorks). See [its README](clients/desktop/README.md) and [docs/WINDOWS_APP_PLAN.md](docs/WINDOWS_APP_PLAN.md) |
+| `clients/windows` | .NET: the pipe protocol library CAD add-ins use to talk to the app, and later the SolidWorks add-in. See [its README](clients/windows/README.md) |
 
 ## Development
 
@@ -38,12 +39,12 @@ pnpm --filter @gigacad/api dev      # API on localhost:8787
 pnpm test:integration               # API tests against the real local stack
 ```
 
-### Windows app
+### Add-in protocol (.NET)
 
-Needs the .NET 10 SDK (see [clients/windows/README.md](clients/windows/README.md) to install it without admin rights):
+Needs the .NET 10 SDK (see [clients/windows/README.md](clients/windows/README.md) to install it without admin rights). The app's plugin tests run with `pnpm test`.
 
 ```sh
-pnpm test:windows      # dotnet test on the plugin framework
+pnpm test:windows      # dotnet test on the add-in protocol library
 ```
 
 ### CLI

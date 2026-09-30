@@ -1,161 +1,141 @@
 # GigaCAD for Windows
 
 ## Context
-Phases 3 and 4 of [PLAN.md](PLAN.md) come next: the Windows drive and the SolidWorks add-in. This doc plans the whole Windows app. The download page (`apps/web/app/(marketing)/download/page.tsx`) already promises what it does: one installer sets up the GigaCAD drive in File Explorer, a tray app for signing in and committing, and the SolidWorks add-in. It supports Windows 10 1709+ and 11, 64-bit only.
+Phases 3 and 4 of [PLAN.md](PLAN.md) come next: the Windows app and the SolidWorks add-in. SolidWorks only runs on Windows, so this is where GigaCAD's CAD features land.
 
-CAD-specific behavior lives in **plugins**, so the drive, tray, and Explorer menu stay CAD-agnostic. SolidWorks is the only plugin for now; Fusion, FreeCAD, and others come later (PLAN.md phase 7). The plugin framework is built and tested in `clients/windows` (see [its README](../clients/windows/README.md)). Everything else here is still a plan.
+GigaCAD for macOS (`clients/desktop`) is an Electron app. It:
+- runs the `giga` CLI in-process
+- keeps projects as real folders in `~/GigaCAD`
+- locks branches you don't hold and releases
+- turns saves into autosaves
+- adds right-click Quick Actions
+- updates its code over the air
 
-## Components
+**Windows is a port of that app, not a second codebase.** One desktop app ships on both systems. The virtual drive from the original plan (Cloud Files API, on-demand files) becomes a later upgrade, as File Provider is on macOS.
+
+CAD-specific behavior lives in **plugins**, so the app stays CAD-agnostic. SolidWorks is the only plugin for now. The plugin framework is built and tested (see [Plugins](#plugins)); everything else here is a plan.
+
+The download page (`apps/web/app/(marketing)/download/page.tsx`) promises Windows 10 or 11, 64-bit.
+
+## Where the code lives
 
 ```
-clients/windows/
-  src/
-    GigaCAD.Plugins.Abstractions/   built   netstandard2.0  contracts plugins implement
-    GigaCAD.Plugins.Protocol/       built   netstandard2.0  add-in ↔ app pipe messages and client
-    GigaCAD.Plugins.Host/           built   net10.0         plugin loader, registry, pipe server
-    GigaCAD.Plugins.SolidWorks/     built   net10.0         the SolidWorks plugin (inside the app)
-    GigaCAD.Api/                    planned net10.0         C# port of the CLI's API client and transfers
-    GigaCAD.Sync/                   planned net10.0-windows Cloud Files sync engine, local state
-    GigaCAD.App/                    planned net10.0-windows GigaCAD.exe: tray app hosting everything above
-    GigaCAD.Shell/                  planned net10.0-windows Explorer context menu (IExplorerCommand)
-    GigaCAD.SolidWorks.AddIn/       planned net48           COM add-in loaded by SolidWorks
-  installer/                        planned                 WiX v5 MSI + sparse package
+clients/desktop/                   the app, for macOS and Windows (TypeScript, Electron)
+  src/main/plugins/                built    plugin registry, add-in pipe server, SolidWorks plugin
+  src/main/…                       ported   sync engine, locks, icons, context menu, updates, tray
+clients/windows/                   .NET
+  src/GigaCAD.Plugins.Protocol/    built    netstandard2.0: the add-in side of the pipe protocol
+  src/GigaCAD.SolidWorks.AddIn/    planned  .NET Framework 4.8 COM add-in loaded by SolidWorks
+  tests/                           built    protocol tests (.NET 10 + 4.8), interop client
 ```
 
-.NET 10 is the LTS release (supported to November 2028). The SolidWorks add-in runs inside SolidWorks' process, which hosts .NET Framework 4.8, so everything the add-in uses targets `netstandard2.0`.
+## Porting `clients/desktop`
 
-## Processes
-Everything runs **per user**. A Cloud Files sync root belongs to the signed-in user, and a Windows service can't own one.
+Most of the app is platform-neutral: the sync engine (`sync.ts`), sign-in, the CLI calls, the window (React), and the signed update bundles. These pieces change:
 
-| Process | What |
+| macOS | Windows |
 |---|---|
-| `GigaCAD.exe` | The tray app. It hosts the sync engine, the plugin host, and the add-in pipe. It starts at sign-in (HKCU `Run` key) and allows one instance per user (named mutex). |
-| `GigaCAD.Shell.dll` | Explorer context menu handlers. It runs inside `explorer.exe` and forwards every command to `GigaCAD.exe` over the pipe. |
-| `GigaCAD.SolidWorks.AddIn.dll` | Runs inside `SLDWORKS.exe` and connects to `GigaCAD.exe` over the pipe. |
-
-Keeping the network, sync state, and credentials in `GigaCAD.exe` means the shell extension and the add-in hold no tokens and never talk to the API directly.
+| `~/GigaCAD`, and support files in `~/Library/Application Support/GigaCAD` (`settings.ts`, `shared/runtime.ts`) | `%USERPROFILE%\GigaCAD`, and `%LOCALAPPDATA%\GigaCAD` |
+| **Locks** (`locks.ts`): files `chmod 444` + `chflags uchg`, folders `chmod 555` | Files get the read-only attribute. Folders get an `icacls` deny ACE for the user covering write, append, and delete-child, so nothing can be added, renamed, or deleted. `.giga\` stays writable. Same `lock`/`unlock`/`isLocked`/`whileUnlocked` API, chosen by platform. |
+| **Finder icons** (`icons.ts`, `iconArt.ts`, the `Icon\r` file) | `desktop.ini` + `.ico` folder icons, set with the folder's system attribute. The `.ico` files are pre-rendered on a Mac in `pnpm icons`, as the PNGs are today. `desktop.ini` joins the lock walker's exceptions, as `Icon\r` is now. |
+| **Quick Actions** (`quickActions.ts`, `~/Library/Services`) | A cascading **GigaCAD** submenu on files and folders, under HKCU `Software\Classes\*\shell` and `Directory\shell`. Each verb runs `GigaCAD.exe --action <action> "%1"`. Same action list, plus plugin commands from `PluginRegistry.commandsFor`. Windows 11 shows it under "Show more options"; a sparse-package `IExplorerCommand` for the top-level menu is a later upgrade. |
+| `gigacad://` links through `open-url` (`index.ts`) | `app.setAsDefaultProtocolClient`. The link and `--action` arrive in `second-instance` argv, which the single-instance lock already routes. |
+| **Menu bar item** (`Tray`, template image) | Notification-area `Tray` with an `.ico`. Same menu. |
+| **Terminal `giga`** (`cliInstall.ts`: a `/usr/local/bin/giga` shim running `ELECTRON_RUN_AS_NODE`) | `%LOCALAPPDATA%\GigaCAD\bin\giga.cmd` with the same trick, and that folder added to the user PATH |
+| **Package** (`electron-builder.yml`: ad-hoc signed DMG; `dist.mjs` refuses non-Mac) | NSIS per-user installer (`win` target, x64), code-signed through Azure Trusted Signing. `dist.mjs` gains `--win`, built on the `windows` CI runner. |
+| **Updates** (`updates.ts`): signed bundles, unpacked with `/usr/bin/tar`, and `dmgUrl` for shell updates | Bundles are unchanged, since they're JS. Unpack with `tar.exe` (in Windows since 1803, so **the minimum becomes Windows 10 1809**; update the download page). The manifest's `dmgUrl` becomes per-platform installer URLs. That changes `SIGNED_FIELDS`, so the release script and `updates.test.ts` move together. |
+| **Save watching** (`fs.watch`) | Same. Recursive watching works on Windows. Keep the 5 s quiet period: SolidWorks saves by writing a temp file and renaming it. |
+| **Case-sensitivity:** APFS is usually case-insensitive | NTFS is too. The CLI already refuses paths that differ only in case and names Windows can't store. |
 
 ## Plugins
 
-A plugin has two halves:
+The framework is built in `clients/desktop/src/main/plugins/`.
 
-1. **Host plugin**, loaded into `GigaCAD.exe` from `%ProgramFiles%\GigaCAD\plugins\<id>\` (`plugin.json` + dll). It implements `IGigaPlugin` plus any of these capabilities:
-   - `IFileTypeProvider`: file extensions, display names, and kinds (part, assembly, drawing), and whether they reference other files. These drive the icons, the drive's "open with" hints, and which files get reference and export extras.
-   - `IIgnoreRuleProvider`: temp, lock, and backup files the CAD program writes. The save pipeline skips them.
-   - `ICadInstallationLocator`: installed versions, and whether the add-in is registered. Shown in the tray's plugin list.
-   - `ICommandProvider`: extra Explorer and tray commands, for example "Open in SolidWorks".
-   - `IAddInConnectionHandler`: hears when its CAD add-in connects or disconnects.
-2. **CAD add-in**, running inside the CAD program. It speaks the pipe protocol through `GigaCadHostClient` from `GigaCAD.Plugins.Protocol`. Its `host.hello` names a `clientId`, and the app routes the session to the plugin with that `AddInClientId`.
+**Plugins are built in.** A `GigaPlugin` is an object compiled into the signed code bundle and listed in `builtInPlugins()`. Nothing is loaded from disk, so updates replace plugins with the rest of the app and there's no plugin-trust question.
 
-Rules:
-- **Loading:** each plugin gets its own `AssemblyLoadContext`, and the contracts assembly is shared from the app. A plugin that fails to load, or whose `hostApi` doesn't match, is shown as failed in the tray, and the other plugins still load. A capability that throws is turned off for that plugin until the app restarts.
-- **Trusted plugins only:** only first-party plugins, installed with the MSI into `Program Files`, which only administrators can write. Debug builds also read `GIGACAD_PLUGIN_DIRS`. Third-party plugins would need code signing checks and are out of scope.
-- **Extension conflicts:** when two plugins claim the same extension, the first by id wins and a warning is logged.
-- **Adding a plugin (e.g. Fusion):**
-  1. Add a `GigaCAD.Plugins.Fusion` host plugin and a `plugin.json`.
-  2. Add the add-in in whatever runtime the CAD program hosts. It either references `GigaCAD.Plugins.Protocol` or reimplements the framing, which is 4-byte length + JSON.
-  3. Add both to the installer.
+Everything on a plugin is optional except its identity (id, name, version):
+- `fileTypes`: extensions, display names, kinds (part, assembly, drawing, other), and whether they reference other files
+- `ignorePatterns`: temp, lock, and backup files the CAD program writes, on top of `packages/core`'s defaults
+- `findInstallations()`: installed versions, and whether the add-in is registered, for Settings → Plugins
+- `commands` / `runCommand()`: extra context-menu entries
+- `addIn`: the add-in's `clientId`, and hooks for when it connects or disconnects
 
-  The drive, tray, and API need no changes.
+`PluginRegistry` combines the plugins:
+- It refuses bad or duplicate ids.
+- A contested extension goes to the first plugin by id.
+- It guards every call: a capability that throws is logged and turned off for that plugin until restart, and the app carries on.
+- `status` feeds the Settings list.
+
+The **SolidWorks plugin** (`solidworks.ts`):
+- **File types:** `.sldprt`, `.sldasm`, `.slddrw`, plus library features, blocks, sheet formats, and form tools.
+- **Ignore patterns:** kept equal to the SolidWorks section of `packages/core/src/ignore.ts` by a test.
+- **Installations:** read from `HKLM\SOFTWARE\SolidWorks\SOLIDWORKS <year>\Setup` through `reg.exe`, because the app ships no native modules. The add-in's registration is checked under `Addins\{418f9708-1a89-47aa-a633-86bb665d1fad}`.
+- **Add-in:** client id `solidworks`.
 
 ### Pipe protocol (v1)
-- **Pipe:** `\\.\pipe\GigaCAD.Host.<domain>.<user>`, created with `PipeOptions.CurrentUserOnly`, so only the same user can connect.
-- **Framing:** a 4-byte little-endian length, then UTF-8 JSON (16 MiB max).
+A CAD add-in talks to the app over a named pipe, which `PluginPipeServer` serves.
+
+- **Pipe:** `\\.\pipe\GigaCAD.Host.<domain>.<user>`. The add-in computes the same name (`PipeNames.ForCurrentUser` in C#, `currentPipeName` in TypeScript). Off Windows the server listens where .NET's client looks (`<tmp>/CoreFxPipe_<name>`), so the C# client can be tested anywhere.
+- **Access:** Node creates the pipe with Windows' default security, which lets only the owner, administrators, and SYSTEM open it for writing. The server sends nothing until a valid `host.hello`, so other users learn nothing. Off Windows the socket is `chmod 600`.
+- **Framing:** a 4-byte little-endian length, then UTF-8 JSON, 16 MiB at most.
 - **Messages:** shaped like JSON-RPC 2.0. Errors use the API's `{ code, message, details }`, and API error codes such as `checked_out` and `stale_head` pass through unchanged.
+- **One definition, two languages:** `clients/desktop/test/plugins/fixtures/pipe-protocol.json` holds example messages that both the TypeScript and C# tests must produce and read.
 
-| Method | Direction | Purpose |
-|---|---|---|
-| `host.hello` | add-in → app | Must be first. Carries the client id and version, protocol version, CAD name and version, and process id. Refused with `protocol_version` or `unknown_client`. |
-| `files.getState` | add-in → app | For each path: is it in the drive, which project and branch, is it writable, and who holds the checkout. Drives the read-only banner. |
-| `branch.checkout` / `branch.checkin` | add-in → app | Check a branch out or in, from any path inside it |
-| `branch.commitVersion` | add-in → app | Commit a version with a message and optional label |
-| `files.reportReferences` | add-in → app | A file's references from `GetDependencies2` → `PUT /v1/projects/:id/blobs/:sha256/references` |
-| `exports.attach` | add-in → app | Upload a STEP or STL export → `PUT /v1/projects/:id/exports` |
-| `candidate.submitRebuildReport` | add-in → app | → `POST /v1/release-requests/:id/rebuild-report` |
-| `files.stateChanged` | app → add-in | Notification: these paths changed state (checkout, new commit, new release) |
+| Method | Direction | Purpose | The app will |
+|---|---|---|---|
+| `host.hello` | add-in → app | Must be first: client id and version, protocol version, CAD name and version, process id. Refused with `protocol_version`, `unknown_client`, or `bad_request`. | (built) |
+| `files.getState` | add-in → app | For each path: is it in the GigaCAD folder, which project and branch, is it writable, and who holds the checkout. Drives the read-only banner. | `locate()` + the engine's branch state |
+| `branch.checkout` / `branch.checkin` | add-in → app | Check out or in from any path in the branch | the same `giga` calls as the context menu |
+| `branch.commitVersion` | add-in → app | A version with a message and optional label | `giga commit` |
+| `files.reportReferences` | add-in → app | References from `GetDependencies2` | `PUT /v1/projects/:id/blobs/:sha256/references` |
+| `exports.attach` | add-in → app | A STEP or STL export | `giga export` |
+| `candidate.submitRebuildReport` | add-in → app | The rebuild report for a candidate | `giga rr rebuild-report` |
+| `files.stateChanged` | app → add-in | Notification: these paths changed state | `broadcast()` on engine state changes |
 
-Today every method except `host.hello` answers `not_implemented`. The sync engine registers real handlers on `PluginHost.Dispatcher` as each milestone lands.
+Every method except `host.hello` answers `not_implemented` until the app registers handlers with `server.handle()` (milestone W4).
 
-**Hardening before release:** the add-in should check that the pipe's server process is `GigaCAD.exe` signed by us (`GetNamedPipeServerProcessId`), so another program can't squat the pipe name first.
+**Before release:** the add-in should check that the pipe's server process is our signed `GigaCAD.exe` (`GetNamedPipeServerProcessId`), so another program can't claim the pipe name first.
 
-## API client and sign-in
-- `GigaCAD.Api` ports `clients/cli/src/api.ts` (JSON client, error codes) and `transfer.ts` (presigned batches of 200, 4 concurrent transfers, SHA-256 checks before anything is put in place).
-- **Sign-in:** device flow, as `giga login` does. `POST /v1/auth/device/code` sends `clientName = "GigaCAD for Windows on <computer>"`. The tray shows the code and opens `app.gigacad.site/device`, then polls `/v1/auth/device/token`.
-- **Token storage:** DPAPI (`ProtectedData`, CurrentUser) in `%LOCALAPPDATA%\GigaCAD\credentials.bin`, kept separately for each API URL so local and production never mix.
-- **Checkout locks** use `Environment.MachineName` as the machine.
-- **Sign-out** revokes the token (`DELETE /v1/me/tokens/:id`) and removes the local copy.
-
-## Sync engine (`GigaCAD.Sync`)
-- **Sync root:** registered with the Cloud Files API (CsWin32 bindings), named **GigaCAD**, and shown in the Explorer sidebar. It lives at `%USERPROFILE%\GigaCAD`.
-- **Layout:** `GigaCAD\<owner>\<project>\` with `main\` and `releases\vN\` (read-only), `branches\<name>\` (writable only while you hold the checkout), and `candidates\RR-<n>\`. Every branch or candidate folder holds the whole project tree, so SolidWorks' relative references resolve.
-- **Placeholders:** created from manifests. Opening a file hydrates it through `blobs/downloads`, checked against its SHA-256. Checking out a branch hydrates the whole branch and pins it, so SolidWorks can resolve every reference offline.
-- **Read-only enforcement:** folders you can't write get read-only placeholders. On branches you don't hold, writes are refused in the sync callbacks, and the overlay shows "checked out by @alex".
-- **Save pipeline:**
-  1. A file handle closes on a checked-out branch.
-  2. Skip it if it matches the ignore rules. The rules are the generic defaults (a port of `packages/core/src/ignore.ts`), the plugin registry's patterns, and `.gigaignore`.
-  3. Wait out a 5 s debounce. SolidWorks saves by writing a temp file and renaming it, so the debounce waits for the rename.
-  4. Hash, upload the missing blobs, and post an autosave commit.
-  5. On `stale_head`: pull, then retry once. If it fails again, show an error in the tray.
-- **Local state:** SQLite at `%LOCALAPPDATA%\GigaCAD\state.db`. It holds each file's item ID, blob hash, and sync state, plus each project's events cursor and the offline upload queue.
-- **Live state:** polls `GET /v1/projects/:id/events?after=` for subscribed projects, every 15 s while the tray window is open and every 60 s otherwise. Supabase Realtime comes later. Changes update placeholders and are broadcast to add-ins as `files.stateChanged`.
-- **Offline:** a checked-out branch keeps working. Autosaves queue and upload on reconnect, in order.
-
-## Explorer integration (`GigaCAD.Shell`)
-- **Context menu:** `IExplorerCommand` handlers, registered through a sparse MSIX package so they appear in the Windows 11 top-level menu. The items are:
-  - Check Out / Check In
-  - Commit Version…
-  - New Branch…
-  - Open Release Request
-  - History
-  - Open on gigacad.site
-  - plus plugin commands from `PluginRegistry.CommandsFor`
-- **State overlays:** synced, uploading, read-only, and checked out by someone else. They use Cloud Files states and custom state icons.
-
-## Tray app (`GigaCAD.App`)
-WPF with H.NotifyIcon. Windows:
-- **Sign in:** shows the code and a button that opens the device page.
-- **Status:** sync progress, errors with the same hints as the CLI's recovery table, and recent activity.
-- **Commit Version:** message and label, and the list of changed files.
-- **Settings:** API URL (development builds only), start at sign-in, and the **Plugins** list. For each plugin it shows state (loaded, failed with reason, or disabled), the detected CAD versions, whether the add-in is registered, and whether the add-in is connected now. A toggle disables a plugin.
-
-## SolidWorks add-in (`GigaCAD.SolidWorks.AddIn`)
-- **Registration:** a .NET Framework 4.8 COM class with `ISwAddin`, using the GUID `SolidWorksIds.AddInGuid` (`418f9708-1a89-47aa-a633-86bb665d1fad`). The installer registers it with `regasm /codebase` and `HKLM\SOFTWARE\SolidWorks\Addins\{guid}`.
-- **Interop DLLs** come from the SolidWorks install at build time (`SOLIDWORKS_INTEROP_DIR`) and are never committed, so CI builds everything except this project.
-- **Connection:** on `ConnectToSW` it connects with `GigaCadHostClient` (`clientId: "solidworks"`). If the app isn't running it retries in the background, and the Task Pane says GigaCAD isn't running.
-- **Task Pane:** the project, branch, and checkout holder for the active document; Check Out / Check In, Commit Version, and Open Release Request; the Rebuild candidate button on candidate folders.
-- **On open:** calls `files.getState`. If the file isn't writable, it opens read-only with a banner saying "Checked out by @alex".
+## SolidWorks add-in (`clients/windows/src/GigaCAD.SolidWorks.AddIn`)
+- **COM class:** .NET Framework 4.8, `ISwAddin`, `[Guid("418f9708-1a89-47aa-a633-86bb665d1fad")]`. That GUID must match `SOLIDWORKS_ADDIN_GUID`.
+- **Registration:** the installer runs `regasm /codebase` and writes `HKLM\SOFTWARE\SolidWorks\Addins\{guid}`, only when SolidWorks is installed. This is the one per-machine step. The installer asks for elevation for it, and the rest installs per user.
+- **Interop DLLs** come from the SolidWorks install (`SOLIDWORKS_INTEROP_DIR`) at build time and are never committed. The add-in builds on the Windows laptop, not in CI.
+- **Connecting:** on `ConnectToSW` it connects with `GigaCadHostClient` (`clientId: "solidworks"`). If the app isn't running it retries in the background, and the Task Pane says so.
+- **Task Pane:** the project, branch, and checkout holder for the active document; Check Out / Check In, Commit Version, and Open Release Request; Rebuild candidate in candidate folders.
+- **On open:** `files.getState`. A file you can't write opens read-only with a banner saying "Checked out by @sam".
 - **On version commit:**
-  1. Send each assembly's and drawing's `GetDependencies2` → `files.reportReferences`.
-  2. Export a coarse STL of each changed part and assembly with `SaveAs3` → `exports.attach`.
+  1. `GetDependencies2` for each assembly and drawing → `files.reportReferences`.
+  2. A coarse STL of each changed part and assembly (`SaveAs3`) → `exports.attach`.
   3. Autosaves don't export.
 - **Rebuild candidate** (PLAN.md rule 7):
   1. Open each top-level assembly.
   2. Repoint replaced items with `ReplaceReferencedDocument`.
-  3. Run `ForceRebuild3`.
+  3. `ForceRebuild3`.
   4. Collect rebuild and mate errors.
   5. Export STEP AP242 and a fine STL.
   6. Save → `candidate.submitRebuildReport`.
 
-## Installer and updates
-- **MSI:** WiX v5, per-machine, into `%ProgramFiles%\GigaCAD`. It includes `plugins\solidworks\`, the add-in registration (only when SolidWorks is installed), and the sparse package for the shell extension.
-- **Code signing:** Azure Trusted Signing, for the MSI, every exe and dll, and the sparse package, which must be signed.
-- **Updates:** the app checks a JSON feed on gigacad.site (version, MSI URL, SHA-256) daily and offers the update from the tray. The download page's `DOWNLOAD_URL` points at the latest MSI.
-
 ## Milestones
+
 | # | Milestone | Done when |
 |---|---|---|
-| — | Plugin framework | **Built.** Contracts, loader, registry, pipe protocol, and SolidWorks host plugin, tested in CI on Windows (.NET 10 and .NET Framework 4.8) |
-| W1 | Tray and sign-in | Device sign-in, token in DPAPI, plugin list in Settings |
-| W2 | Read-only drive | Sync root, `main\` and `releases\vN\` placeholders that hydrate on open |
-| W3 | Checkout and saves | Checkout hydrates and pins, save pipeline makes autosaves, read-only enforcement, `files.getState` and checkout methods implemented |
-| W4 | Explorer | Context menu, overlays, commit dialog |
-| W5 | Add-in basics | Task Pane, read-only banner, references, pipe server verification |
-| W6 | Exports and rebuild | STL on version commits, candidate rebuild with STEP and STL |
-| W7 | Ship | Installer, signing, update feed, download page live |
+| — | Plugin framework | **Built.** Registry, pipe server, SolidWorks plugin, the C# protocol library, and shared fixtures. Tested on macOS and in CI on Windows, including a .NET Framework 4.8 client talking to the app's pipe |
+| W1 | App runs on Windows | Paths, tray, `second-instance` actions, `gigacad://`, NSIS build in CI. The plugin host starts with the app, and Settings lists plugins with their installations and add-in status |
+| W2 | Locks | Attribute and ACL locks with tests on `windows-latest`; `isLocked` and `whileUnlocked` behave as on macOS |
+| W3 | Explorer | Context menu, folder icons, `giga.cmd` |
+| W4 | Add-in methods | Pipe handlers backed by the sync engine; `files.stateChanged` broadcasts |
+| W5 | Add-in basics | Task Pane, read-only banner, references, reconnecting, pipe server check |
+| W6 | Exports and rebuild | STL on version commits; candidate rebuild with STEP and STL |
+| W7 | Ship | Signing, per-platform update manifest, installer registers the add-in, download page |
+| Later | Virtual drive | Cloud Files sync root for on-demand files (the original PLAN.md design), when downloading whole branches gets too slow |
 
 ## Verification
-- **Automated:** `pnpm test:windows` (or `dotnet test clients/windows/GigaCAD.Windows.sln`) locally, and the `windows` CI job on every pull request. Each milestone adds tests for its own layer. The API client runs against the local stack in `integration`, and the sync engine is tested against a temporary sync root on `windows-latest`.
+- **Automated, every pull request:**
+  - `pnpm test`: plugin tests, macOS/Linux sockets.
+  - `windows` CI job: `dotnet test` on .NET 10 and 4.8; the plugin tests over real Windows named pipes; and the interop test, with the .NET Framework 4.8 client against the app's pipe server.
+  - Each milestone adds its own tests on `windows-latest` (locks, context-menu registration, installer).
+- **Locally:** `pnpm test:windows` runs the .NET tests. `GIGACAD_INTEROP=1 pnpm vitest run clients/desktop/test/plugins/interop.test.ts` runs the interop test after `dotnet build clients/windows/tests/GigaCAD.Plugins.InteropClient`.
 - **Manual, on the Windows laptop with SolidWorks:** the checklist in PLAN.md's Verification section, plus:
-  1. The tray's plugin list shows SolidWorks loaded, with the installed version and the add-in registered.
-  2. Opening SolidWorks shows the add-in connected in the tray.
-  3. Quitting the app while SolidWorks is open shows "GigaCAD isn't running" in the Task Pane, and the add-in reconnects when the app starts again.
+  1. Settings → Plugins shows SolidWorks with the installed version and the add-in registered.
+  2. Opening SolidWorks shows the add-in connected.
+  3. Quitting GigaCAD while SolidWorks is open shows "GigaCAD isn't running" in the Task Pane, and the add-in reconnects when the app starts again.

@@ -58,8 +58,13 @@ Code changes reach installed apps as over-the-air updates:
 2. Run the **Desktop release** workflow. It signs the bundle with `DESKTOP_UPDATE_KEY`,
    uploads it to `downloads.gigacad.site/desktop/stable/`, and then uploads the manifest that
    installed apps check every 6 hours.
-3. Check **dmg** too when `SHELL_VERSION` changed (a new Electron or bootstrap). Apps on the
-   older shell then show "New version available · Needs a fresh download".
+3. Check **dmg** and **windows** too when `SHELL_VERSION` changed (a new Electron or bootstrap).
+   Apps on the older shell then show "New version available · Needs a fresh download". Checking
+   **windows** builds the installer on a Windows runner from this run's signed build and uploads
+   `GigaCAD-Setup.exe`; the first time, that's what makes the website's Windows download work.
+
+Windows apps read `stable/win32/manifest.json`: the same bundle, with the installer as the full
+download. Every release uploads both manifests.
 
 `scripts/release.mjs` makes the same files locally in `release/`. To try an update without
 publishing it, serve that folder and start the app with

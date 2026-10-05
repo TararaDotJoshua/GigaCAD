@@ -6,33 +6,32 @@ import { APP_URL, DOWNLOAD_URL, MAC_DOWNLOAD_URL } from "../../../components/sit
 export const metadata: Metadata = {
   title: "Download GigaCAD for Windows and Mac",
   description:
-    "Install the GigaCAD drive, tray app, and SolidWorks add-in on Windows 10 or 11, or GigaCAD for macOS 13 or later.",
+    "Install GigaCAD on Windows 10 or 11, or on macOS 13 or later: your projects as folders, with check out, commit, and check in a right-click away.",
 };
 
 const menu = [
   { label: "Check Out" },
   { label: "Check In", disabled: true },
   { label: "Commit Version…" },
+  { label: "Pull Latest" },
   { divider: true },
-  { label: "New Branch…" },
-  { label: "Open Release Request" },
-  { label: "History" },
-  { divider: true },
+  { label: "Download" },
+  { label: "Copy Link" },
   { label: "Open on gigacad.site" },
 ] as const;
 
 const setup = [
   {
     title: "Run the installer",
-    body: "It adds GigaCAD to the File Explorer sidebar, starts the tray app, and registers the add-in with SolidWorks.",
+    body: "It installs for you alone, no administrator needed, and opens GigaCAD. The installer isn’t code-signed yet, so if Windows warns, choose More info, then Run anyway.",
   },
   {
     title: "Sign in",
-    body: "The tray app shows a short code. Approve it at app.gigacad.site/device and your projects appear in the drive.",
+    body: "GigaCAD shows a short code and opens your browser. Approve it and your projects appear in the GigaCAD folder.",
   },
   {
     title: "Check out a branch",
-    body: "Right-click a branch folder and choose Check Out. The whole branch downloads, so SolidWorks can find every reference offline.",
+    body: "Right-click a branch folder and choose GigaCAD → Check Out. The whole branch downloads, so SolidWorks can find every reference offline.",
   },
   {
     title: "Open it in SolidWorks",
@@ -41,9 +40,9 @@ const setup = [
 ];
 
 const requirements = [
-  ["Windows", "Windows 10 version 1709 or later, or Windows 11. 64-bit only."],
-  ["SolidWorks", "Needed only for the add-in. Every other file type syncs without it."],
-  ["Disk space", "Enough for the branches you check out. Everything else stays in the cloud until you open it."],
+  ["Windows", "Windows 10 version 1809 or later, or Windows 11. 64-bit only."],
+  ["SolidWorks", "Not required. GigaCAD versions any file; SolidWorks files get previews and references once the add-in ships."],
+  ["Disk space", "Enough for the branches and releases you download. The rest stay as empty folders until you download them."],
   ["Network", "Needed to sync. A checked-out branch keeps working offline and uploads when you reconnect."],
 ];
 
@@ -56,15 +55,17 @@ export default function DownloadPage() {
           <div className="page-head-copy">
             <h1 className="page-title">Download GigaCAD.</h1>
             <p className="lead">
-              One installer sets up the GigaCAD drive in File Explorer, a tray app for signing in and
-              committing, and the SolidWorks add-in.
+              Your projects as folders in File Explorer or Finder. Check out, commit, and check in from the
+              right-click menu, and each save becomes an autosave.
             </p>
             <div className="download-actions">
               <a className="button button-large" href={DOWNLOAD_URL}>
                 <WindowsIcon className="icon" />
                 Download for Windows
               </a>
-              <p className="download-meta">64-bit installer for Windows 10 and 11</p>
+              <p className="download-meta">
+                64-bit installer for Windows 10 and 11. <Link href="/docs/install-windows">Install guide</Link>
+              </p>
               <a className="text-link" href={MAC_DOWNLOAD_URL}>
                 <AppleIcon className="icon" />
                 Download for Mac
@@ -102,27 +103,27 @@ export default function DownloadPage() {
 
       <section className="section">
         <div className="container">
-          <h2 className="h2 section-title">What the installer adds</h2>
+          <h2 className="h2 section-title">What you get</h2>
           <div className="extras">
             <div>
-              <h3 className="h3">The GigaCAD drive</h3>
+              <h3 className="h3">The GigaCAD folder</h3>
               <p className="body">
-                Your projects as folders in File Explorer: main, every release, branches, and release
-                candidates. Files you can’t edit are marked read-only.
+                Your projects as folders, laid out like the web: root files, branches, and releases. Branches
+                you haven’t checked out, and every release, are read-only.
               </p>
             </div>
             <div>
-              <h3 className="h3">The tray app</h3>
+              <h3 className="h3">The app</h3>
               <p className="body">
-                Sign in, see what’s syncing, and commit a version with a message. Checking out and in
-                also works from the right-click menu.
+                Sign in, see what’s syncing, and commit a version with a message. Check Out, Commit Version,
+                and Check In are also in the right-click menu.
               </p>
             </div>
             <div>
-              <h3 className="h3">The SolidWorks add-in</h3>
+              <h3 className="h3">The SolidWorks add-in, next</h3>
               <p className="body">
-                A task pane showing who has the branch checked out. It also sends previews and references
-                with each version and rebuilds release candidates.
+                Coming to Windows: a task pane showing who has the branch checked out, previews and references
+                sent with each version, and rebuilt release candidates.
               </p>
             </div>
           </div>

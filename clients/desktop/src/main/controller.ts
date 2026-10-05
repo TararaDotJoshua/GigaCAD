@@ -9,7 +9,7 @@ import type { AppState, Commands, PluginState, Settings, UpdateState } from '../
 import { apiClient } from './api.js';
 import { SignIn } from './auth.js';
 import { giga } from './cli.js';
-import { installCli, isOurShim, SHIM_PATH, terminalGiga } from './cliInstall.js';
+import { installCli, installWindowsCli, isOurCmdShim, isOurShim, SHIM_PATH, terminalGiga, windowsShimDir, windowsTerminalGiga } from './cliInstall.js';
 import { applyIcons } from './icons.js';
 import { locate, projectDir, treeUrl, webUrlFor } from './layout.js';
 import { createPluginHost, type PluginHost } from './plugins/index.js';
@@ -100,7 +100,7 @@ export class Controller {
     await this.setup.repair();
     app.setLoginItemSettings({ openAtLogin: this.settings.startAtLogin });
     const signedIn = await this.engine.start();
-    this.cliPath = isOurShim(SHIM_PATH) ? SHIM_PATH : await terminalGiga();
+    this.cliPath = await this.findCli();
     void this.setup.check().then(() => this.changed());
 
     if (!this.settings.setupDone || !signedIn) this.showWindow();
@@ -112,6 +112,15 @@ export class Controller {
       this.runtime.markHealthy();
       void this.plugins.server.close();
     });
+  }
+
+  /** The giga a new terminal runs: GigaCAD's own shim when it's installed, else whatever is on PATH. */
+  private async findCli(): Promise<string | null> {
+    if (isWindows) {
+      const shim = join(windowsShimDir(supportDir()), 'giga.cmd');
+      return isOurCmdShim(shim) ? shim : await windowsTerminalGiga();
+    }
+    return isOurShim(SHIM_PATH) ? SHIM_PATH : await terminalGiga();
   }
 
   /** Asks each plugin where its CAD program is installed; for the plugin list in Settings. */
@@ -441,7 +450,7 @@ export class Controller {
       if (!this.setup.moveToApplications()) throw new Error('GigaCAD couldn’t move itself to Applications. Drag it there in Finder instead.');
     },
     installCli: async () => {
-      const result = await installCli();
+      const result = isWindows ? await installWindowsCli(supportDir()) : await installCli();
       this.cliPath = result.terminalUses ?? result.path;
       this.setup.setStatus('cli', 'done', result.terminalUses && result.terminalUses !== result.path ? `Installed; Terminal uses ${result.terminalUses} first` : result.path);
       this.changed();

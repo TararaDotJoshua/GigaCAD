@@ -1,6 +1,8 @@
 // Builds a signed update for the desktop-release workflow, in release/:
-//   bundle-<version>.tar.gz   the code bundle (out/bundle)
-//   manifest.json             signed; tells installed apps where the bundle is
+//   bundle-<version>.tar.gz   the code bundle (out/bundle), the same JavaScript on macOS and Windows
+//   manifest.json             signed; tells installed Macs where the bundle is (dmgUrl: the DMG)
+//   win32/manifest.json       the same for Windows (dmgUrl: the installer). A separate file,
+//                             because the signed fields can't change without breaking installed apps
 //
 //   node scripts/release.mjs [--notes "What changed"] [--notes-url https://…] [--skip-build]
 //
@@ -54,6 +56,8 @@ const fields = {
   dmgUrl: `${DOWNLOADS}/GigaCAD.dmg`,
   publishedAt: new Date().toISOString(),
 };
-const manifest = { ...fields, signature: signBytes(canonicalManifest(fields), key.privateKey) };
-writeFileSync(join(out, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+const signed = (manifestFields) => `${JSON.stringify({ ...manifestFields, signature: signBytes(canonicalManifest(manifestFields), key.privateKey) }, null, 2)}\n`;
+writeFileSync(join(out, 'manifest.json'), signed(fields));
+mkdirSync(join(out, 'win32'), { recursive: true });
+writeFileSync(join(out, 'win32', 'manifest.json'), signed({ ...fields, dmgUrl: `${DOWNLOADS}/GigaCAD-Setup.exe` }));
 console.log(`Release ${pkg.version} (bundle for shell ${built.shellMin}+, this shell is ${shellVersion()}): ${archiveName}, ${(bytes.length / 1e6).toFixed(1)} MB`);

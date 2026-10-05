@@ -48,6 +48,8 @@ nsis:
   createDesktopShortcut: false
   shortcutName: GigaCAD
   artifactName: GigaCAD-Setup-${version}.${ext}
+  # Removes the File Explorer menu the app adds for the user (src/main/explorerMenu.ts).
+  include: installer/uninstall.nsh
 dmg:
   title: GigaCAD
   artifactName: GigaCAD-${version}-${arch}.${ext}

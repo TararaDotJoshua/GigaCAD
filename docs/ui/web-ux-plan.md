@@ -2,7 +2,7 @@
 
 This plan covers the findings from the 2026-09-30 audit of the web app: a code read of five flows, then a visual walkthrough on production (public pages) and a local stack (signed-in pages). Paths are relative to `apps/web/` unless they start with `apps/api/` or `supabase/`.
 
-Status (2026-10-05): phases 1–6 are in stacked PRs, each targeting the one before it: #52 (phase 1), #53 (phases 2–4), #54 (phase 5), and #55 (phase 6). Phases 7 and 8 are next.
+Status (2026-10-05): phases 1–6 are merged: #52 (phase 1), #53 (phases 2–4), #54 (phase 5), and #55 (phase 6). Phases 7 and 8 are next.
 
 ## Decisions
 

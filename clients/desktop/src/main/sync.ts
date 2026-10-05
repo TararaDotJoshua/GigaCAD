@@ -17,7 +17,8 @@ import { releasesToKeep } from './settings.js';
 export const PLACEHOLDER = '.gigacad-placeholder';
 /** Marks a downloaded release folder. */
 const RELEASE_MARKER = '.gigacad-release.json';
-const ICON_FILE = 'Icon\r';
+/** The file that holds a folder's custom icon: Finder's "Icon" + carriage return, or Windows' desktop.ini. */
+const ICON_FILE = process.platform === 'win32' ? 'desktop.ini' : 'Icon\r';
 
 const AUTOSAVE_DELAY = 5_000;
 const POLL_INTERVAL = 30_000;
@@ -384,7 +385,8 @@ export class SyncEngine {
     }
     if (await exists(dir)) return; // Something else is there; leave it alone.
     await mkdir(dir, { recursive: true });
-    await writeFile(join(dir, PLACEHOLDER), 'Not downloaded. Use GigaCAD’s Download action (right-click → Quick Actions) to get these files.\n');
+    const where = process.platform === 'win32' ? 'right-click → GigaCAD' : 'right-click → Quick Actions';
+    await writeFile(join(dir, PLACEHOLDER), `Not downloaded. Use GigaCAD’s Download action (${where}) to get these files.\n`);
     await this.iconPass(dir, [{ target: dir, key }], () => false);
     await lock(dir);
   }
@@ -749,7 +751,7 @@ async function fileStamp(path: string): Promise<string> {
 export function isAppFile(path: string): boolean {
   const parts = path.split(/[\\/]/);
   const name = parts[parts.length - 1] ?? '';
-  if (name === ICON_FILE || name === PLACEHOLDER || name === RELEASE_MARKER) return true;
+  if (name === 'Icon\r' || name === 'desktop.ini' || name === PLACEHOLDER || name === RELEASE_MARKER) return true;
   return parts.some((part) => part === '.giga' || part.endsWith('.downloading'));
 }
 

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { unzipSync } from 'fflate';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   client,
@@ -202,6 +203,26 @@ describe('release workflow', () => {
     expect(detail.preview.rows.map((row: { path: string }) => row.path).sort()).toEqual(['A.SLDPRT', 'B.SLDPRT']);
     expect(detail.releaseRequest.picks.actions).toEqual({ [bItem]: 'keep_main' });
     expect(detail.approvals.evaluation.countedUserIds).toEqual([alex.id]);
+  });
+
+  it('downloads a release as one zip, to people who can see the project', async () => {
+    const projectId = await newProject(asAlex);
+    const branch = await newBranch(asAlex, projectId, 'initial');
+    await commitVersion(harness, asAlex, projectId, branch, { 'Robot.SLDASM': 'asm', 'parts/P1.SLDPRT': 'part one' });
+    await releaseBranch(asAlex, branch);
+    const slug = (await asAlex.get(`/v1/projects/${projectId}`)).body.slug as string;
+
+    const response = await harness.app.inject({ method: 'GET', url: `/v1/projects/${projectId}/releases/1/archive`, headers: { authorization: `Bearer ${alex.token}` } });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toBe('application/zip');
+    expect(response.headers['content-disposition']).toContain(`${slug}-v1.zip`);
+    const files = unzipSync(new Uint8Array(response.rawPayload));
+    expect(Object.keys(files).sort()).toEqual([`${slug}-v1/Robot.SLDASM`, `${slug}-v1/parts/P1.SLDPRT`]);
+    expect(Buffer.from(files[`${slug}-v1/parts/P1.SLDPRT`]!).toString()).toBe('part one');
+
+    // The project is private.
+    const outsider = await harness.app.inject({ method: 'GET', url: `/v1/projects/${projectId}/releases/1/archive`, headers: { authorization: `Bearer ${bea.token}` } });
+    expect(outsider.statusCode).toBe(404);
   });
 });
 

@@ -1,7 +1,7 @@
 import type { ApprovalRules, PickRow } from '@gigacad/core';
 import { describe, expect, it } from 'vitest';
 import type { Commit, Member } from './api';
-import { blockerText, branchTone, describeEvent, eligibleApprovers, groupTimeline, rowNote } from './describe';
+import { blockerText, branchTone, collapseActivity, describeEvent, eligibleApprovers, groupTimeline, rowNote } from './describe';
 import { draftFromPicks, picksFromDraft, samePicks } from './picks';
 
 const entry = (itemId: string, path: string, blob = 'b') => ({ itemId, path, blob });
@@ -106,5 +106,30 @@ describe('history', () => {
 
   it('gives each branch state one tone', () => {
     expect(['open', 'frozen', 'released', 'archived'].map((status) => branchTone(status as never))).toEqual(['open', 'caution', 'signal', 'quiet']);
+  });
+});
+
+describe('activity feed', () => {
+  const names = { handle: (id: string | null) => `@${id}`, branch: (id: string | null) => (id === 'b1' ? 'longer-arms' : undefined) };
+  const at = (kind: string, actorId: string, subjectId: string | null, payload: Record<string, unknown> | null = null) => ({
+    event: { id: `${kind}-${Math.random()}`, kind, actorId, subjectId, payload, createdAt: '2026-09-30T00:00:00Z' },
+    text: kind,
+  });
+
+  it('folds one person’s run of branch work into a line, and keeps everything else', () => {
+    const feed = collapseActivity(
+      [
+        at('release_request_opened', 'alex', 'rr', { number: 2 }),
+        at('branch_checked_in', 'alex', 'b1'),
+        at('commit_created', 'alex', 'b1', { kind: 'version' }),
+        at('commit_created', 'alex', 'b1', { kind: 'version' }),
+        at('branch_checked_out', 'alex', 'b1'),
+        at('branch_checked_in', 'sam', 'b1'),
+        at('branch_checked_out', 'sam', 'b1'),
+        at('project_created', 'alex', null),
+      ],
+      names,
+    );
+    expect(feed.map((entry) => entry.text)).toEqual(['release_request_opened', '@alex committed 2 versions on longer-arms', '@sam worked on longer-arms', 'project_created']);
   });
 });

@@ -48,6 +48,9 @@ export class MemoryStorage implements BlobStorage {
     if (!body) throw new Error(`missing ${key}`);
     return new Uint8Array(body);
   }
+  async readStream(key: string) {
+    return [await this.read(key)];
+  }
   async write(key: string, body: Uint8Array) {
     this.objects.set(key, Buffer.from(body));
   }

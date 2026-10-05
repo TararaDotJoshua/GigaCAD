@@ -237,7 +237,7 @@ test('deletes a project and restores it from Account', async ({ page }) => {
   await page.goto(`/${world.handle}/${slug}/settings`);
   await page.getByLabel('Project slug').fill(slug);
   await page.getByRole('button', { name: 'Delete project' }).click();
-  await page.waitForURL('**/app');
+  await page.waitForURL(/\/app\?deleted=/);
 
   await page.goto('/settings');
   const row = page.getByRole('row', { name: /Undo me/ });
@@ -384,9 +384,9 @@ test('keeps files at the project root, with folders, revisions, tags, and favori
   const row = page.getByRole('row', { name: /plate\.dxf/ });
   await expect(row).toBeVisible();
 
-  // Uploading the same name again, confirmed, saves revision 2.
-  page.once('dialog', (dialog) => dialog.accept());
+  // Uploading the same name again asks once, then saves revision 2.
   await page.locator('input[type="file"]').setInputFiles({ name: 'plate.dxf', mimeType: 'application/dxf', buffer: Buffer.from(`plate rev 2 ${randomUUID()}`) });
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Save as new revisions' }).click();
   await expect(row.getByText('Revision 2')).toBeVisible();
 
   // Tag it and keep it as a favorite; both views find it.
@@ -430,8 +430,8 @@ test('keeps files at the project root, with folders, revisions, tags, and favori
   await main.getByRole('link', { name: 'Laser files', exact: true }).click();
   await expect(page.getByRole('row', { name: /base plate\.dxf/ })).toBeVisible();
   await page.goto(`/${world.handle}/${slug}`);
-  page.once('dialog', (dialog) => dialog.accept());
-  await menuFor(/Laser files/, 'Delete');
+  await menuFor(/Laser files/, 'Delete…');
+  await page.getByRole('menuitem', { name: 'Delete permanently' }).click();
   await expect(main.getByRole('link', { name: 'Laser files', exact: true })).toHaveCount(0);
 });
 

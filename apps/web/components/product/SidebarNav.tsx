@@ -1,5 +1,6 @@
 'use client';
 
+import { isPlaceholderHandle } from '@gigacad/core';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -39,6 +40,13 @@ export function SidebarNav({
   const shown = projects.filter((p) => `${p.owner}/${p.slug} ${p.name}`.toLowerCase().includes(filter.trim().toLowerCase()));
   const isCurrent = (p: NavProject) => current?.owner === p.owner && current.slug === p.slug;
 
+  // The layout (and its pathname) outlives in-page navigation, so read the full address, query included, at click time.
+  function withReturn(event: React.MouseEvent<HTMLAnchorElement>, page: string) {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+    event.preventDefault();
+    router.push(`${page}?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+  }
+
   async function logOut() {
     await createClient().auth.signOut();
     router.push('/login');
@@ -69,7 +77,7 @@ export function SidebarNav({
           Explore public projects
         </Link>
 
-        <p className="app-sidebar-heading">{me ? 'Projects' : 'This project'}</p>
+        <p className="app-sidebar-heading">{me || !current ? 'Projects' : 'This project'}</p>
         <ul className="app-nav">
           {shown.map((p) => (
             <li key={`${p.owner}/${p.slug}`} className={isCurrent(p) ? 'is-current' : undefined}>
@@ -84,9 +92,16 @@ export function SidebarNav({
 
         {me ? (
           <div className="shell-account">
-            <Link href={`/${me.handle}`} className={pathname === `/${me.handle}` ? 'is-active' : undefined} onClick={() => setOpen(false)}>
-              <Avatar handle={me.handle} url={me.avatarUrl} />@{me.handle}
-            </Link>
+            {isPlaceholderHandle(me.handle) ? (
+              // New accounts have a generated handle until they choose one; don't show it off.
+              <Link href={home} onClick={() => setOpen(false)}>
+                <Avatar handle="?" url={me.avatarUrl} />Choose a handle
+              </Link>
+            ) : (
+              <Link href={`/${me.handle}`} className={pathname === `/${me.handle}` ? 'is-active' : undefined} onClick={() => setOpen(false)}>
+                <Avatar handle={me.handle} url={me.avatarUrl} />@{me.handle}
+              </Link>
+            )}
             <button type="button" onClick={logOut} title="Log out">
               <LogOutIcon className="icon" />
               <span className="sr-only">Log out</span>
@@ -94,8 +109,10 @@ export function SidebarNav({
           </div>
         ) : (
           <div className="shell-account shell-signed-out">
-            <Link href={`/login?next=${encodeURIComponent(pathname)}`}>Log in</Link>
-            <Link href="/signup" className="btn btn-primary btn-small">
+            <Link href={`/login?next=${encodeURIComponent(pathname)}`} onClick={(event) => withReturn(event, '/login')}>
+              Log in
+            </Link>
+            <Link href={`/signup?next=${encodeURIComponent(pathname)}`} onClick={(event) => withReturn(event, '/signup')} className="btn btn-primary btn-small">
               Sign up
             </Link>
           </div>

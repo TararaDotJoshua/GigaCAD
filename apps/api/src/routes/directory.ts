@@ -45,7 +45,7 @@ export function directoryRoutes(app: FastifyInstance, { sql }: AppDeps): void {
   /** Files across the root, branch heads, and releases, by path text, tags, or the caller's favorites. `sort=modified` lists recent files. */
   app.get('/v1/projects/:id/files', async (request) => {
     const { id } = parse(idParams, request.params);
-    const { q, tags, favorites, area, ...page } = parse(
+    const { q, tags, favorites, area, under, ...page } = parse(
       z.object({
         q: z.string().max(200).optional(),
         /** Comma-separated tag ids; a file must have all of them. */
@@ -57,11 +57,12 @@ export function directoryRoutes(app: FastifyInstance, { sql }: AppDeps): void {
           .pipe(z.array(z.uuid()).max(20)),
         favorites: z.enum(['true', 'false']).optional().transform((value) => value === 'true'),
         area: z.enum(['root', 'branch', 'release']).optional(),
+        under: z.string().max(1024).optional(),
         ...paging,
       }),
       request.query,
     );
-    return searchFiles(sql, id, viewerId(request), { q, tagIds: tags, favorites, area }, page);
+    return searchFiles(sql, id, viewerId(request), { q, tagIds: tags, favorites, area, under }, page);
   });
 
   app.get('/v1/projects/:id/directory/folders', async (request) => {

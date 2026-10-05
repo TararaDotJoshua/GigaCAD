@@ -231,6 +231,13 @@ describe('tags, favorites, recent files, and search', () => {
     });
     // Search text is literal.
     expect((await asReader.get(`/v1/projects/${projectId}/files?q=${encodeURIComponent('%')}`)).body.total).toBe(0);
+    // Searching inside a folder finds only what's under it.
+    const inFolder = async (under: string) =>
+      (await asReader.get(`/v1/projects/${projectId}/files?q=rail&under=${encodeURIComponent(under)}`)).body.entries.map((file: { path: string }) => file.path);
+    expect(await inFolder('Branches/dev')).toEqual(['Branches/dev/frame/Rail.SLDPRT']);
+    expect(await inFolder('Releases/v1/frame')).toEqual(['Releases/v1/frame/Rail.SLDPRT']);
+    expect(await inFolder('Releases/v1/fr')).toEqual([]);
+    expect((await inFolder('')).length).toBe(3);
 
     // Tags follow the file into every snapshot; a file needs every requested tag.
     const steel = await asHelper.post(`/v1/projects/${projectId}/tags`, { name: 'Steel' });

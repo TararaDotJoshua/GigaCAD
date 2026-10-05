@@ -367,6 +367,7 @@
 
 .shell .stack {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 32px;
   min-width: 0;
 }
@@ -2274,6 +2275,25 @@
   font-size: var(--t-micro);
 }
 
+/* Touch screens can't right-click; they use each row's More actions button instead. */
+@media (hover: none) {
+  .shell .entry-menu-hint { display: none; }
+}
+
+.shell .entry-menu-note {
+  max-width: 32ch;
+  font-size: var(--t-small);
+}
+
+.shell .download-error {
+  display: inline-block;
+  max-width: 24ch;
+  margin-left: 6px;
+  vertical-align: middle;
+  font-size: var(--t-micro);
+  white-space: normal;
+}
+
 @media (hover: none) {
   .shell .directory-table tr[data-entry-id] {
     -webkit-touch-callout: none;
@@ -2448,4 +2468,292 @@
 
 .shell .readme-markdown .task-list-item input {
   margin: 0 6px 0 -1.3em;
+}
+
+/* Loading placeholders: Mist blocks in the shape of the page. Static, since nothing animates on its own. */
+
+.shell .skeleton {
+  display: block;
+  border-radius: var(--r-sm);
+  background: var(--mist);
+}
+
+.shell .skeleton-crumbs { width: 180px; height: 14px; }
+.shell .skeleton-title { width: 280px; height: 34px; margin-top: 12px; }
+.shell .skeleton-card { height: 120px; border-radius: var(--r-md); }
+.shell .skeleton-glyph { width: 36px; height: 36px; flex: none; }
+.shell .skeleton-line { height: 14px; }
+
+.shell .skeleton-table {
+  display: grid;
+  border: 1px solid var(--line-ink);
+  border-radius: var(--r-md);
+  background: #fff;
+}
+
+.shell .skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+}
+
+.shell .skeleton-row + .skeleton-row {
+  border-top: 1px solid var(--line-ink);
+}
+
+/* Not found and error pages. */
+
+.shell .problem {
+  padding-top: 72px;
+}
+
+.shell .problem-body {
+  display: grid;
+  gap: 8px;
+  max-width: 60ch;
+  margin-top: 12px;
+  color: var(--ink-muted);
+}
+
+.shell .problem-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 28px;
+}
+
+/* Getting started: the ways to get files in, for an empty project or dashboard. */
+
+.shell .getting-started {
+  margin-bottom: 24px;
+  padding: 24px;
+  border: 1.5px dashed rgb(10 41 34 / 0.22);
+  border-radius: var(--r-md);
+}
+
+.shell .getting-started-title {
+  margin-bottom: 16px;
+  font-size: 1.05rem;
+}
+
+.shell .getting-started-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 20px;
+}
+
+.shell .getting-started-option {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: 10px;
+}
+
+.shell .getting-started-option h3 {
+  font-size: var(--t-small);
+  font-weight: 600;
+}
+
+.shell .getting-started-option p {
+  color: var(--ink-muted);
+  font-size: var(--t-small);
+}
+
+.shell .getting-started-code {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: var(--mist);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+}
+
+.shell .getting-started.is-compact {
+  margin-top: 16px;
+  border: 0;
+  padding: 0;
+}
+
+/* Uploads: a drop zone over the folder, and a panel in the corner with each file's progress. */
+
+.shell .drop-zone {
+  position: relative;
+}
+
+.shell .drop-zone.is-over > :first-child {
+  outline: 2px dashed var(--forest);
+  outline-offset: 4px;
+  border-radius: var(--r-md);
+}
+
+.shell .drop-zone-hint {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-md);
+  background: rgb(245 245 247 / 0.85);
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.shell .upload-toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 30;
+  display: grid;
+  gap: 10px;
+  width: min(380px, calc(100vw - 40px));
+  max-height: 60vh;
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--line-ink);
+  border-radius: var(--r-md);
+  background: #fff;
+  box-shadow: 0 12px 40px -12px rgb(10 41 34 / 0.35);
+  text-align: left;
+}
+
+.shell .upload-toast-title {
+  font-weight: 600;
+}
+
+.shell .upload-toast-names {
+  font-size: 0.8rem;
+  word-break: break-word;
+}
+
+.shell .upload-toast-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.shell .upload-list {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  padding: 0;
+}
+
+.shell .upload-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  font-size: var(--t-small);
+}
+
+.shell .upload-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell .upload-state {
+  color: var(--ink-muted);
+}
+
+.shell .upload-item.is-done .upload-state { color: #1f7a39; }
+.shell .upload-item.is-failed .upload-state,
+.shell .upload-error { color: #b4262b; }
+
+.shell .upload-error {
+  grid-column: 1 / -1;
+}
+
+.shell .upload-bar {
+  grid-column: 1 / -1;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--forest) calc(var(--progress) * 100%), var(--mist) 0);
+}
+
+.shell .upload-full {
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--caution) 22%, var(--paper));
+  font-size: var(--t-small);
+}
+
+/* The latest release, above the root's files. */
+
+.shell .latest-release-section {
+  padding: 20px;
+  border: 1px solid var(--line-ink);
+  border-radius: var(--r-md);
+  background: #fff;
+}
+
+.shell .latest-release-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.shell .latest-release-kicker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-muted);
+  font-size: var(--t-small);
+}
+
+.shell .latest-release-section h2 {
+  margin: 4px 0 2px;
+  font-size: 1.15rem;
+}
+
+.shell .latest-release-section h2 a {
+  text-decoration: none;
+}
+
+.shell .latest-release-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.shell .latest-release-files {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 6px 16px;
+  margin-top: 16px;
+  padding: 0;
+  list-style: none;
+  font-size: var(--t-small);
+}
+
+.shell .latest-release-files li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.shell .latest-release-files .mono {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell .latest-release-files .file-glyph {
+  width: 26px;
+  height: 26px;
+}
+
+.shell .latest-release-more {
+  display: inline-block;
+  margin-top: 12px;
+  font-size: var(--t-small);
+}
+
+.shell .activity-page {
+  max-width: 60ch;
+}
+
+.shell .upload-toast-close {
+  justify-self: end;
 }

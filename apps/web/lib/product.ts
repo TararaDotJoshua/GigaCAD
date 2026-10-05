@@ -1,3 +1,4 @@
+import { HANDLE_PATTERN, isPlaceholderHandle, isReservedHandle } from '@gigacad/core';
 import { notFound, redirect } from 'next/navigation';
 import { cache } from 'react';
 import {
@@ -29,6 +30,7 @@ import {
   type UserPage,
 } from './api';
 import { mediaKind, type EmbeddedFile } from './readme';
+import { currentPath, loginPath } from './current-path';
 import { getAccessToken } from './session';
 
 /**
@@ -93,7 +95,8 @@ export const getProject = cache(async (owner: string, slug: string) => {
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
       // Private projects look missing to outsiders. A signed-out visitor may just need to log in.
-      if (!(await getAccessToken())) redirect(`/login?next=${encodeURIComponent(`/${owner}/${slug}`)}`);
+      // Keep the whole path (a branch, a release, a folder), not just the project.
+      if (!(await getAccessToken())) redirect(await loginPath((await currentPath()) ?? `/${owner}/${slug}`));
       notFound();
     }
     throw error;
@@ -130,7 +133,7 @@ export const getReleaseRequestByNumber = cache(async (projectId: string, number:
 
 export const getMembers = cache((projectId: string) => get<Member[]>(`/v1/projects/${projectId}/members`));
 export const getApprovalRules = cache((projectId: string) => get<ApprovalRules>(`/v1/projects/${projectId}/approval-rules`));
-export const getEvents = cache((projectId: string) => get<ProjectEvent[]>(`/v1/projects/${projectId}/events?order=desc&limit=20`));
+export const getEvents = cache((projectId: string, limit = 20) => get<ProjectEvent[]>(`/v1/projects/${projectId}/events?order=desc&limit=${limit}`));
 
 export interface FileQuery {
   sort?: 'name' | 'modified' | 'size';
@@ -147,7 +150,7 @@ export const getDirectory = cache((projectId: string, path: string, query: FileQ
   orNotFound(get<DirectoryListing>(`/v1/projects/${projectId}/directory?${fileQuery({ path, ...query })}`)),
 );
 export const searchFiles = cache(
-  (projectId: string, query: FileQuery & { q?: string; tags?: string; favorites?: boolean; area?: 'root' | 'branch' | 'release' }) =>
+  (projectId: string, query: FileQuery & { q?: string; tags?: string; favorites?: boolean; area?: 'root' | 'branch' | 'release'; under?: string }) =>
     get<FilePage<DirectoryFile>>(`/v1/projects/${projectId}/files?${fileQuery(query)}`),
 );
 /** Root files that serve as the project's readme, best first. */
@@ -232,4 +235,31 @@ export function parseNumber(value: string): number {
   const number = Number(value.replace(/^v/i, ''));
   if (!Number.isInteger(number) || number < 1) notFound();
   return number;
+}
+
+/** Whether a handle already belongs to someone, for suggesting a free one. */
+async function handleTaken(handle: string): Promise<boolean> {
+  try {
+    await get(`/v1/users/${encodeURIComponent(handle)}`);
+    return true;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return false;
+    throw error;
+  }
+}
+
+/** A free handle made from an email address's name part, like `jo-smith` for jo.smith@example.com. */
+export async function suggestHandle(email: string | null): Promise<string> {
+  const base = (email?.split('@')[0] ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 34)
+    .replace(/-+$/, '');
+  if (!base || !HANDLE_PATTERN.test(base)) return '';
+  for (const candidate of [base, ...[2, 3, 4, 5].map((n) => `${base}-${n}`)]) {
+    if (isReservedHandle(candidate) || isPlaceholderHandle(candidate)) continue;
+    if (!(await handleTaken(candidate))) return candidate;
+  }
+  return '';
 }

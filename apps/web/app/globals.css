@@ -133,6 +133,11 @@ button {
 .auth-social button:hover { background: var(--forest); }
 .auth-links { display: flex; flex-wrap: wrap; gap: 12px 24px; margin-top: 24px; font-size: var(--t-small); color: var(--paper-muted); }
 .auth-links a { text-decoration: underline; text-underline-offset: 3px; }
+.auth-links .auth-link-button { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.auth-field { display: grid; gap: 6px; }
+.auth-field-hint { color: var(--paper-faint); font-size: var(--t-small); }
+.auth-hint { margin: -12px 0 24px; color: var(--paper-muted); font-size: var(--t-small); }
+.auth-card a.auth-submit { display: grid; place-items: center; text-decoration: none; }
 .device-request { margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--line-strong); }
 .device-request p { margin-bottom: 12px; color: var(--paper-muted); }
 .device-request strong { color: var(--paper); }

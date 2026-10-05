@@ -25,21 +25,29 @@ export function DownloadButton({
   const name = path.split('/').pop() ?? path;
   const description = label ? `Download ${name} as ${label}` : `Download ${filename}`;
   return (
-    <button
-      type="button"
-      className={label ? 'icon-button text-button' : 'icon-button'}
-      disabled={pending}
-      aria-label={description}
-      title={error || description}
-      onClick={() =>
-        start(async () => {
-          const result = await downloadLink(projectId, sha256, filename);
-          if (result.url) window.location.assign(result.url);
-          else setError(result.error ?? 'Download failed');
-        })
-      }
-    >
-      {label ?? <DownloadIcon className="icon" />}
-    </button>
+    <>
+      <button
+        type="button"
+        className={label ? 'icon-button text-button' : 'icon-button'}
+        disabled={pending}
+        aria-label={description}
+        title={error || description}
+        onClick={() =>
+          start(async () => {
+            const result = await downloadLink(projectId, sha256, filename);
+            setError('');
+            if (result.url) window.location.assign(result.url);
+            else setError(result.error ?? 'Download failed. Try again.');
+          })
+        }
+      >
+        {label ?? <DownloadIcon className="icon" />}
+      </button>
+      {error && (
+        <span className="form-status is-error download-error" role="alert">
+          {error}
+        </span>
+      )}
+    </>
   );
 }

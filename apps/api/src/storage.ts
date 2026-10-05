@@ -36,6 +36,8 @@ export interface BlobStorage {
   remove(key: string): Promise<void>;
   /** Reads a whole object; for the server's own work, like making thumbnails. */
   read(key: string): Promise<Uint8Array>;
+  /** Streams an object, for passing large files through without holding them in memory. */
+  readStream(key: string): Promise<AsyncIterable<Uint8Array> | Iterable<Uint8Array>>;
   write(key: string, body: Uint8Array, contentType: string): Promise<void>;
 }
 
@@ -105,6 +107,12 @@ export function createS3Storage(config: Config): BlobStorage {
       const response = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
       if (!response.Body) throw new Error(`Empty object ${key}`);
       return response.Body.transformToByteArray();
+    },
+
+    async readStream(key) {
+      const response = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+      if (!response.Body) throw new Error(`Empty object ${key}`);
+      return response.Body as unknown as AsyncIterable<Uint8Array>;
     },
 
     async write(key, body, contentType) {

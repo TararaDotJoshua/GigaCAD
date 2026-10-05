@@ -13,14 +13,15 @@ interface Target {
   href: string;
 }
 
-type Mode = 'menu' | 'rename' | 'move';
+type Mode = 'menu' | 'rename' | 'move' | 'delete';
 
 const LONG_PRESS_MS = 550;
 
 /**
  * The right-click menu for root files and folders: open, rename, move, and delete. Rows opt in
- * with `data-entry-id` and friends. Touch screens open it with a long press, and keyboards with
- * the context-menu key or Shift+F10.
+ * with `data-entry-id` and friends. It also opens from a row's "More actions" button (marked
+ * `data-entry-menu-button`), with a long press on touch screens, and from the keyboard's
+ * context-menu key or Shift+F10.
  */
 export function EntryMenu({ projectId, folders, children }: { projectId: string; folders: { id: string; path: string }[]; children: ReactNode }) {
   const router = useRouter();
@@ -126,6 +127,15 @@ export function EntryMenu({ projectId, folders, children }: { projectId: string;
   return (
     <div
       className="entry-menu-scope"
+      onClick={(event) => {
+        const button = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-entry-menu-button]') : null;
+        const row = rowAt(button);
+        if (!button || !row) return;
+        event.preventDefault();
+        const rect = button.getBoundingClientRect();
+        open(row, rect.right - 200, rect.bottom + 4);
+        opener.current = button;
+      }}
       onContextMenu={(event) => {
         const row = rowAt(event.target);
         if (!row) return;
@@ -163,7 +173,7 @@ export function EntryMenu({ projectId, folders, children }: { projectId: string;
           ref={menu}
           className="menu-list entry-menu"
           role={mode === 'rename' ? 'dialog' : 'menu'}
-          aria-label={mode === 'rename' ? `Rename ${target.name}` : mode === 'move' ? `Move ${target.name} to` : `Actions for ${target.name}`}
+          aria-label={mode === 'rename' ? `Rename ${target.name}` : mode === 'move' ? `Move ${target.name} to` : mode === 'delete' ? `Delete ${target.name}` : `Actions for ${target.name}`}
           tabIndex={-1}
           style={{ position: 'fixed', margin: 0, left: place?.left ?? point.x, top: place?.top ?? point.y, visibility: place ? 'visible' : 'hidden' }}
           onKeyDown={keys}
@@ -186,14 +196,25 @@ export function EntryMenu({ projectId, folders, children }: { projectId: string;
                 role="menuitem"
                 className="is-danger"
                 disabled={pending}
-                onClick={() => {
-                  const what = target.kind === 'folder' ? `${target.path} and everything in it` : `${target.path} and every revision`;
-                  if (window.confirm(`Delete ${what}? This can’t be undone.`)) run(() => removeEntry(projectId, target.id));
-                }}
+                onClick={() => setMode('delete')}
               >
-                Delete
+                Delete…
               </button>
             </>
+          )}
+          {mode === 'delete' && (
+            <div className="entry-menu-form" role="group" aria-label={`Delete ${target.name}`}>
+              <p className="entry-menu-title">Delete {target.name}?</p>
+              <p className="muted entry-menu-note">
+                {target.kind === 'folder' ? 'Everything in this folder is deleted too.' : 'Every revision of this file is deleted.'} This can’t be undone. Branches and releases keep their own copies.
+              </p>
+              <button type="button" role="menuitem" className="is-danger" disabled={pending} onClick={() => run(() => removeEntry(projectId, target.id))}>
+                {pending ? 'Deleting…' : 'Delete permanently'}
+              </button>
+              <button type="button" role="menuitem" onClick={() => setMode('menu')}>
+                Cancel
+              </button>
+            </div>
           )}
           {mode === 'rename' && (
             <form

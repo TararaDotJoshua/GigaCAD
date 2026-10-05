@@ -1395,7 +1395,6 @@
 
 .shell .storage-meter {
   height: 8px;
-  max-width: 480px;
   overflow: hidden;
   border-radius: var(--r-xs);
   background: var(--mist);

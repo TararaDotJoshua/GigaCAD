@@ -27,7 +27,7 @@ export default async function BillingSettings({ searchParams }: { searchParams: 
   );
   return (
     <div className="page page-narrow">
-      <PageHead crumbs={[{ label: 'Account', href: '/settings' }, { label: 'Plan and storage' }]} title="Plan and storage." />
+      <PageHead crumbs={[{ label: 'Account', href: '/settings' }, { label: 'Plan and storage' }]} title="Plan and storage" />
       {query.checkout === 'done' &&
         (paying ? (
           <p className="notice notice-action" role="status">

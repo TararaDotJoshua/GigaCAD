@@ -4,7 +4,7 @@ The web app in `apps/web`, and the desktop app's window in `clients/desktop/src/
 
 Plans in this folder:
 - [file-directory-plan.md](file-directory-plan.md): the project file directory. Shipped in #34; a few questions are still open.
-- [web-ux-plan.md](web-ux-plan.md): the 8-phase fix plan from the 2026-09-30 audit. Phases 1–6 are merged (#52–#55).
+- [web-ux-plan.md](web-ux-plan.md): the 8-phase fix plan from the 2026-09-30 audit. Phases 1–6 are merged (#52–#55); phases 7 and 8 are in #58 and #59.
 
 ## One Next.js app, two sites
 

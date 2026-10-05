@@ -25,7 +25,7 @@ export default async function Explore({ searchParams }: { searchParams: Promise<
   return (
     <Shell>
       <div className="page">
-        <PageHead crumbs={[{ label: 'GigaCAD' }]} title="Explore public projects." />
+        <PageHead crumbs={[]} title="Explore public projects" />
         <div className="explore-bar">
           <form action="/explore" className="app-search explore-search" role="search">
             <SearchIcon className="icon" />

@@ -611,6 +611,22 @@
   background: var(--mist);
 }
 
+.shell .notice-caution {
+  background: color-mix(in srgb, var(--caution) 22%, var(--paper));
+}
+
+/* A button that reads as an inline link, for actions inside a sentence. */
+.shell .link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
 /* Badges. Fills carry meaning: Signal, caution, and danger only for state. */
 
 .shell .badge {

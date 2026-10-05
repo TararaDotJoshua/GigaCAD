@@ -15,19 +15,21 @@ export default async function RequestPage({ params }: { params: Promise<ProjectP
   const { owner, project: slug, number } = await params;
   const project = await getProject(owner, slug);
   const detail = await getReleaseRequestByNumber(project.id, parseNumber(number));
-  const { releaseRequest: request, preview, candidate, approvals, latestRelease } = detail;
-  const [me, members, rules, main] = await Promise.all([getViewer(), getMembers(project.id), getApprovalRules(project.id), latestRelease ? getRelease(project.id,latestRelease.number) : Promise.resolve(null)]);
+  const { releaseRequest: request, preview, candidate, approvals, latestRelease, targetRelease, releasedRelease } = detail;
   const finished = request.status === 'released' || request.status === 'closed';
+  // Finished requests read against the main they targeted; active ones against the latest.
+  const mainRelease = finished ? targetRelease : latestRelease;
+  const [me, members, rules, main] = await Promise.all([getViewer(), getMembers(project.id), getApprovalRules(project.id), mainRelease ? getRelease(project.id,mainRelease.number) : Promise.resolve(null)]);
   const canWrite = project.role === 'owner' || project.role === 'maintainer' || project.role === 'contributor';
   const eligible = eligibleApprovers(members,rules,request.requesterId);
   const mayApprove = eligible.some(member => member.userId === me?.id);
   const mine = approvals.given.find(approval => approval.userId === me?.id && approval.candidateManifestId === request.candidateManifestId);
   const releaseNumber = latestRelease ? latestRelease.number + 1 : 1;
-  const released = request.releasedReleaseId && latestRelease?.id === request.releasedReleaseId ? latestRelease.number : null;
+  const released = releasedRelease?.number ?? null;
   return <div className="page">
-    <PageHead crumbs={[{label:owner},{label:project.name,href:projectPath(owner,slug)},{label:'Release requests',href:projectPath(owner,slug,'release-requests')},{label:`#${request.number}`}]} title={request.title} meta={<><StatusBadge tone={requestTone(request.status)}>{REQUEST_STATUS_LABEL[request.status]}</StatusBadge><span><Link href={branchPath(owner,slug,request.branchName)} className="mono">{request.branchName}</Link> into main {latestRelease ? `v${latestRelease.number}` : '(first release)'}</span><span>Opened by @{request.requesterHandle || 'unknown'} · <RelativeTime value={request.createdAt} /></span></>} />
+    <PageHead crumbs={[{label:owner},{label:project.name,href:projectPath(owner,slug)},{label:'Release requests',href:projectPath(owner,slug,'release-requests')},{label:`#${request.number}`}]} title={request.title} meta={<><StatusBadge tone={requestTone(request.status)}>{REQUEST_STATUS_LABEL[request.status]}</StatusBadge><span><Link href={branchPath(owner,slug,request.branchName)} className="mono">{request.branchName}</Link> into main {mainRelease ? `v${mainRelease.number}` : '(first release)'}</span><span>Opened by @{request.requesterHandle || 'unknown'} · <RelativeTime value={request.createdAt} /></span></>} />
     {request.body && <p className="notes">{request.body}</p>}
-    <div className="request-grid"><div className="stack"><section><h2>File picks</h2><PickEditor key={request.updatedAt} requestId={request.id} rows={preview.rows} picks={request.picks} mainFiles={main?.files ?? []} latestNumber={latestRelease?.number ?? null} readOnly={finished || !canWrite} /></section>
+    <div className="request-grid"><div className="stack"><section><h2>File picks</h2><PickEditor key={request.id} requestId={request.id} rows={preview.rows} picks={request.picks} mainFiles={main?.files ?? []} latestNumber={mainRelease?.number ?? null} readOnly={finished || !canWrite} /></section>
       {preview.warnings.length > 0 && <section className="section"><h2>Warnings</h2><ul className="warning-list">{preview.warnings.map((warning,index) => <li key={index}>{warning.kind.replace(/_/g,' ')}: <span className="mono">{warning.path}</span></li>)}</ul></section>}
       {preview.errors.length > 0 && <section className="section"><h2>Pick errors</h2><ul className="error-list">{preview.errors.map((error,index) => <li key={index}>{error.kind.replace(/_/g,' ')}{ 'path' in error ? `: ${error.path}` : ''}{'reason' in error ? `: ${error.reason}` : ''}</li>)}</ul></section>}
       {finished && released && <Link className="btn btn-secondary" href={releasePath(owner,slug,released)}>Open released v{released}</Link>}

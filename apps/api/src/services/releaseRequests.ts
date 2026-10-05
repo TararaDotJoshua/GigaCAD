@@ -50,7 +50,11 @@ interface ReleaseRequestRow {
 export interface ReleaseRequestDetail {
   readonly releaseRequest: ReleaseRequestRow & { readonly requesterHandle: string | null; readonly branchName: string };
   readonly latestRelease: { readonly id: string; readonly number: number } | null;
-  /** The live diff-pick result for the current picks against the latest main release. */
+  /** The main release the candidate was generated against. */
+  readonly targetRelease: { readonly id: string; readonly number: number } | null;
+  /** The release this request produced, once released. */
+  readonly releasedRelease: { readonly id: string; readonly number: number } | null;
+  /** The diff-pick result for the current picks: against the latest main while active, against the target main once finished. */
   readonly preview: Omit<Candidate, 'manifest'>;
   readonly candidate: {
     readonly manifestId: string;
@@ -76,6 +80,12 @@ async function loadRequest(db: Db, id: string, lock = false): Promise<ReleaseReq
   return row;
 }
 
+async function releaseNumber(db: Db, id: string | null): Promise<{ id: string; number: number } | null> {
+  if (!id) return null;
+  const [release] = await db<{ id: string; number: number }[]>`select id, number from releases where id = ${id}`;
+  return release ?? null;
+}
+
 async function latestRelease(db: Db, projectId: string): Promise<{ id: string; number: number } | null> {
   const [release] = await db<{ id: string; number: number }[]>`
     select id, number from releases where project_id = ${projectId} order by number desc limit 1
@@ -96,18 +106,23 @@ function requireActive(request: ReleaseRequestRow): void {
   }
 }
 
-async function candidateInputs(db: Db, request: ReleaseRequestRow): Promise<CandidateInputs> {
+/**
+ * The inputs to the diff pick. An active request compares against the latest main. A finished
+ * one compares against the main it was generated against (or its base, if it never had a
+ * candidate), so its picks still read the way they did when it was released or closed.
+ */
+async function candidateInputs(db: Db, request: ReleaseRequestRow, against: 'latest' | 'target' = 'latest'): Promise<CandidateInputs> {
   const [branch] = await db<{ baseReleaseId: string | null; manifestId: string }[]>`
     select b.base_release_id, c.manifest_id
     from branches b join commits c on c.id = b.head_commit_id
     where b.id = ${request.branchId}
   `;
   if (!branch) throw notFound('Branch');
-  const latest = await latestRelease(db, request.projectId);
+  const mainId = against === 'target' ? (request.targetReleaseId ?? branch.baseReleaseId) : ((await latestRelease(db, request.projectId))?.id ?? null);
   const [base, branchHead, latestMain] = await Promise.all([
     loadReleaseManifest(db, branch.baseReleaseId),
     loadManifest(db, branch.manifestId),
-    loadReleaseManifest(db, latest?.id ?? null),
+    loadReleaseManifest(db, mainId),
   ]);
 
   const blobs = [...new Set([...branchHead, ...latestMain].map((entry) => entry.blob))];
@@ -160,9 +175,8 @@ async function detail(db: Db, request: ReleaseRequestRow): Promise<ReleaseReques
   `;
   const latest = await latestRelease(db, request.projectId);
   const active = request.status === 'open' || request.status === 'candidate';
-  const { manifest: _manifest, ...preview } = active
-    ? buildCandidate(await candidateInputs(db, request))
-    : { manifest: [], rows: [], replacements: [], warnings: [], errors: [], ok: true };
+  const { manifest: _manifest, ...preview } = buildCandidate(await candidateInputs(db, request, active ? 'latest' : 'target'));
+  const [target, released] = await Promise.all([releaseNumber(db, request.targetReleaseId), releaseNumber(db, request.releasedReleaseId)]);
 
   const given = await db<{ userId: string; handle: string; candidateManifestId: string; createdAt: Date }[]>`
     select a.user_id, p.handle, a.candidate_manifest_id, a.created_at
@@ -174,6 +188,8 @@ async function detail(db: Db, request: ReleaseRequestRow): Promise<ReleaseReques
   return {
     releaseRequest: { ...request, requesterHandle: names?.requesterHandle ?? null, branchName: names?.branchName ?? '' },
     latestRelease: latest,
+    targetRelease: target,
+    releasedRelease: released,
     preview,
     candidate: request.candidateManifestId
       ? {
@@ -182,7 +198,8 @@ async function detail(db: Db, request: ReleaseRequestRow): Promise<ReleaseReques
           upToDate: request.status !== 'candidate' || request.targetReleaseId === (latest?.id ?? null),
         }
       : null,
-    approvals: { given, evaluation: active ? await evaluate(db, request) : null },
+    // Finished requests still count the approvals their candidate received.
+    approvals: { given, evaluation: await evaluate(db, request) },
   };
 }
 

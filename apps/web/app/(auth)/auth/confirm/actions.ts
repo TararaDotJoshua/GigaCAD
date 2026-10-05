@@ -1,8 +1,8 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { createClient } from '../../../lib/supabase/server';
-import { safeReturnPath } from '../../../lib/return-path';
+import { createClient } from '../../../../lib/supabase/server';
+import { safeReturnPath } from '../../../../lib/return-path';
 
 export async function confirmEmail(form: FormData) {
   const tokenHash = form.get('token_hash');

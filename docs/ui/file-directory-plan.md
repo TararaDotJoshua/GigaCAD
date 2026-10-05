@@ -33,3 +33,17 @@ Root files have their own revision history. Replacing a root file records a revi
 ## Further ideas
 
 After the first release, consider saved searches or smart collections, bulk tagging and moves, file descriptions and custom fields, and a details panel showing a file's locations and revisions. These are separate follow-up features, not requirements for the directory release.
+
+## Status
+
+**Shipped in #34 on 2026-09-26** and live in production (seeded project `@tararadotjoshua/test-bench`). Migration `20260927010000_file_directory.sql` adds `directory_entries`, `root_file_revisions`, `project_tags`, `file_tags`, and `file_favorites`, with RLS read policies through `private.can_read_project`.
+
+- **API:** `apps/api/src/services/directory.ts` and `routes/directory.ts`. Directory listing (`GET /v1/projects/:id/directory`), search (`GET /v1/projects/:id/files`), folders, root file uploads and revisions, entry moves and deletes, tags, and favorites. Writes lock the project row; moves fail without partial changes. Covered by `apps/api/test/directory.int.test.ts`.
+- **Web:** `ProjectDirectory.tsx`, `UploadFiles.tsx`, `TagPicker.tsx`, `FavoriteButton.tsx`, and the right-click `EntryMenu.tsx` (also long press, the context-menu key, and Shift+F10). Browser uploads hash the file, PUT to a presigned URL, and complete; the browser limit is 2 GB. Pages: the project root, `tree/[...path]`, and `entries/[entryId]`.
+- **Docs page:** `/docs/project-files`.
+
+Open questions for the owner:
+- Should archived branches be hidden under `Branches` and in search by default?
+- Search runs `branch_file_changed()` once per branch-head file. That's fine now; large projects would need a stored "changed at" per manifest entry.
+- Folder listings sort and page in memory. Folders with tens of thousands of entries would need SQL paging.
+- The activity feed skips tag renames, tag deletions, and file tag changes on purpose.

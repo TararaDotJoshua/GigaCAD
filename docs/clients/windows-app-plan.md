@@ -1,7 +1,7 @@
 # GigaCAD for Windows
 
 ## Context
-Phases 3 and 4 of [PLAN.md](PLAN.md) come next: the Windows app and the SolidWorks add-in. SolidWorks only runs on Windows, so this is where GigaCAD's CAD features land.
+Phases 3 and 4 of [the product plan](../product/plan.md) come next: the Windows app and the SolidWorks add-in. SolidWorks only runs on Windows, so this is where GigaCAD's CAD features land.
 
 GigaCAD for macOS (`clients/desktop`) is an Electron app. It:
 - runs the `giga` CLI in-process
@@ -107,7 +107,7 @@ Every method except `host.hello` answers `not_implemented` until the app registe
   1. `GetDependencies2` for each assembly and drawing → `files.reportReferences`.
   2. A coarse STL of each changed part and assembly (`SaveAs3`) → `exports.attach`.
   3. Autosaves don't export.
-- **Rebuild candidate** (PLAN.md rule 7):
+- **Rebuild candidate** ([the product plan](../product/plan.md), rule 7):
   1. Open each top-level assembly.
   2. Repoint replaced items with `ReplaceReferencedDocument`.
   3. `ForceRebuild3`.
@@ -121,13 +121,13 @@ Every method except `host.hello` answers `not_implemented` until the app registe
 |---|---|---|
 | — | Plugin framework | **Built.** Registry, pipe server, SolidWorks plugin, the C# protocol library, and shared fixtures. Tested on macOS and in CI on Windows, including a .NET Framework 4.8 client talking to the app's pipe |
 | W1 | App runs on Windows | **Built (#46).** Paths, window chrome, tray, `gigacad://` and `--action` launches, Windows update manifest and `tar.exe`, NSIS installer in CI, plugin host started, Settings → CAD programs |
-| W2 | Locks | **Built (#47).** Read-only attribute on files, `icacls` deny entries on folders, tested on `windows-latest` |
-| W3 | Explorer | **Built (#48).** GigaCAD submenu in HKCU limited to the GigaCAD folder, `desktop.ini` folder icons, `giga.cmd` on PATH, uninstaller cleanup |
-| W4 | Add-in methods | **Built (#49).** Pipe handlers backed by the sync engine; `files.stateChanged` broadcasts. Rebuild reports wait for candidates in the folder |
+| W2 | Locks | **Built in #47, not merged yet.** Read-only attribute on files, `icacls` deny entries on folders, tested on `windows-latest` |
+| W3 | Explorer | **Built in #48, not merged yet.** GigaCAD submenu in HKCU limited to the GigaCAD folder, `desktop.ini` folder icons, `giga.cmd` on PATH, uninstaller cleanup |
+| W4 | Add-in methods | **Built in #49, not merged yet.** Pipe handlers backed by the sync engine; `files.stateChanged` broadcasts. Rebuild reports wait for candidates in the folder |
 | W5 | Add-in basics | Task Pane, read-only banner, references, reconnecting, pipe server check. **Needs the Windows PC with SolidWorks.** |
 | W6 | Exports and rebuild | STL on version commits; candidate rebuild with STEP and STL. **Needs the Windows PC with SolidWorks.** |
-| W7 | Ship | Release workflow builds and uploads the installer and the Windows manifest, and the website links it (**built, #50**). Still to do: code signing, and the installer registering the add-in |
-| Later | Virtual drive | Cloud Files sync root for on-demand files (the original PLAN.md design), when downloading whole branches gets too slow |
+| W7 | Ship | Release workflow builds and uploads the installer and the Windows manifest, and the website links it (**built in #50, not merged yet**). Still to do: code signing, and the installer registering the add-in |
+| Later | Virtual drive | Cloud Files sync root for on-demand files (the original design in the product plan), when downloading whole branches gets too slow |
 
 ## Verification
 - **Automated, every pull request:**
@@ -135,7 +135,7 @@ Every method except `host.hello` answers `not_implemented` until the app registe
   - `windows` CI job: `dotnet test` on .NET 10 and 4.8; the plugin tests over real Windows named pipes; and the interop test, with the .NET Framework 4.8 client against the app's pipe server.
   - Each milestone adds its own tests on `windows-latest` (locks, context-menu registration, installer).
 - **Locally:** `pnpm test:windows` runs the .NET tests. `GIGACAD_INTEROP=1 pnpm vitest run clients/desktop/test/plugins/interop.test.ts` runs the interop test after `dotnet build clients/windows/tests/GigaCAD.Plugins.InteropClient`.
-- **Manual, on the Windows laptop with SolidWorks:** the checklist in PLAN.md's Verification section, plus:
+- **Manual, on the Windows laptop with SolidWorks:** the checklist in the product plan's Verification section, plus:
   1. Settings → Plugins shows SolidWorks with the installed version and the add-in registered.
   2. Opening SolidWorks shows the add-in connected.
   3. Quitting GigaCAD while SolidWorks is open shows "GigaCAD isn't running" in the Task Pane, and the add-in reconnects when the app starts again.

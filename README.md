@@ -1,17 +1,17 @@
 # GigaCAD
 
-GitHub-style version control for CAD files (SolidWorks first), hosted at gigacad.site. See [docs/PLAN.md](docs/PLAN.md) for the design.
+GitHub-style version control for CAD files (SolidWorks first), hosted at gigacad.site. Start with [docs/README.md](docs/README.md): it explains the whole codebase and links to each area (product, design, UI, services, data, auth, payments, clients, operations) and its plans.
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `packages/core` | Shared rules: manifest diffs, release candidates (diff pick + part replacement), approvals, autosave pruning, ignore rules |
+| `packages/core` | Shared rules: manifest diffs, release candidates (diff pick + part replacement), approvals, autosave pruning, ignore rules, paths, plans, handles |
 | `apps/api` | REST API (Fastify): projects, branches with check-out locks, commits and autosaves, release requests with diff pick, approvals, releases, the project file directory (root files, tags, favorites, search), file uploads to R2, desktop sign-in |
 | `supabase` | Database schema and row-level security (migrations), run locally with `supabase start` |
-| `apps/web` | Next.js site: the marketing page at gigacad.site (product pages come later). Follows [docs/DESIGN.md](docs/DESIGN.md) |
+| `apps/web` | Next.js app on Cloudflare Workers: the marketing site at gigacad.site and the product at app.gigacad.site. Follows [the design system](docs/design/README.md) |
 | `clients/cli` | `giga`, the command line (npm package `@gigacad/cli`): sign-in, clone, check-out locks, commits, release requests, releases. See [its README](clients/cli/README.md) |
-| `clients/desktop` | GigaCAD for macOS (Windows next): projects as folders with locks, autosaves, and right-click actions, and the CAD plugin host (SolidWorks). See [its README](clients/desktop/README.md) and [docs/WINDOWS_APP_PLAN.md](docs/WINDOWS_APP_PLAN.md) |
+| `clients/desktop` | GigaCAD for macOS and Windows: projects as folders with locks, autosaves, and right-click actions, and the CAD plugin host (SolidWorks). See [its README](clients/desktop/README.md) and [the Windows app plan](docs/clients/windows-app-plan.md) |
 | `clients/windows` | .NET: the pipe protocol library CAD add-ins use to talk to the app, and later the SolidWorks add-in. See [its README](clients/windows/README.md) |
 
 ## Development

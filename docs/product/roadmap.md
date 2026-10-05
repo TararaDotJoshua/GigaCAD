@@ -17,13 +17,12 @@ Live and verified in production:
 - GitHub-style user pages (#31): avatar, bio, contribution graph, recent activity, and a Starred tab.
 - The project file directory (#34): root files and folders with their own revisions, next to `Branches` and `Releases`. See [the file directory plan](../ui/file-directory-plan.md).
 - GigaCAD for macOS (`clients/desktop`, #42–#44), verified against production. Nothing is published to `downloads.gigacad.site` yet, so the download links return 404.
-- GigaCAD for Windows W1 (#46): the desktop app runs on Windows with the CAD plugin host started.
-- CI on every pull request, with `check`, `api-image`, `integration`, and `e2e` required on `main`. `scripts/check-site.sh` checks every page type on the live site after each web deploy and every 15 minutes.
+- GigaCAD for Windows, W1–W4 and W7 (#46–#50): the desktop app runs on Windows with the CAD plugin host started, locks files and folders, adds the File Explorer menu, folder icons, and `giga.cmd`, answers the add-in's pipe requests from the sync engine, and has a release workflow and download link for the installer. The installer isn't published yet, so the Windows download returns 404.
+- CI on every pull request, with `check`, `api-image`, `integration`, `e2e`, and `windows` required on `main`. `scripts/check-site.sh` checks every page type on the live site after each web deploy and every 15 minutes.
 
 ## 1. Land the work in flight
 
-- **Windows PR stack.** #47 (W2 locks) → #48 (W3 Explorer) → #49 (W4 add-in methods) → #50 (W7 installer download). Each targets the one before it. Merge them in order and retarget each to `main` as its base merges. #49's `e2e` failed on a Docker Hub rate limit, so re-run it before debugging. These PRs also edit `docs/NEXT.md` and `docs/WINDOWS_APP_PLAN.md`, which now live at `docs/product/roadmap.md` and `docs/clients/windows-app-plan.md`. Their changes are already folded in, so keep the new files when resolving conflicts.
-- **Web UX fixes.** Branch `web-ux-fixes` (worktree `~/Documents/GigaCAD-webux`) has phases 1–4 committed and 5–6 in progress, and isn't pushed yet. The plan is [web-ux-plan.md](../ui/web-ux-plan.md). That branch also adds `docs/WEB_UX_PLAN.md`, so drop that copy, since the plan now lives in `docs/ui/`.
+- **Web UX fixes.** Phases 1–6 of [the web UX plan](../ui/web-ux-plan.md) are in stacked PRs, each targeting the one before it: #52 (phase 1) → #53 (phases 2–4) → #54 (phase 5) → #55 (phase 6). Merge them in order and retarget each to `main` as its base merges. Phases 7 (collaboration, account, billing) and 8 (polish) are next.
 - **On a Windows PC (needs the owner):** install the CI-built installer and test sign-in, sync, check-out from the right-click menu, saving in SolidWorks, locks, icons, and the tray. Then run the Desktop release workflow with `windows` checked, and set up code signing.
 
 ## 2. Finish the launch checklist
@@ -51,7 +50,7 @@ These need the owner's accounts.
 
 Following the phases in [plan.md](plan.md):
 
-1. **Windows app (phase 3).** Built through W4 and W7 in the PR stack above. See [the Windows app plan](../clients/windows-app-plan.md).
+1. **Windows app (phase 3).** W1–W4 and W7 are merged (#46–#50). What's left needs the Windows PC, above. See [the Windows app plan](../clients/windows-app-plan.md).
 2. **SolidWorks add-in (phase 4, milestones W5–W6).** Task Pane, read-only banner, references, reconnecting, the pipe server identity check, STL export on version commits, and candidate rebuilds with STEP AP242 and fine STL. It builds only on a computer with SolidWorks installed, because the interop DLLs come from the install. The installer must also register the add-in.
 3. **macOS client (phase 7).** The folder-based app is built. Next: try it on a clean Mac account, then decide whether viewers' root folders should be locked and whether local copies of archived branches should be removed. A File Provider version needs a Developer ID.
 4. **Other CAD programs (phase 7).** Fusion, FreeCAD, and Onshape exports through generic parsers.

@@ -11,8 +11,6 @@ Hobbyists and enthusiasts don't have an affordable, CAD-agnostic way to version 
 
 v1 targets **SolidWorks**. SolidWorks is Windows-only, so the Windows app and a SolidWorks add-in are the priority. (A folder-based macOS app shipped first, and Windows is a port of it.) The core stays CAD-agnostic: unknown file types are fully versioned, they just miss the SolidWorks extras.
 
-The directory `/Users/joshtarara/Documents/GigaCAD` is empty, so this is a new build.
-
 ## Terminology
 | Term | Meaning |
 |---|---|
@@ -68,12 +66,11 @@ The directory `/Users/joshtarara/Documents/GigaCAD` is empty, so this is a new b
 ```
 gigacad/                         (pnpm monorepo, domain: gigacad.site)
   packages/core/        types, manifest diff, pick → candidate builder, approval evaluation, ignore rules
-  packages/parsers/     (folded into apps/api/src/thumbnails) neutral-format parsing (STL/3MF/OBJ/STEP/IGES) and SolidWorks preview pictures
-  apps/api/             Fastify on Fly.io/Railway; Supabase Postgres via postgres.js (schema lives in supabase/migrations); Supabase Auth JWT verification; Cloudflare R2 presigned URLs (SeaweedFS locally)
-  apps/worker/          pg-boss jobs: glTF/thumbnail generation, blob GC, stale-lock notices
+  apps/api/             Fastify on Railway; Supabase Postgres via postgres.js (schema lives in supabase/migrations); Supabase Auth JWT verification; Cloudflare R2 presigned URLs (SeaweedFS locally)
+  (apps/api also runs the background jobs and renders thumbnails in a worker thread; there is no separate worker app)
   apps/web/             One Next.js app on Cloudflare Workers (@opennextjs/cloudflare): marketing pages (static) at gigacad.site, product at app.gigacad.site; three.js viewer; Supabase Auth UI
   clients/cli/          `giga` TS CLI (power users + E2E tests)
-  clients/desktop/      GigaCAD for macOS and Windows: Electron app that runs the CLI in-process; real Finder/Explorer folders, locks, icons, Quick Actions/context menu, over-the-air code updates, and the CAD plugin host (see WINDOWS_APP_PLAN.md)
+  clients/desktop/      GigaCAD for macOS and Windows: Electron app that runs the CLI in-process; real Finder/Explorer folders, locks, icons, Quick Actions/context menu, over-the-air code updates, and the CAD plugin host (see [the Windows app plan](../clients/windows-app-plan.md))
   clients/windows/      .NET: the add-in pipe protocol library (netstandard2.0), and later the SolidWorks add-in (.NET Framework 4.8 COM, Task Pane) that talks to the desktop app over a named pipe
   clients/macos/        (later) File Provider extension, same folder layout
   supabase/             Supabase CLI project: migrations, RLS policies, local stack (`supabase start`)
@@ -88,7 +85,7 @@ gigacad/                         (pnpm monorepo, domain: gigacad.site)
 | CAD files, previews | Cloudflare R2 (zero egress). Clients upload and download directly through presigned URLs |
 | Database, logins, live updates | Supabase (Free while developing, Pro at launch). Supabase Storage is not used |
 | Website + marketing | Cloudflare Workers via OpenNext (Workers Paid, $5/mo): `gigacad.site` (marketing), `app.gigacad.site` (product). Reads previews straight from R2 through a Worker binding |
-| API + worker | Fly.io or Railway (long-running Node processes; the worker needs RAM for STEP tessellation) |
+| API and background jobs | Railway (one long-running Node process; thumbnails render in a worker thread) |
 
 ### Data model (Postgres)
 - `profiles` (1:1 with Supabase `auth.users`: handle, quota_bytes), `projects` (visibility, license, `deleted_at`), `project_members` (role: owner/maintainer/contributor/viewer)
@@ -118,7 +115,7 @@ gigacad/                         (pnpm monorepo, domain: gigacad.site)
 - Live updates: Supabase Realtime (Postgres changes on `branches`, `release_requests`, `approvals`) push checkout locks, RR status, and approvals to the web app, tray app, and add-in
 
 ### Windows app (`clients/desktop`)
-The full plan is in [WINDOWS_APP_PLAN.md](WINDOWS_APP_PLAN.md).
+The full plan is in [the Windows app plan](../clients/windows-app-plan.md).
 
 - **One app for both systems:** Windows gets the macOS app (`clients/desktop`), ported. Projects are real folders in `%USERPROFILE%\GigaCAD`, laid out like the web directory: root files, `Branches\<name>\`, and `Releases\vN\`.
 - **Locks:** branches you don't hold, and releases, are locked with the read-only attribute and a deny-write ACL.
@@ -131,7 +128,7 @@ The full plan is in [WINDOWS_APP_PLAN.md](WINDOWS_APP_PLAN.md).
 - **Later:** a Cloud Files sync root (CsWin32 bindings) for on-demand files, with placeholder states and an `IExplorerCommand` menu in a sparse package, when downloading whole branches gets too slow.
 
 ### SolidWorks add-in (`clients/windows/src/GigaCAD.SolidWorks.AddIn`)
-A .NET Framework 4.8 COM add-in. It talks to the desktop app over the plugin pipe protocol (WINDOWS_APP_PLAN.md) using `clients/windows/src/GigaCAD.Plugins.Protocol`.
+A .NET Framework 4.8 COM add-in. It talks to the desktop app over the plugin pipe protocol ([the Windows app plan](../clients/windows-app-plan.md)) using `clients/windows/src/GigaCAD.Plugins.Protocol`.
 
 - **Task Pane:**
   - the current project, branch, and checkout holder
@@ -146,7 +143,7 @@ A .NET Framework 4.8 COM add-in. It talks to the desktop app over the plugin pip
 - Exports are optional. Files committed without the add-in (the CLI, macOS) show the preview picture SolidWorks saved inside them, and `giga export <file> <export>` attaches a STEP or STL by hand.
 
 ### Web (gigacad.site)
-- **Project page:** a file directory ([FILE_DIRECTORY_PLAN.md](FILE_DIRECTORY_PLAN.md)): root files and folders with their own revisions, `Branches` and `Releases` as folders, tags, favorites, search, and recent files, with thumbnails and a 3D viewer. SolidWorks files preview from their STL export and offer STEP and STL downloads when they have them. A root `README.md` or `README.txt` shows under the files, and a `README.md` can embed pictures and videos from the project.
+- **Project page:** a file directory ([the file directory plan](../ui/file-directory-plan.md)): root files and folders with their own revisions, `Branches` and `Releases` as folders, tags, favorites, search, and recent files, with thumbnails and a 3D viewer. SolidWorks files preview from their STL export and offer STEP and STL downloads when they have them. A root `README.md` or `README.txt` shows under the files, and a `README.md` can embed pictures and videos from the project.
 - **Branches page:** checkout badges ("checked out by @alex, 2h") and each branch's version timeline. Autosaves appear as a collapsible "unsaved work" group.
 - **Release Request:**
   - diff-pick table with before/after 3D previews, per-file pick controls, and a replace-item picker

@@ -31,7 +31,7 @@ const STEPS: Record<string, readonly SetupStepId[]> = {
   win32: ['signin', 'folder', 'quickActions', 'urlScheme', 'cli', 'login'],
   default: ['applications', 'signin', 'folder', 'quickActions', 'urlScheme', 'cli', 'login'],
 };
-/** Not built for Windows yet (docs/WINDOWS_APP_PLAN.md, milestone W3). */
+/** Not built for Windows yet (docs/clients/windows-app-plan.md, milestone W3). */
 const NOT_YET_ON_WINDOWS = 'Not available on Windows yet';
 const OPTIONAL = new Set<SetupStepId>(['cli', 'applications']);
 

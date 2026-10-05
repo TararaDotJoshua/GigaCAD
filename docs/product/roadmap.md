@@ -22,7 +22,7 @@ Live and verified in production:
 
 ## 1. Land the work in flight
 
-- **Web UX fixes.** Phases 1–6 of [the web UX plan](../ui/web-ux-plan.md) are in stacked PRs, each targeting the one before it: #52 (phase 1) → #53 (phases 2–4) → #54 (phase 5) → #55 (phase 6). Merge them in order and retarget each to `main` as its base merges. Phases 7 (collaboration, account, billing) and 8 (polish) are next.
+- **Web UX fixes.** Phases 1–6 of [the web UX plan](../ui/web-ux-plan.md) are merged: #52 (phase 1), #53 (phases 2–4), #54 (phase 5), and #55 (phase 6). Phases 7 (collaboration, account, billing) and 8 (polish) are next.
 - **On a Windows PC (needs the owner):** install the CI-built installer and test sign-in, sync, check-out from the right-click menu, saving in SolidWorks, locks, icons, and the tray. Then run the Desktop release workflow with `windows` checked, and set up code signing.
 
 ## 2. Finish the launch checklist

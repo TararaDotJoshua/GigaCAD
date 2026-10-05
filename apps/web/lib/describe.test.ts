@@ -2,7 +2,7 @@ import type { ApprovalRules, PickRow } from '@gigacad/core';
 import { describe, expect, it } from 'vitest';
 import type { Commit, Member } from './api';
 import { blockerText, branchTone, collapseActivity, describeEvent, eligibleApprovers, groupTimeline, rowNote } from './describe';
-import { draftFromPicks, picksFromDraft, samePicks } from './picks';
+import { draftFromPicks, outcomeText, pickOutcome, picksFromDraft, samePicks } from './picks';
 
 const entry = (itemId: string, path: string, blob = 'b') => ({ itemId, path, blob });
 
@@ -131,5 +131,22 @@ describe('activity feed', () => {
       names,
     );
     expect(feed.map((entry) => entry.text)).toEqual(['release_request_opened', '@alex committed 2 versions on longer-arms', '@sam worked on longer-arms', 'project_created']);
+  });
+});
+
+describe('pick outcome', () => {
+  const entry = (path: string) => ({ itemId: path, path, blob: path });
+  const rows = [
+    { itemId: 'a', path: 'A.SLDPRT', branchChange: { kind: 'modified', itemId: 'a', before: entry('A'), after: entry('A2'), contentChanged: true, moved: false }, mainChange: undefined, conflict: false, defaultAction: 'take_branch' },
+    { itemId: 'b', path: 'B.SLDPRT', branchChange: { kind: 'added', itemId: 'b', after: entry('B') }, mainChange: undefined, conflict: false, defaultAction: 'take_branch' },
+    { itemId: 'c', path: 'C.SLDPRT', branchChange: { kind: 'deleted', itemId: 'c', before: entry('C') }, mainChange: undefined, conflict: false, defaultAction: 'take_branch' },
+  ] as unknown as PickRow[];
+
+  it('counts what the release will change, and says when it changes nothing', () => {
+    const draft = draftFromPicks(rows, {});
+    expect(outcomeText(pickOutcome(rows, draft))).toBe('3 files: 1 edited, 1 added, 1 removed');
+    const kept = { ...draft, a: { kind: 'action' as const, action: 'keep_main' as const }, b: { kind: 'replace' as const, mainItemId: 'x' } };
+    expect(outcomeText(pickOutcome(rows, kept))).toBe('2 files: 1 removed, 1 replacing a main file');
+    expect(outcomeText(pickOutcome(rows, Object.fromEntries(rows.map((row) => [row.itemId, { kind: 'action' as const, action: 'keep_main' as const }]))))).toBe('no files: main stays as it is');
   });
 });

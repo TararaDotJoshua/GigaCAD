@@ -69,6 +69,7 @@ export interface BranchFolder {
   readonly checkedOutBy: string | null;
   readonly checkedOutByHandle: string | null;
   readonly checkedOutMachine: string | null;
+  readonly checkedOutAt: Date | null;
 }
 
 export type DirectoryItem = DirectoryFile | DirectoryFolder;
@@ -270,7 +271,7 @@ interface BranchRow extends BranchFolder {
 }
 
 const BRANCH_COLUMNS = (db: Db) => db`
-  b.id, b.name, b.status, b.checked_out_by, h.handle as checked_out_by_handle, b.checked_out_machine,
+  b.id, b.name, b.status, b.checked_out_by, h.handle as checked_out_by_handle, b.checked_out_machine, b.checked_out_at,
   c.manifest_id, c.created_at as changed_at
 `;
 

@@ -17,7 +17,7 @@ export interface NavProject {
   readonly canManage?: boolean;
   readonly activeRequests?: number;
   /** Open and frozen branches. `holder` is "you", someone's handle, or null when nobody has it checked out. */
-  readonly branches?: readonly { readonly name: string; readonly holder: string | null }[];
+  readonly branches?: readonly { readonly name: string; readonly holder: string | null; readonly since?: string | null; readonly age?: string | null }[];
 }
 
 export function SidebarNav({
@@ -149,8 +149,9 @@ function ProjectSections({ project, pathname, onNavigate }: { project: NavProjec
               {branch.holder === 'you' ? (
                 <span className="dot dot-signal" title="Checked out by you" aria-label="checked out by you" />
               ) : branch.holder ? (
-                <span className="app-nav-holder" title={`Checked out by @${branch.holder}`}>
+                <span className="app-nav-holder" title={`Checked out by @${branch.holder}${branch.since ? ` since ${branch.since.slice(0, 16).replace('T', ' ')} UTC` : ''}`}>
                   <LockIcon className="icon" />@{branch.holder}
+                  {branch.age && <span className="app-nav-age"> · {branch.age}</span>}
                 </span>
               ) : null}
             </Link>

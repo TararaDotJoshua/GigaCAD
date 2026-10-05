@@ -2,6 +2,7 @@ import type { Project } from '../../lib/api';
 import { dashboardPath } from '../../lib/hosts';
 import { getBranches, getMyProjectsIfSignedIn, getReleaseRequests, getViewer } from '../../lib/product';
 import { SidebarNav, type NavProject } from './SidebarNav';
+import { relative } from './RelativeTime';
 
 /**
  * The product frame: a Forest sidebar and a Paper work pane, the hero window at full
@@ -26,6 +27,8 @@ export async function Shell({ project, children }: { project?: Project; children
       .map((branch) => ({
         name: branch.name,
         holder: me && branch.checkedOutBy === me.id ? ('you' as const) : branch.checkedOutByHandle,
+        since: branch.checkedOutAt,
+        age: branch.checkedOutAt ? relative(new Date(branch.checkedOutAt), new Date()).replace(/ ago$/, '') : null,
       })),
   };
   const list = projects.map((p) => ({ owner: p.ownerHandle, slug: p.slug, name: p.name }));

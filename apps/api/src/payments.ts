@@ -35,7 +35,7 @@ const subscriptionId = (value: string | { id: string } | null | undefined): stri
   typeof value === 'string' ? value : (value?.id ?? null);
 
 export function createStripePayments(config: {
-  /** A restricted key (rk_) is best; see docs/DEPLOYMENT.md step 10 for its permissions. */
+  /** A restricted key (rk_) is best; see docs/operations/deployment.md step 10 for its permissions. */
   secretKey: string;
   webhookSecret: string;
   /**

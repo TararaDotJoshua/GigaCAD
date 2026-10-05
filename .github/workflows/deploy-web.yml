@@ -1,7 +1,7 @@
 name: Deploy web
 
 # Deploys marketing and the product app to Cloudflare Workers after CI passes on main.
-# Inert until the repository variable DEPLOY_WEB is "true" (docs/DEPLOYMENT.md step 5).
+# Inert until the repository variable DEPLOY_WEB is "true" (docs/operations/deployment.md step 5).
 on:
   workflow_run:
     workflows: [CI]

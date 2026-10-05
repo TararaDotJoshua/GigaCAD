@@ -1,6 +1,6 @@
 /*
  * The signed-in product: the hero demo's app window at full size. A Forest sidebar
- * and a Paper work pane, set in Ink. Tokens and rules come from docs/DESIGN.md.
+ * and a Paper work pane, set in Ink. Tokens and rules come from docs/design/README.md.
  *
  * Everything is scoped under .shell. The marketing base sets Paper text for the
  * Forest page, and the hero demo owns classes like .app-nav and .badge, so these

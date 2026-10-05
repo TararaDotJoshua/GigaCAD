@@ -60,6 +60,7 @@ Scale (a 1.25 ratio at body sizes, larger jumps for display):
 
 Rules:
 - Headlines are set tight, like the T3 hero, in sentence case, and end with a period.
+- Exception (approved 2026-09-30): headings in the product app (`app.gigacad.site`) don't end with a period. Short app headings with periods read oddly next to tables. There's no "GigaCAD" label above them either.
 - Don't give one word a different color, italic, or weight to "accent" it. The whole headline is the statement.
 - Don't use all caps anywhere, and don't put eyebrow labels above headings.
 - Keep lines of text under about 65 characters (`max-width: 36ch` for leads, `60ch` for body).

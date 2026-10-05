@@ -31,7 +31,7 @@ export interface PluginHost {
 
 /**
  * The plugin registry and the add-in pipe. Every add-in method answers not_implemented until
- * the app registers handlers with server.handle() (docs/WINDOWS_APP_PLAN.md, milestone W4).
+ * the app registers handlers with server.handle() (docs/clients/windows-app-plan.md, milestone W4).
  */
 export function createPluginHost(options: PluginHostOptions): PluginHost {
   const platform = options.platform ?? process.platform;

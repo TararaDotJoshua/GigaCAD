@@ -2,7 +2,7 @@ import type { ApprovalRules, ItemChange, PickRow, ProjectRole, ReleaseBlocker } 
 import type { Branch, Commit, Member, ProjectEvent, ReleaseRequestStatus } from './api';
 
 /**
- * Every state has exactly one treatment (docs/DESIGN.md, "Product app").
+ * Every state has exactly one treatment (docs/design/README.md, "Color").
  * `signal` is for good or final states only; `caution` and `danger` for problems.
  */
 export type Tone = 'signal' | 'open' | 'caution' | 'danger' | 'quiet';

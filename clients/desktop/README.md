@@ -72,7 +72,7 @@ backup. Losing it means shipping a new DMG to change keys.
 
 ## Windows
 
-The same app runs on Windows ([docs/WINDOWS_APP_PLAN.md](../../docs/WINDOWS_APP_PLAN.md) tracks the port).
+The same app runs on Windows ([docs/clients/windows-app-plan.md](../../docs/clients/windows-app-plan.md) tracks the port).
 
 - **Where things live:**
   - Settings, bundles, and caches are in `%LOCALAPPDATA%\GigaCAD`, and projects are in `%USERPROFILE%\GigaCAD`.
@@ -92,7 +92,7 @@ The same app runs on Windows ([docs/WINDOWS_APP_PLAN.md](../../docs/WINDOWS_APP_
 
 ## Plugins
 
-CAD-specific behavior (SolidWorks first) comes from plugins in `src/main/plugins/`. The Windows plan in [docs/WINDOWS_APP_PLAN.md](../../docs/WINDOWS_APP_PLAN.md) covers the design.
+CAD-specific behavior (SolidWorks first) comes from plugins in `src/main/plugins/`. The Windows plan in [docs/clients/windows-app-plan.md](../../docs/clients/windows-app-plan.md) covers the design.
 
 - **Plugins:** a plugin is a `GigaPlugin` object (`types.ts`). It can supply file types, ignore patterns, installed versions of its CAD program, menu commands, and its add-in's `clientId`. Plugins are compiled into the signed bundle; add one to `builtInPlugins()` in `index.ts`.
 - **Registry:** `PluginRegistry` combines them and turns off any capability that throws.

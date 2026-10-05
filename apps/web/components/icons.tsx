@@ -171,13 +171,6 @@ export const MergeIcon = ({ className }: IconProps) => (
   </svg>
 );
 
-export const HistoryIcon = ({ className }: IconProps) => (
-  <svg className={className} {...base}>
-    <path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9M2.5 2.5v2.6h2.6" />
-    <path d="M8 5v3.2l2 1.3" />
-  </svg>
-);
-
 export const LogOutIcon = ({ className }: IconProps) => (
   <svg className={className} {...base}>
     <path d="M6.5 2.5H3.5v11h3M10 5l3 3-3 3M13 8H6.5" />

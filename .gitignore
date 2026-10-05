@@ -10,7 +10,6 @@ coverage/
 .wrangler/
 next-env.d.ts
 *.tsbuildinfo
-*.tsbuildinfo
 playwright-report/
 test-results/
 apps/web/public/vendor/

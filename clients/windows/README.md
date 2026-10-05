@@ -1,6 +1,6 @@
 # GigaCAD for Windows: .NET
 
-The GigaCAD app itself is `clients/desktop` (Electron) on both macOS and Windows; see [docs/WINDOWS_APP_PLAN.md](../../docs/WINDOWS_APP_PLAN.md). This folder holds the .NET side: what CAD add-ins need to talk to the app.
+The GigaCAD app itself is `clients/desktop` (Electron) on both macOS and Windows; see [docs/clients/windows-app-plan.md](../../docs/clients/windows-app-plan.md). This folder holds the .NET side: what CAD add-ins need to talk to the app.
 
 | Project | Target | What |
 |---|---|---|

@@ -4,7 +4,7 @@ import { formatBytes, PLANS, type BillingInterval } from "@gigacad/core";
 import { useState } from "react";
 import { APP_URL } from "./site";
 
-// Paid plans open once Stripe is set up; see docs/DEPLOYMENT.md.
+// Paid plans open once Stripe is set up; see docs/payments/README.md.
 const PAID_OPEN = process.env.NEXT_PUBLIC_BILLING_ENABLED === "true";
 
 export function PricingPlans() {

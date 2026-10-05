@@ -58,7 +58,7 @@ export default function Home() {
           <div className="download-links">
             <a className="text-link hero-download" href="/download">
               <WindowsIcon className="icon" />
-              Download the drive for Windows
+              Download for Windows
             </a>
             <a className="text-link hero-download" href={MAC_DOWNLOAD_URL}>
               <AppleIcon className="icon" />
@@ -354,7 +354,7 @@ export default function Home() {
           <div className="download-links">
             <a className="text-link" href="/download">
               <WindowsIcon className="icon" />
-              Download the drive for Windows
+              Download for Windows
             </a>
             <a className="text-link" href={MAC_DOWNLOAD_URL}>
               <AppleIcon className="icon" />

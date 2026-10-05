@@ -1,4 +1,4 @@
-import { MAC_DOWNLOAD_URL } from "../../../components/site";
+import { DOWNLOAD_URL, MAC_DOWNLOAD_URL } from "../../../components/site";
 
 // The docs table of contents. Each page lists the headings it will cover;
 // pages without `body` render those headings as unwritten sections.
@@ -216,8 +216,10 @@ function FirstProject() {
   return (
     <>
       <p>
-        This walks through a new project from empty to its first release. The GigaCAD drive for Windows
-        isn’t out yet, so files go in with the <a href="/docs/cli">command-line tool</a> for now.
+        This walks through a new project from empty to its first release, using the{" "}
+        <a href="/docs/cli">command-line tool</a> so every step is visible. The GigaCAD app for{" "}
+        <a href="/docs/install-windows">Windows</a> and <a href="/docs/install-mac">Mac</a> does the same
+        from the right-click menu.
       </p>
 
       <h2 id="create-a-project">Create a project</h2>
@@ -606,6 +608,76 @@ giga rr release --notes "Stiffer jaw, new fingertip"`}</Command>
   );
 }
 
+function InstallWindows() {
+  return (
+    <>
+      <p>
+        GigaCAD for Windows puts your projects in a <code>GigaCAD</code> folder in your user folder, laid out
+        like the web directory. Branches you check out are editable; everything else is read-only.
+      </p>
+
+      <h2 id="requirements">Requirements</h2>
+      <p>
+        Windows 10 version 1809 or later, or Windows 11, 64-bit. Nothing else: the app brings its own copy of
+        everything it needs, including the <code>giga</code> command-line tool. SolidWorks isn’t required.
+      </p>
+
+      <h2 id="run-the-installer">Run the installer</h2>
+      <p>
+        <a href={DOWNLOAD_URL}>Download GigaCAD for Windows</a> and run it. It installs for your user account
+        only, so it doesn’t ask for an administrator, and it opens GigaCAD when it’s done. The installer isn’t
+        code-signed yet, so Windows SmartScreen may say it protected your PC. To install anyway:
+      </p>
+      <ol>
+        <li>
+          Choose <strong>More info</strong>.
+        </li>
+        <li>
+          Check that the app is <code>GigaCAD-Setup</code>, then choose <strong>Run anyway</strong>.
+        </li>
+      </ol>
+      <p>You only do this once. Updates install themselves.</p>
+
+      <h2 id="sign-in-with-a-device-code">Sign in with a device code</h2>
+      <p>
+        GigaCAD opens a sign-in window and your browser. Check that the browser shows the same code, then
+        approve it. A short checklist then creates the <code>GigaCAD</code> folder and adds GigaCAD to the File
+        Explorer right-click menu. If you already use <code>giga</code> in a terminal, the app uses the same
+        sign-in.
+      </p>
+
+      <h2 id="the-gigacad-folder">The GigaCAD folder</h2>
+      <p>
+        Each project is at <code>%USERPROFILE%\GigaCAD\&lt;owner&gt;\&lt;project&gt;</code>. Root files sync
+        both ways: edit one and a new revision is recorded. <code>Branches</code> holds a folder per branch.
+        To download one you haven’t yet, right-click it and choose <strong>GigaCAD → Download</strong>.{" "}
+        <code>Releases</code> keeps the latest release by default.
+      </p>
+      <p>
+        To edit a branch, right-click its folder and choose <strong>GigaCAD → Check Out</strong>. Each save
+        becomes an autosave after a few seconds; use <strong>GigaCAD → Commit Version…</strong> to record a
+        named version, and <strong>GigaCAD → Check In</strong> when you’re done. On Windows 11 the GigaCAD
+        menu is under <strong>Show more options</strong>. The same actions are in the GigaCAD window, which
+        opens from its icon in the notification area.
+      </p>
+
+      <h2 id="the-command-line-tool">The command-line tool</h2>
+      <p>
+        In GigaCAD’s Settings, choose <strong>Install Command Line Tool</strong> to use <code>giga</code> in a
+        new terminal without installing Node. See <a href="/docs/cli">Command-line tool</a>.
+      </p>
+
+      <h2 id="uninstall">Uninstall</h2>
+      <p>
+        Quit GigaCAD from its notification-area icon, then uninstall it from{" "}
+        <strong>Settings → Apps → Installed apps</strong>. That also removes the right-click menu. Your{" "}
+        <code>GigaCAD</code> folder stays. Files in a read-only branch can be made editable from each file’s
+        Properties.
+      </p>
+    </>
+  );
+}
+
 function InstallMac() {
   return (
     <>
@@ -697,8 +769,9 @@ export const docs: DocSection[] = [
       {
         slug: "install-windows",
         title: "Install on Windows",
-        summary: "Install the GigaCAD drive, tray app, and SolidWorks add-in, then sign in.",
-        outline: ["Requirements", "Run the installer", "Sign in with a device code", "Find the drive in File Explorer", "Uninstall"],
+        summary: "Install GigaCAD for Windows, sign in, and find your projects in File Explorer.",
+        outline: ["Requirements", "Run the installer", "Sign in with a device code", "The GigaCAD folder", "The command-line tool", "Uninstall"],
+        body: InstallWindows,
       },
       {
         slug: "install-mac",

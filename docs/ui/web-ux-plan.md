@@ -2,7 +2,7 @@
 
 This plan covers the findings from the 2026-09-30 audit of the web app: a code read of five flows, then a visual walkthrough on production (public pages) and a local stack (signed-in pages). Paths are relative to `apps/web/` unless they start with `apps/api/` or `supabase/`.
 
-Work is on branch `web-ux-fixes` (worktree `~/Documents/GigaCAD-webux`). On 2026-10-05, phase 1 (`8d70f0a`) and phases 2–4 (`eaac0ed`) were committed there, phases 5–6 were in progress and uncommitted, and the branch wasn't pushed yet.
+Status (2026-10-05): phases 1–6 are in stacked PRs, each targeting the one before it: #52 (phase 1), #53 (phases 2–4), #54 (phase 5), and #55 (phase 6). Phases 7 and 8 are next.
 
 ## Decisions
 
@@ -36,7 +36,7 @@ The owner approved every recommendation below on 2026-09-30. Product-app heading
 
 ## Phase 2: loading, errors, and not losing your place
 
-1. **Loading states.** Add `loading.tsx` skeletons for `(product)`, `[owner]/[project]`, and `[project]/tree/[...path]`. Match the table and rail shapes so the layout doesn't jump.
+1. **Loading states.** Add `loading.tsx` skeletons for `(product)`, `[owner]/[project]`, and `[project]/tree/[...path]`. Match the table and rail shapes so the layout doesn't jump. The project skeleton wraps only the project root (#53). A loading boundary sends a page with a 200 before it renders, so over pages that can be missing (a release, commit, or folder) it turns their 404 into a 200.
 2. **Error pages.** Add a branded `app/not-found.tsx` and an `(product)/[owner]/[project]/not-found.tsx` with the sidebar, a plain sentence, and links to "Your projects" and "Explore". Add `(product)/error.tsx` with a Retry button that keeps the shell, and `global-error.tsx` as the last resort.
 3. **Return after login.**
    - `lib/session.ts` `requireAccessToken()` redirects to plain `/login`. Pass `next` using the request path. Set an `x-pathname` header in `proxy.ts` so server code can read it.

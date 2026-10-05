@@ -1,9 +1,10 @@
 name: Desktop release
 
-# Publishes an over-the-air update of GigaCAD for macOS: the signed code bundle, then the
-# manifest installed apps poll. Run by hand from main after CI passes, once
-# clients/desktop/package.json has the new version. With `dmg`, it also builds and uploads a
-# new DMG, which is needed when SHELL_VERSION changed.
+# Publishes an over-the-air update of GigaCAD for macOS and Windows: the signed code bundle
+# (the same JavaScript on both), then the manifests installed apps poll. Run by hand from main
+# after CI passes, once clients/desktop/package.json has the new version. With `dmg`, it also
+# builds and uploads a new DMG; with `windows`, a new Windows installer. Both are needed when
+# SHELL_VERSION changed; `windows` is also how the first Windows installer gets published.
 #
 # Needs the DESKTOP_UPDATE_KEY secret, and a CLOUDFLARE_API_TOKEN that can write to the R2
 # bucket gigacad-downloads (served at downloads.gigacad.site).
@@ -15,6 +16,10 @@ on:
         required: true
       dmg:
         description: Also build and upload a new DMG
+        type: boolean
+        default: false
+      windows:
+        description: Also build and upload a new Windows installer
         type: boolean
         default: false
 
@@ -60,9 +65,59 @@ jobs:
             put "GigaCAD.dmg" "dist/GigaCAD-$version-universal.dmg" application/x-apple-diskimage "public, max-age=300"
           fi
           put stable/manifest.json release/manifest.json application/json "public, max-age=60"
+          put stable/win32/manifest.json release/win32/manifest.json application/json "public, max-age=60"
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-release
           path: |
             clients/desktop/release
             clients/desktop/dist/*.dmg
+      # The Windows job packages this exact build: the signed bundle and shell (out/) and the icons
+      # rendered on this Mac (build/).
+      - if: inputs.windows
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-build
+          path: |
+            clients/desktop/out
+            clients/desktop/build
+
+  # The Windows installer, from the Mac job's signed build. Unsigned for now (no code-signing
+  # certificate yet): Windows SmartScreen asks once, see /docs/install-windows.
+  windows:
+    if: inputs.windows && github.ref == 'refs/heads/main'
+    needs: release
+    runs-on: windows-latest
+    environment: production
+    env:
+      DESKTOP_UPDATE_KEY: ${{ secrets.DESKTOP_UPDATE_KEY }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-build
+          path: clients/desktop
+      - name: Build the installer
+        run: node clients/desktop/scripts/dist.mjs --skip-build
+      - name: Upload
+        working-directory: clients/desktop
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          put() { pnpm --filter @gigacad/web exec wrangler r2 object put "gigacad-downloads/desktop/$1" --file "$PWD/$2" --content-type "$3" --cache-control "$4" --remote; }
+          put "GigaCAD-Setup-$version.exe" "dist/GigaCAD-Setup-$version.exe" application/vnd.microsoft.portable-executable "public, max-age=31536000, immutable"
+          put "GigaCAD-Setup.exe" "dist/GigaCAD-Setup-$version.exe" application/vnd.microsoft.portable-executable "public, max-age=300"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-release-windows
+          path: clients/desktop/dist/*.exe

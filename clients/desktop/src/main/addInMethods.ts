@@ -85,7 +85,7 @@ function insideBranch(dir: string, path: string): string | undefined {
 }
 
 /**
- * Registers the add-in methods on the pipe server (docs/WINDOWS_APP_PLAN.md, milestone W4).
+ * Registers the add-in methods on the pipe server (docs/clients/windows-app-plan.md, milestone W4).
  * Errors from giga and the API keep their codes (`checked_out`, `stale_head`, …).
  */
 export function registerAddInMethods(server: PluginPipeServer, host: AddInHost): void {

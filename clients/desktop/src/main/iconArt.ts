@@ -1,5 +1,5 @@
 // Finder icons, drawn from the web app's line icons (apps/web/components/icons.tsx) in the brand
-// colors (docs/DESIGN.md). Pure functions: build scripts pre-render these to PNG, and the app
+// colors (docs/design/README.md). Pure functions: build scripts pre-render these to PNG, and the app
 // renders the rare unknown file extension at run time.
 //
 // CoreSVG, which draws these on macOS, ignores `rgb(r g b / a)`: use hex colors with separate

@@ -237,7 +237,7 @@ test('deletes a project and restores it from Account', async ({ page }) => {
   await page.goto(`/${world.handle}/${slug}/settings`);
   await page.getByLabel('Project slug').fill(slug);
   await page.getByRole('button', { name: 'Delete project' }).click();
-  await page.waitForURL('**/app');
+  await page.waitForURL(/\/app\?deleted=/);
 
   await page.goto('/settings');
   const row = page.getByRole('row', { name: /Undo me/ });

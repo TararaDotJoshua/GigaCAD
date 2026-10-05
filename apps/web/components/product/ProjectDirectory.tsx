@@ -64,6 +64,7 @@ export async function ProjectDirectory({
   signedIn,
   viewerHandle,
   counts,
+  embedded = false,
 }: {
   project: Project;
   path: string;
@@ -72,6 +73,8 @@ export async function ProjectDirectory({
   viewerHandle: string | null;
   /** Shown on the Branches and Releases rows at the root, so those rows aren't blank. */
   counts?: { branches: number; releases: number };
+  /** Inside another page (a branch or release page) that has its own heading: just the files. */
+  embedded?: boolean;
 }) {
   const owner = project.ownerHandle;
   const slug = project.slug;
@@ -126,6 +129,7 @@ export async function ProjectDirectory({
 
   return (
     <div className="directory">
+      {!embedded && (
       <div className="toolbar directory-toolbar">
         <form action={projectPath(owner, slug)} className="app-search explore-search" role="search">
           <SearchIcon className="icon" />
@@ -143,6 +147,7 @@ export async function ProjectDirectory({
           {signedIn && tab('favorites', 'Favorites')}
         </nav>
       </div>
+      )}
 
       {searching ? (
         <p className="toolbar-note directory-summary">
@@ -167,7 +172,7 @@ export async function ProjectDirectory({
           . <Link href={projectPath(owner, slug)}>Back to all files</Link>
         </p>
       ) : (
-        <FolderBar project={project} listing={listing!} owner={storageOwner} />
+        !embedded && <FolderBar project={project} listing={listing!} owner={storageOwner} />
       )}
 
       {/* A brand-new project: nothing at the root but the two built-in folders, and no releases. */}
@@ -414,8 +419,14 @@ async function DirectoryTable({
                       <>
                         <StatusBadge tone={branchTone(entry.branch.status)}>{BRANCH_STATUS_LABEL[entry.branch.status]}</StatusBadge>
                         {entry.branch.checkedOutByHandle && (
-                          <span className="muted lock-note" title={`Checked out by @${entry.branch.checkedOutByHandle}`}>
+                          <span className="muted lock-note" title={`Checked out by @${entry.branch.checkedOutByHandle}${entry.branch.checkedOutMachine ? ` on ${entry.branch.checkedOutMachine}` : ''}`}>
                             <LockIcon className="icon" />@{entry.branch.checkedOutByHandle}
+                            {entry.branch.checkedOutAt && (
+                              <>
+                                {' · '}
+                                <RelativeTime value={entry.branch.checkedOutAt} />
+                              </>
+                            )}
                           </span>
                         )}
                       </>

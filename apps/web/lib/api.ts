@@ -362,6 +362,7 @@ export interface BranchFolder {
   checkedOutBy: string | null;
   checkedOutByHandle: string | null;
   checkedOutMachine: string | null;
+  checkedOutAt: string | null;
 }
 
 export interface DirectoryFolder {

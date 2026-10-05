@@ -18,8 +18,13 @@ import type { ProjectParams } from '../../layout';
 type EntryParams = ProjectParams & { entryId: string };
 
 export async function generateMetadata({ params }: { params: Promise<EntryParams> }) {
-  const { owner, project } = await params;
-  return { title: `${owner}/${project}` };
+  const { owner, project: slug, entryId } = await params;
+  // A missing entry 404s from the page itself. Throwing here would stream the error after a 200.
+  const entry = await getProject(owner, slug)
+    .then((project) => getEntry(project.id, entryId))
+    .then((detail) => detail.entry)
+    .catch(() => null);
+  return { title: `${entry?.name ?? 'File'} · ${owner}/${slug}` };
 }
 
 /** A file or folder at the project root: its revisions and tags, and renaming, moving, and deleting it. */
@@ -38,7 +43,7 @@ export default async function EntryPage({ params }: { params: Promise<EntryParam
     <div className="page">
       <PageHead
         crumbs={[
-          { label: owner },
+          { label: owner, href: `/${owner}` },
           { label: project.name, href: projectPath(owner, slug) },
           ...segments.slice(0, -1).map((name, index) => ({ label: name, href: treePath(owner, slug, segments.slice(0, index + 1).join('/')) })),
           { label: entry.name },
@@ -78,8 +83,8 @@ export default async function EntryPage({ params }: { params: Promise<EntryParam
             <section className="section">
               <h2>Revisions</h2>
               <p className="section-intro">
-                Each upload or replacement of this file is kept. Renaming or moving it doesn’t make a revision. Root files are separate from branches and
-                releases.
+                Files uploaded to the project keep a numbered revision for every upload or replacement. Renaming or moving doesn’t make one. Branches and
+                releases keep their own versions, separate from these.
               </p>
               <div className="table-wrap">
                 <table className="data-table">
@@ -125,8 +130,10 @@ export default async function EntryPage({ params }: { params: Promise<EntryParam
                 <ReplaceFile projectId={project.id} entryId={entry.id} name={entry.name} />
               </section>
             )}
-            <section className="rail-card">
-              <h2>Rename or move</h2>
+            <details className="rail-card rail-details">
+              <summary>
+                <h2>Rename or move</h2>
+              </summary>
               <ActionForm action={moveEntry.bind(null, project.id, entry.id)} submitLabel="Save">
                 <label className="field">
                   <span>Name</span>
@@ -144,7 +151,7 @@ export default async function EntryPage({ params }: { params: Promise<EntryParam
                   </select>
                 </label>
               </ActionForm>
-            </section>
+            </details>
             <section className="rail-card">
               <h2>Delete</h2>
               <p className="muted">

@@ -256,7 +256,9 @@ test('previews a 3D file in the browser', async ({ page }) => {
 
   await logIn(page);
   await page.goto(projectUrl('branches', 'preview'));
-  await page.getByRole('button', { name: 'Preview bracket.stl' }).click();
+  // The branch page's file table shows folders like the rest of the project; open parts.
+  await page.getByRole('row', { name: /parts/ }).getByRole('link', { name: 'parts' }).click();
+  await page.getByRole('row', { name: /bracket\.stl/ }).getByRole('button', { name: 'Preview bracket.stl' }).click();
   const dialog = page.getByRole('dialog', { name: '3D preview of bracket.stl' });
   await expect(dialog.locator('canvas')).toBeVisible();
   await expect(dialog.getByRole('status')).toHaveCount(0);
@@ -294,6 +296,7 @@ test('previews and downloads a SolidWorks part through its STL export', async ({
 
   await logIn(page);
   await page.goto(projectUrl('branches', 'exports'));
+  await page.getByRole('row', { name: /parts/ }).getByRole('link', { name: 'parts' }).click();
   const row = page.getByRole('row', { name: /Clip\.SLDPRT/ });
   await expect(row.getByRole('button', { name: 'Download Clip.SLDPRT as STL' })).toBeVisible();
   await row.getByRole('button', { name: 'Preview Clip.SLDPRT' }).click();
@@ -405,6 +408,7 @@ test('keeps files at the project root, with folders, revisions, tags, and favori
   // Its page lists both revisions; renaming keeps them.
   await page.getByRole('row', { name: /plate\.dxf/ }).getByRole('link', { name: 'plate.dxf' }).click();
   await expect(page.getByRole('row', { name: /2 · current/ })).toBeVisible();
+  await page.getByText('Rename or move').click();
   await page.getByLabel('Name').fill('base plate.dxf');
   await page.getByLabel('Folder').selectOption({ label: 'Project root' });
   await page.getByRole('button', { name: 'Save' }).click();

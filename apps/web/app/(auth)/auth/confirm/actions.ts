@@ -9,12 +9,12 @@ export async function confirmEmail(form: FormData) {
   const tokenHash = form.get('token_hash');
   const type = form.get('type');
   const rawNext = form.get('next');
-  if (typeof tokenHash !== 'string' || (type !== 'email' && type !== 'recovery')) redirect('/login?error=confirmation');
+  if (typeof tokenHash !== 'string' || (type !== 'email' && type !== 'recovery' && type !== 'email_change')) redirect('/login?error=confirmation');
   const { error } = await (await createClient()).auth.verifyOtp({ token_hash: tokenHash, type });
-  if (error) redirect(type === 'recovery' ? '/forgot-password?error=recovery' : '/login?error=confirmation');
+  if (error) redirect(type === 'recovery' ? '/forgot-password?error=recovery' : type === 'email_change' ? '/settings?email=expired' : '/login?error=confirmation');
 
   const appOrigin = process.env.NEXT_PUBLIC_GIGACAD_APP_URL ?? 'https://app.gigacad.site';
-  let next = type === 'recovery' ? '/reset-password' : dashboardPath();
+  let next = type === 'recovery' ? '/reset-password' : type === 'email_change' ? '/settings?email=confirmed' : dashboardPath();
   if (typeof rawNext === 'string') {
     try {
       const parsed = new URL(rawNext);

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
 import { idParams, parse, requireCaller, viewerId } from '../http.js';
+import { searchProfiles, withAvatars } from '../services/profiles.js';
 import { exploreProjects, forkProject, starProject, starredProjects, userProfile } from '../services/sharing.js';
 import { withCovers } from '../services/thumbnails.js';
 import { slug, visibility } from './projects.js';
@@ -20,6 +21,12 @@ export function sharingRoutes(app: FastifyInstance, { sql, storage }: AppDeps): 
       request.query,
     );
     return withCovers(storage, await exploreProjects(sql, query));
+  });
+
+  app.get('/v1/profiles', async (request) => {
+    requireCaller(request);
+    const { q } = parse(z.object({ q: z.string().trim().min(1).max(100) }), request.query);
+    return withAvatars(storage, await searchProfiles(sql, q));
   });
 
   app.get('/v1/users/:handle', async (request) => {

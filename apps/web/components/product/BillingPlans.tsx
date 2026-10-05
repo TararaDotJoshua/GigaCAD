@@ -2,11 +2,26 @@
 
 import { formatBytes, PLANS, type BillingInterval, type PlanId } from '@gigacad/core';
 import { useState } from 'react';
-import { choosePlan, openBillingPortal } from '../../app/(product)/actions';
+import { choosePlan } from '../../app/(product)/actions';
 import { ActionButton } from './ActionButton';
 
-/** Every plan with its price for the chosen interval. Buttons go to Stripe Checkout or the billing portal. */
-export function BillingPlans({ current, currentInterval, paying, billingEnabled }: { current: PlanId; currentInterval: BillingInterval | null; paying: boolean; billingEnabled: boolean }) {
+/**
+ * Every plan with its price for the chosen interval. Before paying, a plan's button goes to
+ * Stripe Checkout; once paying, plan changes happen in Stripe, from the button above.
+ */
+export function BillingPlans({
+  current,
+  currentInterval,
+  paying,
+  billingEnabled,
+  from,
+}: {
+  current: PlanId;
+  currentInterval: BillingInterval | null;
+  paying: boolean;
+  billingEnabled: boolean;
+  from?: string;
+}) {
   const [interval, setInterval] = useState<BillingInterval>(currentInterval ?? 'monthly');
   return (
     <div className="billing-plans">
@@ -42,11 +57,9 @@ export function BillingPlans({ current, currentInterval, paying, billingEnabled 
                   <td className="cell-action">
                     {isCurrent ? (
                       <span className="badge">Current plan</span>
-                    ) : plan.id === 'free' ? (
-                      paying && <ActionButton action={openBillingPortal}>Switch to Free</ActionButton>
-                    ) : billingEnabled ? (
-                      <ActionButton action={() => choosePlan(plan.id, interval)} className={paying ? 'btn btn-secondary' : 'btn btn-primary'}>
-                        {paying ? `Switch to ${plan.name}` : `Choose ${plan.name}`}
+                    ) : paying || plan.id === 'free' ? null : billingEnabled ? (
+                      <ActionButton action={() => choosePlan(plan.id, interval, from)} className="btn btn-primary">
+                        Choose {plan.name}
                       </ActionButton>
                     ) : (
                       <span className="muted">Opens soon</span>

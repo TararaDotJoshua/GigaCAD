@@ -121,6 +121,30 @@ async function logIn(page: Page) {
   await page.waitForURL('**/app');
 }
 
+const admin = () => createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+
+/** Another signed-up person with a handle, for sharing and account tests. */
+async function createPerson(prefix: string) {
+  const email = `e2e-${prefix}-${randomUUID().slice(0, 8)}@test.gigacad.site`;
+  const password = `pw-${randomUUID()}`;
+  const created = await admin().auth.admin.createUser({ email, password, email_confirm: true });
+  if (created.error) throw created.error;
+  const signedIn = await createClient(SUPABASE_URL, ANON_KEY, { auth: { persistSession: false } }).auth.signInWithPassword({ email, password });
+  if (signedIn.error) throw signedIn.error;
+  const token = signedIn.data.session.access_token;
+  const handle = `e2e-${prefix}-${randomUUID().slice(0, 6)}`;
+  await api(token, 'PATCH', '/v1/me', { handle });
+  return { email, password, token, handle };
+}
+
+async function logInAs(page: Page, person: { email: string; password: string }) {
+  await page.goto('/login');
+  await page.getByLabel('Email', { exact: true }).fill(person.email);
+  await page.getByLabel('Password', { exact: true }).fill(person.password);
+  await page.getByRole('button', { name: 'Log in' }).click();
+  await page.waitForURL('**/app');
+}
+
 const projectUrl = (...rest: (string | number)[]) => ['', world.handle, world.slug, ...rest].join('/');
 
 test('picks files, generates the candidate, approves, and releases', async ({ page }) => {
@@ -230,13 +254,97 @@ test('shares a public project: browse it signed out, star it, and fork it', asyn
   await expect(page.locator('#main').getByText('Gearbox.SLDASM')).toBeVisible();
 });
 
+test('adds a member by handle and changes their role in place', async ({ page }) => {
+  const teammate = await createPerson('mate');
+  await logIn(page);
+  await page.goto(projectUrl('settings'));
+  await expect(page.getByText(`Files that members upload count against @${world.handle}’s storage.`)).toBeVisible();
+
+  await page.getByLabel('Handle').fill(teammate.handle);
+  await expect(page.getByText('Sees and downloads files and releases.')).toBeVisible();
+  await page.getByLabel('Role', { exact: true }).selectOption('contributor');
+  await expect(page.getByText('Also uploads files, checks out branches, and opens release requests.')).toBeVisible();
+  await page.getByRole('button', { name: 'Add member' }).click();
+  await expect(page.getByText(`Added @${teammate.handle}.`)).toBeVisible();
+
+  const role = page.getByLabel(`Role for @${teammate.handle}`);
+  await expect(role).toHaveValue('contributor');
+  await role.selectOption('viewer');
+  await expect(page.getByText(`@${teammate.handle} is now a viewer.`)).toBeVisible();
+  const members = await api(world.token, 'GET', `/v1/projects/${world.projectId}/members`);
+  expect(members.find((member: { handle: string }) => member.handle === teammate.handle).role).toBe('viewer');
+  await api(world.token, 'DELETE', `/v1/projects/${world.projectId}/members/${teammate.handle}`);
+});
+
+test('warns before storage runs out, and keeps the warning once it has', async ({ browser }) => {
+  const person = await createPerson('full');
+  const project = await api(person.token, 'POST', '/v1/projects', { slug: 'bench', name: 'Bench' });
+  const [blob] = await uploadContents(person.token, project.id, [`bench ${randomUUID()}`.padEnd(90, '.')]);
+  await api(person.token, 'POST', `/v1/projects/${project.id}/directory/files`, { parentId: null, name: 'Bench.SLDPRT', blob: blob!.sha256 });
+  const setQuota = async (bytes: number) => {
+    const { error } = await admin().from('profiles').update({ quota_bytes: bytes }).eq('handle', person.handle);
+    if (error) throw error;
+  };
+
+  await setQuota(100);
+  const page = await (await browser.newContext()).newPage();
+  await logInAs(page, person);
+  await page.goto(`/${person.handle}/bench`);
+  const banner = page.getByRole('status').filter({ hasText: 'Your storage is 90% full' });
+  await expect(banner).toBeVisible();
+  await expect(banner.getByRole('link', { name: 'Upgrade' })).toHaveAttribute('href', `/settings/billing?from=${encodeURIComponent(`/${person.handle}/bench`)}`);
+  // Until the page hydrates, the button does nothing; click until the banner goes.
+  await expect(async () => {
+    await banner.getByRole('button', { name: 'Dismiss' }).click({ timeout: 1000 });
+    await expect(banner).toHaveCount(0, { timeout: 1000 });
+  }).toPass({ timeout: 15_000 });
+  await page.reload();
+  await expect(page.getByText('Your storage is 90% full')).toHaveCount(0);
+
+  await setQuota(90);
+  await page.reload();
+  const full = page.getByRole('alert').filter({ hasText: 'Your storage is full, so uploads are paused' });
+  await expect(full).toBeVisible();
+  await expect(full.getByRole('button', { name: 'Dismiss' })).toHaveCount(0);
+
+  // Back from Stripe without paying.
+  await page.goto(`/settings/billing?checkout=cancelled&from=${encodeURIComponent(`/${person.handle}/bench`)}`);
+  await expect(page.getByText('No changes were made.')).toBeVisible();
+  await page.getByRole('link', { name: `Back to ${person.handle}/bench` }).click();
+  await page.waitForURL(`**/${person.handle}/bench`);
+  await page.context().close();
+});
+
+test('changes email and password from Account', async ({ browser }) => {
+  const person = await createPerson('acct');
+  const page = await (await browser.newContext()).newPage();
+  await logInAs(page, person);
+  await page.goto('/settings');
+  await expect(page.getByRole('navigation', { name: 'Breadcrumbs' })).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: /^Email/ })).toHaveValue(person.email);
+  await expect(page.getByText('Choose an image…')).toBeVisible();
+
+  await page.getByLabel(/^New password/).fill('a-new-password-1');
+  await page.getByLabel('Confirm new password').fill('a-new-password-1');
+  await page.getByRole('button', { name: 'Change password' }).click();
+  await expect(page.getByText('Password changed.')).toBeVisible();
+  const signedIn = await createClient(SUPABASE_URL, ANON_KEY, { auth: { persistSession: false } }).auth.signInWithPassword({ email: person.email, password: 'a-new-password-1' });
+  expect(signedIn.error).toBeNull();
+
+  const next = `new-${person.email}`;
+  await page.getByRole('textbox', { name: /^Email/ }).fill(next);
+  await page.getByRole('button', { name: 'Change email' }).click();
+  await expect(page.getByText(`Check both inboxes. Confirm the link sent to ${person.email} and the one sent to ${next}.`)).toBeVisible();
+  await page.context().close();
+});
+
 test('deletes a project and restores it from Account', async ({ page }) => {
   const slug = `undo-${randomUUID().slice(0, 6)}`;
   await api(world.token, 'POST', '/v1/projects', { slug, name: 'Undo me' });
 
   await logIn(page);
   await page.goto(`/${world.handle}/${slug}/settings`);
-  await page.getByLabel('Project slug').fill(slug);
+  await page.getByLabel('Project address').fill(slug);
   await page.getByRole('button', { name: 'Delete project' }).click();
   await page.waitForURL(/\/app\?deleted=/);
 

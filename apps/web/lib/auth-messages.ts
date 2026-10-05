@@ -16,6 +16,8 @@ const BY_CODE: Readonly<Record<string, string>> = {
   otp_expired: 'This link has expired. Request a new one.',
   signup_disabled: 'New accounts are closed right now.',
   validation_failed: 'Check the email address and try again.',
+  reauthentication_needed: 'For your security, log out and back in, then change your password.',
+  email_address_invalid: 'Check the email address and try again.',
 };
 
 export function authMessage(error: unknown, fallback = 'Something went wrong. Try again.'): string {

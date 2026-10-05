@@ -4,6 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
 import { createAuthenticator } from '../src/auth.js';
 import { createSql, type Sql } from '../src/db.js';
+import type { Mailer } from '../src/mail.js';
 import type { Payments } from '../src/payments.js';
 import type { BlobStorage, StoredObject } from '../src/storage.js';
 
@@ -69,7 +70,7 @@ export interface Harness {
 /** Enough of a harness to make requests; lets other packages' tests reuse these helpers with their own app. */
 export type AppHarness = Pick<Harness, 'app'>;
 
-export async function createHarness(options: { payments?: Payments } = {}): Promise<Harness> {
+export async function createHarness(options: { payments?: Payments; mailer?: Mailer } = {}): Promise<Harness> {
   const sql = createSql(DATABASE_URL);
   const storage = new MemoryStorage();
   const app = buildApp({

@@ -1,32 +1,45 @@
 import Link from 'next/link';
 import { formatBytes, getPlan, isPlaceholderHandle } from '@gigacad/core';
-import { removeAvatar, restoreProject, saveProfile, signOutDevice, uploadAvatar } from '../../actions';
+import { removeAvatar, restoreProject, saveProfile, signOutDevice } from '../../actions';
 import { ActionButton } from '../../../../components/product/ActionButton';
 import { ActionForm } from '../../../../components/product/ActionForm';
+import { EmailForm, PasswordForm } from '../../../../components/product/AccountSecurity';
 import { Avatar } from '../../../../components/product/Avatar';
+import { AvatarPicker } from '../../../../components/product/AvatarPicker';
 import { BioField } from '../../../../components/product/BioField';
 import { EmptyState } from '../../../../components/product/EmptyState';
 import { HandleField } from '../../../../components/product/HandleField';
 import { PageHead } from '../../../../components/product/PageHead';
 import { RelativeTime } from '../../../../components/product/RelativeTime';
 import { apiRequest, type DeletedProject, type DeviceToken } from '../../../../lib/api';
-import { dashboardPath } from '../../../../lib/hosts';
 import { getBilling, getMe } from '../../../../lib/product';
-import { requireAccessToken } from '../../../../lib/session';
+import { getViewerEmail, requireAccessToken } from '../../../../lib/session';
 
 export const metadata = { title: 'Account' };
 
-export default async function AccountSettings() {
+export default async function AccountSettings({ searchParams }: { searchParams: Promise<{ email?: string }> }) {
   const token = await requireAccessToken();
-  const [me, billing, devices, deleted] = await Promise.all([
+  const [me, billing, email, query, devices, deleted] = await Promise.all([
     getMe(),
     getBilling(),
+    getViewerEmail(),
+    searchParams,
     apiRequest<DeviceToken[]>(token, '/v1/me/tokens'),
     apiRequest<DeletedProject[]>(token, '/v1/me/deleted-projects'),
   ]);
   return (
     <div className="page page-narrow">
-      <PageHead crumbs={[{ label: 'Your projects', href: dashboardPath() }, { label: 'Account' }]} title="Account." />
+      <PageHead crumbs={[]} title="Account." />
+      {query.email === 'confirmed' && (
+        <p className="notice" role="status">
+          Link confirmed. If your email below hasn’t changed yet, also confirm the link sent to your other address.
+        </p>
+      )}
+      {query.email === 'expired' && (
+        <p className="notice" role="alert">
+          That email change link has expired or was already used. Ask for the change again below.
+        </p>
+      )}
 
       <section className="section">
         <h2>Profile</h2>
@@ -55,19 +68,23 @@ export default async function AccountSettings() {
         <h2>Avatar</h2>
         <div className="avatar-editor">
           <Avatar handle={me.handle} url={me.avatarUrl} size="lg" />
-          <ActionForm action={uploadAvatar} submitLabel="Upload" pendingLabel="Uploading…" submitClassName="btn btn-secondary">
-            <label className="field">
-              <span>Image</span>
-              <input name="avatar" type="file" accept="image/png,image/jpeg,image/webp" required />
-              <small className="field-hint">A square PNG, JPEG, or WebP of 1 MB or less.</small>
-            </label>
-          </ActionForm>
+          <AvatarPicker hasAvatar={Boolean(me.avatarUrl)} />
           {me.avatarUrl && (
             <ActionButton action={removeAvatar} className="btn btn-danger btn-small" confirm="Remove your avatar?">
               Remove
             </ActionButton>
           )}
         </div>
+      </section>
+
+      <section className="section">
+        <h2>Email</h2>
+        <EmailForm current={email} />
+      </section>
+
+      <section className="section">
+        <h2>Password</h2>
+        <PasswordForm />
       </section>
 
       <section className="section">
@@ -84,7 +101,7 @@ export default async function AccountSettings() {
       </section>
 
       {deleted.length > 0 && (
-        <section className="section">
+        <section className="section" id="deleted">
           <h2>Deleted projects</h2>
           <p className="section-intro">A deleted project can be restored for 30 days, with everything in it. After that it’s gone for good.</p>
           <table className="data-table">

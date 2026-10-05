@@ -52,7 +52,7 @@ export async function requireStorageFor(db: Db, ownerId: string, blobs: readonly
   throw new HttpError(
     403,
     'storage_full',
-    `@${account.handle} is out of storage: ${formatBytes(account.usedBytes)} of ${formatBytes(account.quotaBytes)} used, and this needs ${formatBytes(adding)} more. Delete projects or upgrade the plan at app.gigacad.site/settings/billing.`,
+    `@${account.handle} is out of storage: ${formatBytes(account.usedBytes)} of ${formatBytes(account.quotaBytes)} used, and this needs ${formatBytes(adding)} more. Delete projects or upgrade the plan.`,
     { usedBytes: account.usedBytes, quotaBytes: account.quotaBytes, neededBytes: adding },
   );
 }
@@ -73,6 +73,16 @@ async function billingCustomer(sql: Sql, payments: Payments, userId: string) {
   return { ...account!, customerId: saved!.stripeCustomerId };
 }
 
+/**
+ * The billing page's address with the page someone came from, so after Stripe it can offer
+ * the way back. Only same-site paths are kept.
+ */
+export function billingReturnUrl(webOrigin: string, query: Record<string, string>, from?: string): string {
+  const safe = from && from.startsWith('/') && !from.startsWith('//') && !from.includes('\\') && !/[\u0000-\u001f\u007f]/.test(from) ? from : undefined;
+  const params = new URLSearchParams({ ...query, ...(safe ? { from: safe } : {}) }).toString();
+  return `${webOrigin}/settings/billing${params ? `?${params}` : ''}`;
+}
+
 /** Where to send someone who picked a paid plan: Stripe Checkout, or the portal if they already pay. */
 export async function startCheckout(
   sql: Sql,
@@ -81,26 +91,26 @@ export async function startCheckout(
   plan: Exclude<PlanId, 'free'>,
   interval: BillingInterval,
   webOrigin: string,
+  from?: string,
 ): Promise<{ url: string }> {
   const account = await billingCustomer(sql, payments, userId);
-  const returnUrl = `${webOrigin}/settings/billing`;
   if (account.stripeSubscriptionId && LIVE_STATUSES.has(account.subscriptionStatus ?? '')) {
-    return { url: await payments.createPortal({ customerId: account.customerId, returnUrl }) };
+    return { url: await payments.createPortal({ customerId: account.customerId, returnUrl: billingReturnUrl(webOrigin, {}, from) }) };
   }
   const url = await payments.createCheckout({
     customerId: account.customerId,
     userId,
     priceLookupKey: priceLookupKey(plan, interval),
-    successUrl: `${returnUrl}?checkout=done`,
-    cancelUrl: returnUrl,
+    successUrl: billingReturnUrl(webOrigin, { checkout: 'done' }, from),
+    cancelUrl: billingReturnUrl(webOrigin, { checkout: 'cancelled' }, from),
   });
   return { url };
 }
 
-export async function openPortal(sql: Sql, payments: Payments, userId: string, webOrigin: string): Promise<{ url: string }> {
+export async function openPortal(sql: Sql, payments: Payments, userId: string, webOrigin: string, from?: string): Promise<{ url: string }> {
   const [account] = await sql<{ stripeCustomerId: string | null }[]>`select stripe_customer_id from billing_accounts where user_id = ${userId}`;
   if (!account?.stripeCustomerId) throw conflict('no_billing_account', 'Choose a paid plan first');
-  return { url: await payments.createPortal({ customerId: account.stripeCustomerId, returnUrl: `${webOrigin}/settings/billing` }) };
+  return { url: await payments.createPortal({ customerId: account.stripeCustomerId, returnUrl: billingReturnUrl(webOrigin, {}, from) }) };
 }
 
 /**

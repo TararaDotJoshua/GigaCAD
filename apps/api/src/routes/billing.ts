@@ -7,6 +7,9 @@ import { parse, requireCaller, requireSessionCaller } from '../http.js';
 import { InvalidWebhookError, type Payments } from '../payments.js';
 import { getBilling, openPortal, startCheckout, syncSubscription } from '../services/billing.js';
 
+/** The web page someone started from, to offer the way back after Stripe. */
+const returnPath = z.string().max(500).optional();
+
 const billingUnavailable = () => new HttpError(503, 'billing_unavailable', 'Paid plans are not available yet');
 
 export function billingRoutes(app: FastifyInstance, { sql, payments, webOrigin }: AppDeps): void {
@@ -19,14 +22,17 @@ export function billingRoutes(app: FastifyInstance, { sql, payments, webOrigin }
 
   app.post('/v1/billing/checkout', async (request) => {
     const { userId } = requireSessionCaller(request);
-    const { plan, interval } = parse(
-      z.object({ plan: z.enum(PLAN_IDS).exclude(['free']), interval: z.enum(['monthly', 'yearly']) }),
+    const { plan, interval, from } = parse(
+      z.object({ plan: z.enum(PLAN_IDS).exclude(['free']), interval: z.enum(['monthly', 'yearly']), from: returnPath }),
       request.body,
     );
-    return startCheckout(sql, requirePayments(), userId, plan, interval, webOrigin);
+    return startCheckout(sql, requirePayments(), userId, plan, interval, webOrigin, from);
   });
 
-  app.post('/v1/billing/portal', async (request) => openPortal(sql, requirePayments(), requireSessionCaller(request).userId, webOrigin));
+  app.post('/v1/billing/portal', async (request) => {
+    const { from } = parse(z.object({ from: returnPath }), request.body ?? {});
+    return openPortal(sql, requirePayments(), requireSessionCaller(request).userId, webOrigin, from);
+  });
 
   // Stripe signs the exact bytes it sent, so this route keeps the body raw.
   app.register(async (scope) => {

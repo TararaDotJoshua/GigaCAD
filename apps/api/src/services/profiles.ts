@@ -23,6 +23,26 @@ export interface Activity {
   readonly commitId: string | null;
 }
 
+export interface ProfileMatch {
+  readonly handle: string;
+  readonly displayName: string | null;
+  readonly avatarKey: string | null;
+}
+
+/**
+ * People whose handle or name starts with the query, for picking someone to add to a
+ * project. Accounts that haven't chosen a handle yet are left out.
+ */
+export async function searchProfiles(sql: Sql, query: string, limit = 8): Promise<ProfileMatch[]> {
+  const prefix = `${query.toLowerCase().replace(/^@/, '').replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  return sql<ProfileMatch[]>`
+    select handle, display_name, avatar_key from profiles
+    where (handle like ${prefix} or lower(display_name) like ${prefix}) and handle !~ '^user-[0-9a-f]{12}$'
+    order by handle like ${prefix} desc, handle
+    limit ${limit}
+  `;
+}
+
 /**
  * Projects the viewer can read, as a condition on `p`: public ones, plus private ones
  * they're a member of. Deleted projects never count.

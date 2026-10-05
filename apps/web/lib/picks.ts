@@ -43,3 +43,39 @@ export function picksFromDraft(rows: readonly PickRow[], draft: DraftPicks): Pic
 export function samePicks(rows: readonly PickRow[], a: DraftPicks, b: DraftPicks): boolean {
   return JSON.stringify(picksFromDraft(rows, a)) === JSON.stringify(picksFromDraft(rows, b));
 }
+
+export interface PickOutcome {
+  readonly edited: number;
+  readonly added: number;
+  readonly removed: number;
+  /** New branch files taking the place (and history) of a main file. */
+  readonly replaced: number;
+}
+
+/** What the picks do to main, counted: the numbers behind "v3 will change 3 files". */
+export function pickOutcome(rows: readonly PickRow[], draft: DraftPicks): PickOutcome {
+  const outcome = { edited: 0, added: 0, removed: 0, replaced: 0 };
+  for (const row of rows) {
+    const pick = draft[row.itemId] ?? { kind: 'action', action: row.defaultAction };
+    if (pick.kind === 'replace') outcome.replaced++;
+    else if (pick.action === 'take_branch') {
+      const kind = row.branchChange?.kind;
+      if (kind === 'added') outcome.added++;
+      else if (kind === 'deleted') outcome.removed++;
+      else outcome.edited++;
+    }
+  }
+  return outcome;
+}
+
+export function outcomeText(outcome: PickOutcome): string {
+  const total = outcome.edited + outcome.added + outcome.removed + outcome.replaced;
+  if (total === 0) return 'no files: main stays as it is';
+  const parts = [
+    [outcome.edited, 'edited'],
+    [outcome.added, 'added'],
+    [outcome.removed, 'removed'],
+    [outcome.replaced, 'replacing a main file'],
+  ].flatMap(([n, word]) => (n ? [`${n} ${word}`] : []));
+  return `${total} ${total === 1 ? 'file' : 'files'}: ${parts.join(', ')}`;
+}

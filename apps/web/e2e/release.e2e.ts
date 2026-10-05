@@ -131,14 +131,15 @@ test('picks files, generates the candidate, approves, and releases', async ({ pa
   await pickFor('parts/P1.SLDPRT').getByRole('button', { name: 'Keep main' }).click();
   await pickFor('parts/P2.SLDPRT').getByRole('button', { name: 'Take branch' }).click();
   await page.getByLabel('Replace main item with parts/P3.SLDPRT').selectOption({ label: 'parts/P4.SLDPRT' });
+  await expect(page.getByText('v2 will change')).toContainText('(unsaved)');
+  // Saving the picks builds the candidate too.
   await page.getByRole('button', { name: 'Save picks' }).click();
   await expect(page.getByText('Unsaved picks')).toBeHidden();
+  await expect(page.getByText('Saved and rebuilt the candidate.')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Generate candidate' }).click();
-  await expect(page.getByText('Up to date')).toBeVisible();
-  await page.getByRole('button', { name: 'Approve candidate' }).click();
-  await expect(page.getByRole('button', { name: 'Withdraw approval' })).toBeVisible();
-  await page.getByRole('button', { name: 'Release v2' }).click();
+  // A solo owner's approval is the last one needed, so approving and releasing is one step.
+  await expect(page.getByText(/Your approval is the last one needed/)).toBeVisible();
+  await page.getByRole('button', { name: 'Approve and release v2' }).click();
   await page.waitForURL(`**${projectUrl('releases', 2)}`);
 
   // Main's P1, the branch's P2, and P3 in P4's place, keeping P4's item ID.

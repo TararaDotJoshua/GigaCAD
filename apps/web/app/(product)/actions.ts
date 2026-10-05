@@ -279,13 +279,37 @@ export async function openReleaseRequest(branchId: string, owner: string, slug: 
   } catch (error) {
     return { error: messageFor(error) };
   }
+  // Build the first candidate from the default picks right away, so a request that needs
+  // no changes to its picks is one step from release. A pick error just leaves it unbuilt.
+  if (detail.preview.ok) {
+    await apiRequest(token, `/v1/release-requests/${id(detail.releaseRequest.id)}/candidate`, json('POST', {})).catch(() => undefined);
+  }
   redirect(releaseRequestPath(owner, slug, detail.releaseRequest.number));
 }
 
 // Release requests
 
+/** Saves the picks and rebuilds the candidate from them, so saving is the only step. */
 export async function savePicks(requestId: string, picks: Picks): Promise<ActionState> {
-  return mutate((token) => apiRequest(token, `/v1/release-requests/${id(requestId)}/picks`, json('PUT', picks)), 'Saved picks.');
+  const token = await requireAccessToken();
+  let detail: ReleaseRequestDetail;
+  try {
+    detail = await apiRequest<ReleaseRequestDetail>(token, `/v1/release-requests/${id(requestId)}/picks`, json('PUT', picks));
+  } catch (error) {
+    return { error: messageFor(error) };
+  }
+  if (!detail.preview.ok) {
+    refresh();
+    return { message: 'Saved. Fix the pick errors to build the candidate.' };
+  }
+  try {
+    await apiRequest(token, `/v1/release-requests/${id(requestId)}/candidate`, json('POST', {}));
+  } catch (error) {
+    refresh();
+    return { error: `Saved, but the candidate didn’t build: ${messageFor(error)}` };
+  }
+  refresh();
+  return { message: 'Saved and rebuilt the candidate.' };
 }
 
 export async function generateCandidate(requestId: string): Promise<ActionState> {
@@ -308,6 +332,8 @@ export async function releaseCandidate(requestId: string, owner: string, slug: s
   const token = await requireAccessToken();
   let number: number;
   try {
+    // "Approve and release" for someone whose own approval is the last one needed.
+    if (text(form, 'approve') === 'yes') await apiRequest(token, `/v1/release-requests/${id(requestId)}/approvals`, json('POST', {}));
     const result = await apiRequest<{ release: { number: number } }>(
       token,
       `/v1/release-requests/${id(requestId)}/release`,

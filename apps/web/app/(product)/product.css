@@ -1902,6 +1902,54 @@
   touch-action: none;
 }
 
+.shell .model-pane {
+  position: relative;
+  min-width: 0;
+}
+
+/* Main and branch side by side; stacked on narrow screens. */
+.shell .model-dialog.is-compare {
+  width: min(1280px, calc(100vw - 32px));
+}
+
+.shell .model-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.shell .model-compare .model-pane + .model-pane {
+  border-left: 1px solid var(--line-ink);
+}
+
+.shell .model-compare .model-stage {
+  height: min(560px, calc(100svh - 200px));
+}
+
+.shell .model-caption {
+  position: absolute;
+  top: 10px;
+  left: 16px;
+  z-index: 1;
+  color: var(--ink-muted);
+  font-size: var(--t-micro);
+  font-weight: 600;
+}
+
+@media (max-width: 700px) {
+  .shell .model-compare {
+    grid-template-columns: 1fr;
+  }
+
+  .shell .model-compare .model-pane + .model-pane {
+    border-left: 0;
+    border-top: 1px solid var(--line-ink);
+  }
+
+  .shell .model-compare .model-stage {
+    height: calc((100svh - 200px) / 2);
+  }
+}
+
 .shell .model-status,
 .shell .model-hint {
   padding: 10px 16px;
@@ -2873,6 +2921,43 @@
   margin: 0;
 }
 
+.shell .pick-summary {
+  margin-bottom: 12px;
+}
+
+.shell .pick-files {
+  display: inline-flex;
+  margin-left: 4px;
+}
+
+/* What happens next on a release request, always in one sentence at the top. */
+
+.shell .next-step {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  margin-bottom: 24px;
+  padding: 14px 16px;
+  border-radius: var(--r-md);
+  background: var(--mist);
+}
+
+.shell .next-step.is-ready,
+.shell .next-step.is-done {
+  background: color-mix(in srgb, var(--signal) 18%, var(--paper));
+}
+
+.shell .next-step.is-waiting {
+  background: color-mix(in srgb, var(--caution) 18%, var(--paper));
+}
+
+.shell .next-step-label {
+  color: var(--ink-muted);
+  font-size: var(--t-small);
+}
+
+
 .shell .release-title {
   margin-left: 12px;
   font-family: var(--font-sans);
@@ -2880,4 +2965,14 @@
 
 .shell .release-notes {
   white-space: pre-wrap;
+}
+
+.shell .toolbar-tabs {
+  margin-bottom: 20px;
+}
+
+.shell .segment-count {
+  margin-left: 4px;
+  color: var(--ink-muted);
+  font-size: var(--t-micro);
 }

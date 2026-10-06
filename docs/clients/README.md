@@ -2,7 +2,9 @@
 
 Three programs people run on their own computers. Each has its own README for building, running, and releasing.
 
-Plan in this folder: [windows-app-plan.md](windows-app-plan.md), covering the Windows port, the plugin framework, the pipe protocol, the SolidWorks add-in, and milestones W1–W7.
+Plans in this folder:
+- [windows-app-plan.md](windows-app-plan.md): the Windows port, the plugin framework, the pipe protocol, the SolidWorks add-in, and milestones W1–W7.
+- [windows-pc-runbook.md](windows-pc-runbook.md): the steps that need the owner's Windows PC, from testing the installer to building the add-in.
 
 ## `giga` CLI (`clients/cli`)
 

@@ -548,6 +548,45 @@ test('keeps files at the project root, with folders, revisions, tags, and favori
   await expect(main.getByRole('link', { name: 'Laser files', exact: true })).toHaveCount(0);
 });
 
+test('fits every product page on a 390px phone screen', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  const page = await context.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await logIn(page);
+  const pages = [
+    '/app',
+    '/new',
+    '/settings',
+    '/settings/billing',
+    '/explore',
+    `/${world.handle}`,
+    projectUrl(),
+    projectUrl('tree', 'parts'),
+    projectUrl('branches'),
+    projectUrl('branches', world.branchName),
+    projectUrl('commits', world.commitId),
+    projectUrl('release-requests'),
+    projectUrl('release-requests', world.requestNumber),
+    projectUrl('releases'),
+    projectUrl('releases', 1),
+    projectUrl('activity'),
+    projectUrl('settings'),
+  ];
+  const overflowing: string[] = [];
+  for (const path of pages) {
+    await page.goto(path);
+    await page.waitForLoadState('networkidle');
+    const width = await page.evaluate(() => document.documentElement.scrollWidth);
+    if (width > 390) overflowing.push(`${path} is ${width}px wide`);
+    // For looking over by eye: test-results/mobile/.
+    await page.screenshot({ path: `test-results/mobile/${path.replace(/\//g, '_') || 'root'}.png`, fullPage: true });
+  }
+  expect(overflowing).toEqual([]);
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
 test('sign-in pages link back to the marketing site, not the dashboard', async ({ browser }) => {
   const visitor = await (await browser.newContext()).newPage();
   const site = process.env.NEXT_PUBLIC_GIGACAD_SITE_URL ?? 'http://localhost:3000';

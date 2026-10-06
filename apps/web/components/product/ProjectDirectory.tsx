@@ -296,7 +296,7 @@ function FolderBar({ project, listing, owner: storageOwner }: { project: Project
           <StatusBadge tone={branchTone(location.branch.status)}>{BRANCH_STATUS_LABEL[location.branch.status]}</StatusBadge>{' '}
           {location.branch.checkedOutByHandle
             ? `Checked out by @${location.branch.checkedOutByHandle}${location.branch.checkedOutMachine ? ` on ${location.branch.checkedOutMachine}` : ''}. `
-            : 'Nobody has this branch checked out. '}
+            : 'No one has this branch checked out. '}
           These are the files at the branch head. Change them by checking out the branch in the GigaCAD drive or with{' '}
           <code className="mono">giga checkout</code>. <Link href={branchPath(owner, slug, location.branch.name)}>Branch history</Link>
         </p>

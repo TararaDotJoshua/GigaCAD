@@ -15,7 +15,7 @@ export default async function NewProject() {
   if (isPlaceholderHandle(me.handle)) redirect(dashboardPath());
   return (
     <div className="page page-narrow">
-      <PageHead crumbs={[{ label: 'Your projects', href: dashboardPath() }, { label: 'New project' }]} title="New project." />
+      <PageHead crumbs={[{ label: 'Your projects', href: dashboardPath() }, { label: 'New project' }]} title="New project" />
       <ActionForm action={createProject} submitLabel="Create project" pendingLabel="Creating…">
         <NewProjectFields owner={me.handle} />
         <label className="field">

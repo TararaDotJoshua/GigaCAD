@@ -29,7 +29,7 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
   ]);
   return (
     <div className="page page-narrow">
-      <PageHead crumbs={[]} title="Account." />
+      <PageHead crumbs={[]} title="Account" />
       {query.email === 'confirmed' && (
         <p className="notice" role="status">
           Link confirmed. If your email below hasn’t changed yet, also confirm the link sent to your other address.

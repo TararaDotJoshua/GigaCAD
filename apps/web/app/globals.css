@@ -112,7 +112,6 @@ button {
 .auth-nav > a:last-child:hover, .app-header button:hover { color: var(--paper); }
 .auth-shell { min-height: calc(100svh - 88px); display: grid; place-items: center; padding: 48px 24px 96px; }
 .auth-card { width: min(100%, 480px); border: 1px solid var(--line-strong); background: var(--forest-deep); border-radius: var(--r-lg); padding: clamp(28px, 5vw, 48px); }
-.auth-kicker { color: var(--paper-muted); font-size: var(--t-small); margin-bottom: 20px; }
 .auth-card h1, .app-main h1 { font-size: clamp(2.25rem, 5vw, 3.5rem); line-height: 1.03; letter-spacing: -0.045em; font-weight: 600; }
 .auth-intro { color: var(--paper-muted); margin: 18px 0 30px; max-width: 36ch; }
 .auth-form { display: grid; gap: 18px; }

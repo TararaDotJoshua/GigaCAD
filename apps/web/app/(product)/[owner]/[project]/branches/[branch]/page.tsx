@@ -107,7 +107,7 @@ export default async function BranchPage({ params }: { params: Promise<ProjectPa
         </div>
         <aside className="request-rail">
           <section className="rail-card">
-            <h2>Checkout</h2>
+            <h2>Checked out</h2>
             {branch.checkedOutByHandle ? (
               <p>
                 Checked out by <strong>@{branch.checkedOutByHandle}</strong>
@@ -124,7 +124,7 @@ export default async function BranchPage({ params }: { params: Promise<ProjectPa
               <p>No one has this branch checked out.</p>
             )}
             <p className="muted">
-              Check out a branch from the GigaCAD drive or with <code className="mono">giga checkout</code>. <a href={`${siteUrl}/docs/check-out`}>How checkouts work</a>
+              Check out a branch from the GigaCAD drive or with <code className="mono">giga checkout</code>. <a href={`${siteUrl}/docs/check-out`}>How checking out works</a>
             </p>
             {canManage && branch.checkedOutBy && (
               <>

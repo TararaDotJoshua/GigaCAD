@@ -36,7 +36,7 @@ export function EmailForm({ current }: { current: string | null }) {
   return (
     <form className="form" onSubmit={submit}>
       <label className="field">
-        <span>Email</span>
+        <span>Email address</span>
         <input name="email" type="email" autoComplete="email" defaultValue={current ?? ''} required />
         <small className="field-hint">You log in with it, and GigaCAD sends notices to it.</small>
       </label>

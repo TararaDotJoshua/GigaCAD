@@ -107,6 +107,13 @@ Every marketing page lives in `apps/web/app/(marketing)/`. That folder's layout 
 - **Unwritten docs pages** show their planned headings in dashed boxes (`.doc-pending`), the same dashed style as hidden edges in the part drawings. A page counts as written once it has a `body` in `content.tsx`.
 - **Long-form text** (`.prose`): max width 68ch, Paper-muted body text, Paper headings, and underlined links in a faint underline color.
 
+### Product app
+
+The product app (`apps/web/app/(product)/`) puts a Paper work pane next to the Forest sidebar.
+
+- **Page widths.** Forms use one narrow centred column, `.page.page-narrow` (820px): New project, Account, Plan and storage, Fork, and Project settings. Everything else (tables, file lists, timelines, release requests) uses the full `.page` width (1240px). Bars and tables inside a narrow page fill its width.
+- **Page heads** (`PageHead`): breadcrumbs, then the title. Top-level pages (Your projects, Account, Explore) have no breadcrumbs, and nothing sits above a title just to say "GigaCAD".
+
 ## Shape and depth
 
 Radius depends on the size of the element. Don't use one radius for everything.
@@ -131,6 +138,8 @@ Parts are drawn as isometric line art, never as rendered images or stock 3D.
 ## Components
 
 - **Primary button**: Paper background, Forest text, 600 weight, `--r-sm`, 48px tall in the hero and 40px elsewhere. The label says exactly what happens ("Start a project", "Download for Windows"). Don't add trailing arrows.
+- **Two button classes.** `.button` is for Forest surfaces: the marketing site and the sign-in pages. `.btn` is for the product app's Paper panes, 36px tall, with `.btn-primary` (Forest fill), `.btn-secondary` (Mist fill with a hairline border), `.btn-danger` (for actions that delete or take something away), and `.btn-small` (30px, inside tables and rails). Both share the radius, weight, and label rules. Don't mix them on one surface.
+- **Confirming.** Actions that lose something ask in place, in one sentence that says what will be lost, with the same button pressed again to do it (`ActionButton`'s `confirm`). Typing a name to confirm is only for deleting a project. Never use `window.confirm`.
 - **Secondary action**: a text link in Paper-muted with an icon in front. It turns Paper on hover.
 - **Badge**: `--t-micro`, `--r-xs`, and a Moss or Mist fill depending on the surface. Use Signal/caution/danger fills only for state.
 - **Segmented control** (pick controls): a Mist track with the selected segment on Paper. The selected "Take branch" segment gets a Signal dot, not a green fill.
@@ -145,6 +154,6 @@ Parts are drawn as isometric line art, never as rendered images or stock 3D.
 ## Voice
 
 - Plain verbs, sentence case, second person. Say "check out a branch", not "leverage branching workflows".
-- Use the product's real words consistently: Project, Branch, Check out / Check in, Version, Autosave, Release request, Release. A button that says "Release v8" results in "Released v8".
+- Use the product's real words consistently: Project, Branch, Check out / Check in, Version, Autosave, Release request, Release. "Check out" is the verb and "Checked out" is the state ("Checked out by @sam"); don't use "checkout" as a noun, except for Stripe Checkout. A button that says "Release v8" results in "Released v8".
 - Don't write fake testimonials, user counts, or claims we can't back up. If there's no proof yet, show the product instead.
 - Don't write "A · B · C" meta strings in marketing copy. In product UI they're fine where the app would really show them.

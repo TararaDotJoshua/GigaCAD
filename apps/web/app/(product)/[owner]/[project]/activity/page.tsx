@@ -26,7 +26,7 @@ export default async function ActivityPage({ params }: { params: Promise<Project
     names,
   );
   return (
-    <div className="page page-narrow">
+    <div className="page">
       <PageHead crumbs={[{ label: owner, href: `/${owner}` }, { label: project.name, href: projectPath(owner, slug) }, { label: 'Activity' }]} title="Activity" />
       {activity.length === 0 ? (
         <p className="muted">Nothing has happened in this project yet.</p>

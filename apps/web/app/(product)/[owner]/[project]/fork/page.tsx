@@ -19,7 +19,7 @@ export default async function ForkPage({ params }: { params: Promise<ProjectPara
   const mustStayPrivate = project.visibility === 'private';
   return (
     <div className="page page-narrow">
-      <PageHead crumbs={[{ label: owner }, { label: project.name, href: projectPath(owner, slug) }, { label: 'Fork' }]} title={`Fork ${project.name}.`} />
+      <PageHead crumbs={[{ label: owner, href: `/${owner}` }, { label: project.name, href: projectPath(owner, slug) }, { label: 'Fork' }]} title={`Fork ${project.name}`} />
       {releases.length === 0 ? (
         <EmptyState title="Nothing to fork yet.">
           <p>A fork starts from a release, and this project has none.</p>

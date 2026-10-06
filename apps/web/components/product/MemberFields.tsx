@@ -9,7 +9,7 @@ import { FormStatus } from './ActionButton';
 export const ROLE_DESCRIPTIONS: Readonly<Record<Exclude<ProjectRole, 'owner'>, string>> = {
   viewer: 'Sees and downloads files and releases.',
   contributor: 'Also uploads files, checks out branches, and opens release requests.',
-  maintainer: 'Also changes settings, adds people, and can release someone else’s checkout.',
+  maintainer: 'Also changes settings, adds people, and can force-release someone’s lock.',
 };
 
 /** The handle and role fields for adding a member, suggesting people as the handle is typed. */

@@ -12,11 +12,13 @@ import { createS3Storage } from './storage.js';
 const config = loadConfig();
 const sql = createSql(config.DATABASE_URL);
 const storage = createS3Storage(config);
+const mailer = config.RESEND_API_KEY ? createResendMailer({ apiKey: config.RESEND_API_KEY, from: config.MAIL_FROM }) : undefined;
 const app = buildApp({
   sql,
   storage,
   authenticate: createAuthenticator({ sql, supabaseUrl: config.SUPABASE_URL, jwtSecret: config.SUPABASE_JWT_SECRET }),
   webOrigin: config.WEB_ORIGIN,
+  ...(mailer ? { mailer } : {}),
   ...(config.STRIPE_SECRET_KEY && config.STRIPE_WEBHOOK_SECRET
     ? { payments: createStripePayments({
         secretKey: config.STRIPE_SECRET_KEY,
@@ -28,7 +30,6 @@ const app = buildApp({
 });
 
 // Background upkeep. An advisory lock keeps two instances from running it at once.
-const mailer = config.RESEND_API_KEY ? createResendMailer({ apiKey: config.RESEND_API_KEY, from: config.MAIL_FROM }) : undefined;
 const jobs = async () => {
   try {
     const report = await runJobs({ sql, storage, mailer, webOrigin: config.WEB_ORIGIN });

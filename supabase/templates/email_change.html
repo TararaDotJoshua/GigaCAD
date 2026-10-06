@@ -1,0 +1,4 @@
+<h1>Confirm your new GigaCAD email</h1>
+<p>Someone asked to change your GigaCAD account email from {{ .Email }} to {{ .NewEmail }}. The change finishes once it is confirmed from both addresses.</p>
+<p><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=email_change&amp;next={{ .RedirectTo }}">Confirm the change</a></p>
+<p>If you did not ask for this, ignore this email and change your password.</p>

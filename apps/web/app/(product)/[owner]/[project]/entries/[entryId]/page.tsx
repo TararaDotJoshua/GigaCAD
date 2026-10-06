@@ -127,7 +127,7 @@ export default async function EntryPage({ params }: { params: Promise<EntryParam
               <section className="rail-card">
                 <h2>Replace</h2>
                 <p className="muted">Upload new contents. They become revision {(entry.revision ?? 0) + 1}.</p>
-                <ReplaceFile projectId={project.id} entryId={entry.id} name={entry.name} />
+                <ReplaceFile projectId={project.id} entryId={entry.id} name={entry.name} owner={{ handle: project.ownerHandle, isYou: viewer?.handle === project.ownerHandle }} />
               </section>
             )}
             <details className="rail-card rail-details">

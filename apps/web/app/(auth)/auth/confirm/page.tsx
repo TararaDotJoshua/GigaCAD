@@ -5,18 +5,21 @@ export const metadata = { title: 'Confirm your email', robots: { index: false, f
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ token_hash?: string; type?: string; next?: string }> }) {
   const { token_hash, type, next } = await searchParams;
-  const valid = Boolean(token_hash && (type === 'email' || type === 'recovery'));
+  const valid = Boolean(token_hash && (type === 'email' || type === 'recovery' || type === 'email_change'));
   const recovery = type === 'recovery';
+  const change = type === 'email_change';
   return (
     <div className="auth-shell">
       <div className="auth-card">
-        <h1>{recovery ? 'Reset your password.' : 'Confirm your email.'}</h1>
+        <h1>{recovery ? 'Reset your password.' : change ? 'Confirm your new email.' : 'Confirm your email.'}</h1>
         <p className="auth-intro">
           {!valid
             ? 'This link is incomplete. Request a new email and try again.'
             : recovery
               ? 'Continue to choose a new password.'
-              : 'Continue to confirm your address and sign in.'}
+              : change
+                ? 'Continue to confirm the change. It finishes once both addresses have confirmed.'
+                : 'Continue to confirm your address and sign in.'}
         </p>
         {valid && (
           <form action={confirmEmail}>

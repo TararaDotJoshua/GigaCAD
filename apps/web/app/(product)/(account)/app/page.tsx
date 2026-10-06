@@ -47,7 +47,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       )}
       {deleted && (
         <p className="notice" role="status">
-          Deleted <span className="mono">{deleted}</span>. You can restore it from <Link href="/settings#deleted">Account settings</Link> for 30 days.
+          Deleted <span className="mono">{deleted}</span>. You can restore it for 30 days, under <Link href="/settings#deleted">Account</Link>.
         </p>
       )}
 

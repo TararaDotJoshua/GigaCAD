@@ -3,6 +3,7 @@ import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
 import type { Authenticate, Caller } from './auth.js';
 import type { Sql } from './db.js';
 import { HttpError } from './errors.js';
+import type { Mailer } from './mail.js';
 import type { Payments } from './payments.js';
 import { authRoutes } from './routes/auth.js';
 import { billingRoutes } from './routes/billing.js';
@@ -27,6 +28,8 @@ export interface AppDeps {
   readonly webOrigin: string;
   /** Unset until payment keys are configured; paid plans are then unavailable. */
   readonly payments?: Payments;
+  /** Unset without a mail key; notices that would go by email are then skipped. */
+  readonly mailer?: Mailer;
   readonly logger?: boolean;
 }
 

@@ -13,6 +13,7 @@ import {
   listEvents,
   listMembers,
   listMyProjects,
+  notifyNewMember,
   restoreProject,
   setApprovalRules,
   setMember,
@@ -25,7 +26,7 @@ const role = z.enum(['owner', 'maintainer', 'contributor', 'viewer']);
 export const visibility = z.enum(['public', 'private']);
 export const slug = z.string().regex(/^[a-z0-9](?:[a-z0-9._-]{0,98}[a-z0-9])?$/, 'Use lowercase letters, digits, dots, dashes, or underscores');
 
-export function projectRoutes(app: FastifyInstance, { sql, storage }: AppDeps): void {
+export function projectRoutes(app: FastifyInstance, { sql, storage, mailer, webOrigin }: AppDeps): void {
   app.post('/v1/projects', async (request, reply) => {
     const { userId } = requireCaller(request);
     const input = parse(
@@ -85,7 +86,8 @@ export function projectRoutes(app: FastifyInstance, { sql, storage }: AppDeps): 
   app.put('/v1/projects/:id/members', async (request) => {
     const { id } = parse(idParams, request.params);
     const input = parse(z.object({ handle: z.string().min(1).max(39), role }), request.body);
-    await setMember(sql, id, requireCaller(request).userId, input.handle, input.role);
+    const added = await setMember(sql, id, requireCaller(request).userId, input.handle, input.role);
+    if (added && mailer) await notifyNewMember(mailer, webOrigin, added).catch((error: unknown) => request.log.warn(error, 'member notice not sent'));
     return withAvatars(storage, await listMembers(sql, id, requireCaller(request).userId));
   });
 

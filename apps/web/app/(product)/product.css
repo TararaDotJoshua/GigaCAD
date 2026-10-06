@@ -424,6 +424,14 @@
   background: #fff;
 }
 
+.shell .card-danger {
+  border-color: var(--danger);
+}
+
+.shell .member-role select {
+  min-width: 140px;
+}
+
 .shell .card h2 {
   font-size: 1.125rem;
   letter-spacing: -0.02em;
@@ -614,6 +622,14 @@
 
 .shell .notice-caution {
   background: color-mix(in srgb, var(--caution) 22%, var(--paper));
+}
+
+/* A notice with a next step, like "Back to sam/bracket" after Stripe. */
+.shell .notice-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
 }
 
 /* A button that reads as an inline link, for actions inside a sentence. */
@@ -1344,6 +1360,39 @@
 
 /* Plan and storage */
 
+.shell .storage-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 24px;
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  background: color-mix(in srgb, var(--caution) 22%, var(--paper));
+  font-size: 14px;
+}
+
+.shell .storage-banner.is-full {
+  background: color-mix(in srgb, var(--danger) 16%, var(--paper));
+}
+
+.shell .storage-banner a {
+  font-weight: 500;
+}
+
+.shell .storage-banner-close {
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.shell .storage-banner-close:hover {
+  color: var(--ink);
+}
+
 .shell .storage-meter {
   height: 8px;
   max-width: 480px;
@@ -1850,6 +1899,19 @@
 .shell .avatar-editor .avatar-lg {
   width: 72px;
   font-size: 1.75rem;
+}
+
+.shell .avatar-picker {
+  display: flex;
+  flex: 1 1 280px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.shell .avatar-picker label:focus-within {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
 }
 
 .shell .avatar-editor .form {

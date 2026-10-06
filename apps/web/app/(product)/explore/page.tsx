@@ -4,7 +4,7 @@ import { PageHead } from '../../../components/product/PageHead';
 import { ProjectCards } from '../../../components/product/ProjectCards';
 import { Shell } from '../../../components/product/Shell';
 import { SearchIcon } from '../../../components/icons';
-import { getExplore } from '../../../lib/product';
+import { getExplore, getViewer } from '../../../lib/product';
 
 export const metadata = { title: 'Explore' };
 
@@ -12,7 +12,7 @@ export default async function Explore({ searchParams }: { searchParams: Promise<
   const query = await searchParams;
   const q = (query.q ?? '').trim().slice(0, 100);
   const sort = query.sort === 'recent' ? 'recent' : 'stars';
-  const projects = await getExplore(q, sort);
+  const [projects, viewer] = await Promise.all([getExplore(q, sort), getViewer()]);
   const tab = (value: 'stars' | 'recent', label: string) => (
     <Link
       href={`/explore?${new URLSearchParams({ ...(q ? { q } : {}), ...(value === 'recent' ? { sort: value } : {}) })}`}
@@ -41,8 +41,8 @@ export default async function Explore({ searchParams }: { searchParams: Promise<
         {projects.length > 0 ? (
           <ProjectCards projects={projects} />
         ) : (
-          <EmptyState title={q ? `No public projects match “${q}”.` : 'No public projects yet.'}>
-            <p>Make a project public in its settings, and it shows up here for anyone to see, star, and fork.</p>
+          <EmptyState title={q ? `No public projects match “${q}”.` : viewer ? 'No public projects yet.' : 'No public projects yet. Check back soon.'}>
+            {viewer && <p>Make a project public in its settings, and it shows up here for anyone to see, star, and fork.</p>}
           </EmptyState>
         )}
       </div>

@@ -1,6 +1,7 @@
 import type { ApprovalRules, ProjectRole } from '@gigacad/core';
 import type { Db, Sql } from '../db.js';
 import { badRequest, forbidden, notFound, unprocessable } from '../errors.js';
+import type { Mailer } from '../mail.js';
 import { projectAccess, requireProjectRole, type ProjectRow } from './access.js';
 import { recordEvent } from './events.js';
 
@@ -179,9 +180,22 @@ export async function listMembers(sql: Sql, projectId: string, userId: string | 
   `;
 }
 
-/** Owners manage everyone; maintainers manage contributors and viewers. The owner's own role is fixed. */
-export async function setMember(sql: Sql, projectId: string, userId: string, handle: string, role: ProjectRole | null): Promise<void> {
-  await sql.begin(async (tx) => {
+/** Someone just added to a project, with what's needed to tell them. */
+export interface NewMember {
+  readonly email: string | null;
+  readonly role: ProjectRole;
+  readonly addedBy: string;
+  readonly projectName: string;
+  readonly ownerHandle: string;
+  readonly slug: string;
+}
+
+/**
+ * Owners manage everyone; maintainers manage contributors and viewers. The owner's own role
+ * is fixed. Returns the person when they weren't a member before, so they can be told.
+ */
+export async function setMember(sql: Sql, projectId: string, userId: string, handle: string, role: ProjectRole | null): Promise<NewMember | null> {
+  return sql.begin(async (tx) => {
     const { project, role: callerRole } = await requireProjectRole(tx, projectId, userId, 'maintainer', { lock: true });
     const [target] = await tx<{ id: string }[]>`select id from profiles where handle = ${handle}`;
     if (!target) throw notFound('User');
@@ -203,6 +217,33 @@ export async function setMember(sql: Sql, projectId: string, userId: string, han
       `;
     }
     await recordEvent(tx, { projectId, actorId: userId, kind: 'member_changed', subjectId: target.id, payload: { handle, role } });
+    if (role === null || current) return null;
+    const [added] = await tx<Omit<NewMember, 'role'>[]>`
+      select u.email, actor.handle as added_by, p.name as project_name, o.handle as owner_handle, p.slug
+      from projects p
+      join profiles o on o.id = p.owner_id
+      join profiles actor on actor.id = ${userId}
+      left join auth.users u on u.id = ${target.id}
+      where p.id = ${projectId}
+    `;
+    return added ? { ...added, role } : null;
+  });
+}
+
+/** Emails someone that they were added to a project. A mail failure doesn't undo the change. */
+export async function notifyNewMember(mailer: Mailer, webOrigin: string, member: NewMember): Promise<void> {
+  if (!member.email) return;
+  const url = `${webOrigin}/${member.ownerHandle}/${member.slug}`;
+  await mailer.send({
+    to: member.email,
+    subject: `@${member.addedBy} added you to ${member.projectName}`,
+    text: [
+      `@${member.addedBy} added you to ${member.projectName} on GigaCAD as ${member.role === 'viewer' ? 'a viewer' : `a ${member.role}`}.`,
+      '',
+      'It now appears under Shared with you on your dashboard.',
+      '',
+      url,
+    ].join('\n'),
   });
 }
 

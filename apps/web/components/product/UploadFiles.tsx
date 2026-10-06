@@ -2,6 +2,7 @@
 
 import { formatBytes } from '@gigacad/core';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { addRootFile, replaceRootFile, type ActionState } from '../../app/(product)/actions';
 import { uploadContents, type UploadPhase } from '../../lib/upload';
@@ -140,14 +141,7 @@ export function UploadFiles({ projectId, parentId, existing, owner }: { projectI
           </ul>
           {full && (
             <p className="upload-full" role="alert">
-              {owner.isYou ? (
-                <>
-                  You’re out of storage{full.quotaBytes ? `: ${formatBytes(full.usedBytes)} of ${formatBytes(full.quotaBytes)} used` : ''}.{' '}
-                  <Link href={`/settings/billing?from=${encodeURIComponent(window.location.pathname)}`}>Upgrade your plan</Link> or delete old projects to keep uploading.
-                </>
-              ) : (
-                <>@{owner.handle} is out of storage, so uploads to this project are paused. Ask them to free up space or upgrade their plan.</>
-              )}
+              <StorageFull owner={owner} full={full} />
             </p>
           )}
           {finished && (
@@ -161,11 +155,23 @@ export function UploadFiles({ projectId, parentId, existing, owner }: { projectI
   );
 }
 
+/** Why an upload was refused for storage: the owner gets the way to more, anyone else who to ask. */
+function StorageFull({ owner, full }: { owner: StorageOwner; full: NonNullable<ActionState['storageFull']> }) {
+  const path = usePathname();
+  if (!owner.isYou) return <>@{owner.handle} is out of storage. Ask them to free up space or upgrade.</>;
+  return (
+    <>
+      Out of storage{full.quotaBytes ? ` (${formatBytes(full.usedBytes)} of ${formatBytes(full.quotaBytes)})` : ''}.{' '}
+      <Link href={`/settings/billing?from=${encodeURIComponent(path)}`}>Upgrade</Link>
+    </>
+  );
+}
+
 /** Uploads new contents for one root file, recorded as its next revision. */
-export function ReplaceFile({ projectId, entryId, name }: { projectId: string; entryId: string; name: string }) {
+export function ReplaceFile({ projectId, entryId, name, owner }: { projectId: string; entryId: string; name: string; owner: StorageOwner }) {
   const input = useRef<HTMLInputElement>(null);
   const [pending, start] = useTransition();
-  const [status, setStatus] = useState<{ error?: string; message?: string }>({});
+  const [status, setStatus] = useState<{ error?: string; message?: string; storageFull?: ActionState['storageFull'] }>({});
   return (
     <span className="action">
       <input
@@ -181,7 +187,7 @@ export function ReplaceFile({ projectId, entryId, name }: { projectId: string; e
             const uploaded = await uploadContents(projectId, file, (phase, progress) =>
               setStatus({ message: phase === 'uploading' ? `Uploading ${file.name}: ${Math.round(progress * 100)}%` : phase === 'hashing' ? `Reading ${file.name}…` : 'Saving…' }),
             );
-            if (uploaded.storageFull) setStatus({ error: 'The project owner is out of storage. Free up space or upgrade the plan to upload.' });
+            if (uploaded.storageFull) setStatus({ storageFull: uploaded.storageFull });
             else setStatus(uploaded.sha256 ? await replaceRootFile(projectId, entryId, uploaded.sha256) : { error: uploaded.error });
           });
         }}
@@ -189,9 +195,9 @@ export function ReplaceFile({ projectId, entryId, name }: { projectId: string; e
       <button type="button" className="btn btn-secondary" disabled={pending} onClick={() => input.current?.click()} aria-label={`Replace ${name}`}>
         {pending ? 'Uploading…' : 'Replace…'}
       </button>
-      {status.error ? (
+      {status.storageFull || status.error ? (
         <span className="form-status is-error" role="alert">
-          {status.error}
+          {status.storageFull ? <StorageFull owner={owner} full={status.storageFull} /> : status.error}
         </span>
       ) : (
         status.message && (

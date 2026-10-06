@@ -7,6 +7,7 @@ import { ApiError, apiRequest, type Project, type ReleaseRequestDetail } from '.
 import { dashboardPath } from '../../lib/hosts';
 import { messageFor } from '../../lib/messages';
 import { projectPath, releasePath, releaseRequestPath, treePath } from '../../lib/paths';
+import { safeReturnPath } from '../../lib/return-path';
 import { requireAccessToken } from '../../lib/session';
 
 /**
@@ -59,15 +60,20 @@ const text = (form: FormData, name: string) => {
 
 // Account
 
-/** Sends someone to Stripe: Checkout for a new plan, or the billing portal if they already pay. */
-export async function choosePlan(plan: string, interval: string): Promise<ActionState> {
+/**
+ * Sends someone to Stripe: Checkout for a new plan, or the billing portal if they already
+ * pay. `from` is the page they were on, which the billing page links back to on return.
+ */
+export async function choosePlan(plan: string, interval: string, from?: string): Promise<ActionState> {
   if (!isPlanId(plan) || plan === 'free' || (interval !== 'monthly' && interval !== 'yearly')) return { error: 'Choose a plan.' };
-  return goToBilling('/v1/billing/checkout', { plan, interval });
+  return goToBilling('/v1/billing/checkout', { plan, interval, ...returnTo(from) });
 }
 
-export async function openBillingPortal(): Promise<ActionState> {
-  return goToBilling('/v1/billing/portal');
+export async function openBillingPortal(from?: string): Promise<ActionState> {
+  return goToBilling('/v1/billing/portal', returnTo(from));
 }
+
+const returnTo = (from?: string) => (from && safeReturnPath(from, '') ? { from: safeReturnPath(from, '') } : {});
 
 async function goToBilling(path: string, body?: unknown): Promise<ActionState> {
   const token = await requireAccessToken();
@@ -162,7 +168,25 @@ export async function updateProject(projectId: string, _state: ActionState, form
 export async function setMember(projectId: string, _state: ActionState, form: FormData): Promise<ActionState> {
   const handle = text(form, 'handle').replace(/^@/, '').toLowerCase();
   const role = text(form, 'role') as ProjectRole;
-  return mutate((token) => apiRequest(token, `/v1/projects/${id(projectId)}/members`, json('PUT', { handle, role })), `Saved @${handle}.`);
+  return mutate((token) => apiRequest(token, `/v1/projects/${id(projectId)}/members`, json('PUT', { handle, role })), `Added @${handle}.`);
+}
+
+/** Changes a member's role from the members table. */
+export async function changeMemberRole(projectId: string, handle: string, role: string): Promise<ActionState> {
+  if (!['viewer', 'contributor', 'maintainer'].includes(role)) return { error: 'Choose a role.' };
+  return mutate((token) => apiRequest(token, `/v1/projects/${id(projectId)}/members`, json('PUT', { handle, role })), `@${handle} is now a ${role}.`);
+}
+
+/** People to suggest while typing a handle to add. */
+export async function findPeople(query: string): Promise<{ handle: string; displayName: string | null }[]> {
+  const q = query.trim().replace(/^@/, '');
+  if (!q) return [];
+  try {
+    const found = await apiRequest<{ handle: string; displayName: string | null }[]>(await requireAccessToken(), `/v1/profiles?${new URLSearchParams({ q: q.slice(0, 100) })}`);
+    return found.map(({ handle, displayName }) => ({ handle, displayName }));
+  } catch {
+    return [];
+  }
 }
 
 export async function removeMember(projectId: string, handle: string): Promise<ActionState> {

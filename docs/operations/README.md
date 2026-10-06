@@ -13,6 +13,7 @@ Hosting, CI, deploys, and local development. [deployment.md](deployment.md) reco
 | CAD files | R2 bucket `gigacad-prod`, with CORS for `app.gigacad.site` |
 | Desktop downloads | R2 bucket `gigacad-downloads` at `downloads.gigacad.site`. Nothing is published yet |
 | Email | Resend, domain `send.gigacad.site`, used by Supabase Auth's SMTP and the API |
+| Company email | Cloudflare Email Routing forwards `josh@`, `hello@`, and `support@gigacad.site` to the verified destination `tararajoshua@gmail.com`; catch-all is off. Resend sending domain `gigacad.site` uses `company-bounce` for its Return-Path, separate from existing `send.gigacad.site` auth/API mail. Gmail Send mail as uses `smtp.resend.com`, SSL port `465`, username `resend`, and an API key entered privately in Gmail. Root-domain Resend verification, Gmail setup, and end-to-end SPF/DKIM/DMARC checks are pending. |
 | Payments | Stripe ([payments/](../payments/README.md)) |
 | CLI | npm `@gigacad/cli`, org `gigacad` |
 

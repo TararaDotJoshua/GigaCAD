@@ -16,14 +16,14 @@ Live and verified in production:
 - Public sharing (#24): Explore, user profiles, stars, and forks. Restoring deleted projects within 30 days (#25).
 - GitHub-style user pages (#31): avatar, bio, contribution graph, recent activity, and a Starred tab.
 - The project file directory (#34): root files and folders with their own revisions, next to `Branches` and `Releases`. See [the file directory plan](../ui/file-directory-plan.md).
-- GigaCAD for macOS (`clients/desktop`, #42–#44), verified against production. Nothing is published to `downloads.gigacad.site` yet, so the download links return 404.
+- GigaCAD for macOS (`clients/desktop`, #42–#44), verified against production. Version 0.1.0 and its DMG were published to `downloads.gigacad.site` on 2026-09-27.
+- The web UX plan (#52–#55, #58, #59): all eight phases from the 2026-09-30 audit, including storage warnings, Stripe return links, member roles and suggestions, and email and password changes. See [the web UX plan](../ui/web-ux-plan.md).
 - GigaCAD for Windows, W1–W4 and W7 (#46–#50): the desktop app runs on Windows with the CAD plugin host started, locks files and folders, adds the File Explorer menu, folder icons, and `giga.cmd`, answers the add-in's pipe requests from the sync engine, and has a release workflow and download link for the installer. The installer isn't published yet, so the Windows download returns 404.
 - CI on every pull request, with `check`, `api-image`, `integration`, `e2e`, and `windows` required on `main`. `scripts/check-site.sh` checks every page type on the live site after each web deploy and every 15 minutes.
 
 ## 1. Land the work in flight
 
-- **Web UX fixes.** Phases 1–6 of [the web UX plan](../ui/web-ux-plan.md) are merged: #52 (phase 1), #53 (phases 2–4), #54 (phase 5), and #55 (phase 6). Phases 7 (collaboration, account, billing) and 8 (polish) are in stacked PRs #58 and #59. Before merging #58, upload the email change template (see its description).
-- **On a Windows PC (needs the owner):** install the CI-built installer and test sign-in, sync, check-out from the right-click menu, saving in SolidWorks, locks, icons, and the tray. Then run the Desktop release workflow with `windows` checked, and set up code signing.
+- **On a Windows PC (needs the owner):** follow [the Windows PC runbook](../clients/windows-pc-runbook.md): test the CI-built installer, publish the first Windows release (desktop 0.2.0), set up code signing, then build and test the SolidWorks add-in. Until the release runs, the website's Windows download link gives a 404.
 
 ## 2. Finish the launch checklist
 
@@ -37,7 +37,7 @@ These need the owner's accounts.
 - **Stripe follow-ups.** Set a support email in Stripe (Managed Payments forwards customer questions there), delete the sandbox's webhook to `api.gigacad.site`, move the API to a restricted live key (`rk_live_`) with the permissions in deployment step 10, and remove `sk_live` from `apps/api/.env.stripe`.
 - **R2 spending alert (step 9).** Cloudflare dashboard → Notifications → Add → Usage Based Billing → R2 storage, with a monthly threshold. The API token agents can use has no notification permissions.
 - **Supabase Pro** before public sign-ups, for daily backups and no pausing.
-- **First macOS release.** Back up `~/.config/gigacad/desktop-update-key.pem` (the update signing key) in a password manager; losing it means every installed copy needs a new DMG. Store it with `gh secret set DESKTOP_UPDATE_KEY < ~/.config/gigacad/desktop-update-key.pem`, check that the `CLOUDFLARE_API_TOKEN` secret can write to R2, then run the `Desktop release` workflow from `main` with `dmg` checked.
+- **Back up the desktop update key.** Keep `~/.config/gigacad/desktop-update-key.pem` in a password manager. The macOS app shipped as 0.1.0 on 2026-09-27 with it in the `DESKTOP_UPDATE_KEY` secret; losing the key means every installed copy needs a new download.
 
 ## 3. Cleanup
 
@@ -50,7 +50,7 @@ These need the owner's accounts.
 
 Following the phases in [plan.md](plan.md):
 
-1. **Windows app (phase 3).** W1–W4 and W7 are merged (#46–#50). What's left needs the Windows PC, above. See [the Windows app plan](../clients/windows-app-plan.md).
+1. **Windows app (phase 3).** W1–W4 and W7 are merged (#46–#50). What's left needs the Windows PC, above. See [the Windows app plan](../clients/windows-app-plan.md) and [the runbook](../clients/windows-pc-runbook.md).
 2. **SolidWorks add-in (phase 4, milestones W5–W6).** Task Pane, read-only banner, references, reconnecting, the pipe server identity check, STL export on version commits, and candidate rebuilds with STEP AP242 and fine STL. It builds only on a computer with SolidWorks installed, because the interop DLLs come from the install. The installer must also register the add-in.
 3. **macOS client (phase 7).** The folder-based app is built. Next: try it on a clean Mac account, then decide whether viewers' root folders should be locked and whether local copies of archived branches should be removed. A File Provider version needs a Developer ID.
 4. **Other CAD programs (phase 7).** Fusion, FreeCAD, and Onshape exports through generic parsers.

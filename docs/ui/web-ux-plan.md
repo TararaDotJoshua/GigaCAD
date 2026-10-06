@@ -2,7 +2,7 @@
 
 This plan covers the findings from the 2026-09-30 audit of the web app: a code read of five flows, then a visual walkthrough on production (public pages) and a local stack (signed-in pages). Paths are relative to `apps/web/` unless they start with `apps/api/` or `supabase/`.
 
-Status (2026-10-05): phases 1–6 are merged: #52 (phase 1), #53 (phases 2–4), #54 (phase 5), and #55 (phase 6). Phases 7 and 8 are in stacked PRs: #58 (phase 7) and #59 (phase 8), based on #58. Before merging phase 7, upload `supabase/templates/email_change.html` as the hosted project's "Change email address" template, so email change links open `/auth/confirm`.
+Status (2026-10-05): all phases are merged: #52 (phase 1), #53 (phases 2–4), #54 (phase 5), and #55 (phase 6). Phases 7 and 8 merged on 2026-10-05: #58 (phase 7) and #59 (phase 8). The hosted project's "Change email address" template was uploaded from `supabase/templates/email_change.html` beforehand, so email change links open `/auth/confirm`.
 
 ## Decisions
 

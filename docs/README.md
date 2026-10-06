@@ -11,7 +11,7 @@ GigaCAD is a hosted, GitHub-style version-control service (PDM) for hobbyist CAD
 | [data/](data/README.md) | The database, file storage, manifests and items, immutability, quotas | |
 | [auth/](auth/README.md) | Sign-in, sessions, device tokens, roles, and row-level security | |
 | [payments/](payments/README.md) | Plans, storage limits, and Stripe | |
-| [clients/](clients/README.md) | The `giga` CLI, the desktop app (macOS and Windows), and the SolidWorks add-in | [windows-app-plan.md](clients/windows-app-plan.md) |
+| [clients/](clients/README.md) | The `giga` CLI, the desktop app (macOS and Windows), and the SolidWorks add-in | [windows-app-plan.md](clients/windows-app-plan.md), [windows-pc-runbook.md](clients/windows-pc-runbook.md) |
 | [operations/](operations/README.md) | Hosting, CI, deploys, migrations, local development, and accounts | [deployment.md](operations/deployment.md) (every production setup step) |
 
 ## The product in one paragraph

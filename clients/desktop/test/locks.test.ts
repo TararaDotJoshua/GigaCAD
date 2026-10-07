@@ -1,9 +1,9 @@
 import { execFileSync } from 'node:child_process';
-import { lstatSync, mkdirSync, mkdtempSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { hasDenyEntry, isLocked, lock, parseUserSid, unlock, whileUnlocked } from '../src/main/locks.js';
+import { hasDenyEntry, hasUnreadableDenyEntry, isLocked, lock, parseUserSid, unlock, whileUnlocked } from '../src/main/locks.js';
 
 // Each system locks its own way: Finder's Locked flag (chflags) on macOS, the read-only attribute
 // and folder deny entries (icacls) on Windows.
@@ -80,6 +80,12 @@ describe('Windows lock helpers', () => {
     expect(hasDenyEntry('C:\\x NT AUTHORITY\\SYSTEM:(OI)(CI)(F)\r\n    DESKTOP-7\\alex:(OI)(CI)(F)\r\n')).toBe(false);
     expect(hasDenyEntry('C:\\x\\parts DESKTOP-7\\alex:(I)(DENY)(D)\r\n    DESKTOP-7\\alex:(I)(OI)(CI)(F)\r\n')).toBe(false);
   });
+
+  it("spots 0.2.0's child entry, which also denied reading, but not the current one", () => {
+    expect(hasUnreadableDenyEntry('C:\\x DESKTOP-7\\alex:(DENY)(WD,AD,DC)\r\n   DESKTOP-7\\alex:(OI)(CI)(NP)(IO)(DENY)(D)\r\n')).toBe(true);
+    expect(hasUnreadableDenyEntry('C:\\x DESKTOP-7\\alex:(DENY)(WD,AD,DC)\r\n   DESKTOP-7\\alex:(OI)(CI)(NP)(IO)(DENY)(DE)\r\n')).toBe(false);
+    expect(hasUnreadableDenyEntry('C:\\x\\parts DESKTOP-7\\alex:(I)(DENY)(D)\r\n')).toBe(false);
+  });
 });
 
 windowsOnly('locks on Windows', () => {
@@ -108,6 +114,10 @@ windowsOnly('locks on Windows', () => {
     expect(await isLocked(root)).toBe(true);
     expect(await isLocked(join(root, 'parts'))).toBe(true);
     expect(writable(join(root, 'parts', 'Arm.SLDPRT'))).toBe(false);
+    // Locked means read-only, not unreadable.
+    expect(readFileSync(join(root, 'Bench.SLDASM'), 'utf8')).toBe('bench');
+    expect(readFileSync(join(root, 'parts', 'Arm.SLDPRT'), 'utf8')).toBe('arm');
+    expect(readdirSync(join(root, 'parts'))).toEqual(['Arm.SLDPRT']);
     expect(() => writeFileSync(join(root, 'Bench.SLDASM'), 'changed')).toThrow();
     expect(() => writeFileSync(join(root, 'parts', 'New.SLDPRT'), 'new')).toThrow();
     expect(() => mkdirSync(join(root, 'parts', 'more'))).toThrow();
@@ -143,6 +153,17 @@ windowsOnly('locks on Windows', () => {
     expect(writable(join(root, 'parts', 'Pulled.SLDPRT'))).toBe(false);
     await expect(whileUnlocked(root, async () => Promise.reject(new Error('pull failed')))).rejects.toThrow('pull failed');
     expect(await isLocked(root)).toBe(true);
+  });
+
+  it("replaces 0.2.0's lock, which denied reading, when locking again", async () => {
+    const root = tree();
+    const account = `*${parseUserSid(execFileSync('whoami', ['/user', '/fo', 'csv', '/nh'], { encoding: 'utf8' }))}`;
+    for (const folder of [join(root, 'parts'), root]) execFileSync('icacls', [folder, '/deny', `${account}:(WD,AD,DC)`, `${account}:(OI)(CI)(NP)(IO)(D)`]);
+    expect(() => readFileSync(join(root, 'Bench.SLDASM'))).toThrow();
+    await lock(root);
+    expect(readFileSync(join(root, 'Bench.SLDASM'), 'utf8')).toBe('bench');
+    expect(readFileSync(join(root, 'parts', 'Arm.SLDPRT'), 'utf8')).toBe('arm');
+    expect(() => unlinkSync(join(root, 'Bench.SLDASM'))).toThrow();
   });
 });
 

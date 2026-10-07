@@ -366,6 +366,9 @@ export class SyncEngine {
       const rdir = join(releasesDir, `v${release.number}`);
       if (await exists(join(rdir, RELEASE_MARKER))) {
         this.downloaded.add(rdir);
+        await this.quietly(`${summary.id}:v${release.number}`, async () => {
+          if (!(await isLocked(rdir))) await lock(rdir);
+        });
         continue;
       }
       this.downloaded.delete(rdir);

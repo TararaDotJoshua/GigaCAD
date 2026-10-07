@@ -111,8 +111,11 @@ export const DENIED_FOLDER_RIGHTS = '(WD,AD,DC)';
  * through delete permission on the file itself, whatever its folder says, and the owner has it.
  * Inherited to files and folders (OI, CI) one level down only (NP), not to the folder itself (IO),
  * so `.giga`'s contents stay free, and removing it from the folder removes every inherited copy.
+ *
+ * `DE` is icacls's specific right for delete alone. The simple right `D` adds SYNCHRONIZE, and denying
+ * that stops almost every open, so the files couldn't even be read.
  */
-export const DENIED_CHILD_RIGHTS = '(OI)(CI)(NP)(IO)(D)';
+export const DENIED_CHILD_RIGHTS = '(OI)(CI)(NP)(IO)(DE)';
 
 /** This user's SID from `whoami /user /fo csv /nh`: `"pc\alex","S-1-5-21-…"`. */
 export function parseUserSid(output: string): string {
@@ -130,30 +133,47 @@ export function hasDenyEntry(icaclsOutput: string): boolean {
   return icaclsOutput.split(/\r?\n/).some((line) => /\(DENY\)/i.test(line) && !/\(I\)/.test(line));
 }
 
+/** Whether a folder carries the child entry 0.2.0 added, `(DENY)(D)`, which also denied reading. */
+export function hasUnreadableDenyEntry(icaclsOutput: string): boolean {
+  return icaclsOutput.split(/\r?\n/).some((line) => /\(DENY\)\(D\)\s*$/i.test(line) && !/\(I\)/.test(line));
+}
+
 const system32 = (tool: string) => `${process.env.SystemRoot ?? 'C:\\Windows'}\\System32\\${tool}`;
 let userSid: Promise<string> | undefined;
 const sid = () => (userSid ??= run(system32('whoami.exe'), ['/user', '/fo', 'csv', '/nh']).then(({ stdout }) => parseUserSid(stdout)));
 const icacls = (args: string[]) => run(system32('icacls.exe'), args, { windowsHide: true });
 
+/**
+ * Removes 0.2.0's unreadable lock, top down: a folder can't be listed until its parent's entry is
+ * gone, and removing it removes the copies its children inherited.
+ */
+async function removeUnreadableLocks(dir: string, account: string): Promise<void> {
+  if (hasUnreadableDenyEntry((await icacls([dir])).stdout)) await icacls([dir, '/remove:d', account]);
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    if (entry.isDirectory() && entry.name !== STATE_DIR) await removeUnreadableLocks(join(dir, entry.name), account);
+  }
+}
+
 const windows = {
   async lock(dir: string): Promise<void> {
+    const account = `*${await sid()}`;
+    await removeUnreadableLocks(dir, account);
     const { files, dirs } = await walk(dir);
     // chmod on Windows sets or clears the read-only attribute.
     for (const file of files) {
       const { mode } = await lstat(file);
       if ((mode & 0o222) !== 0) await chmod(file, 0o444);
     }
-    const account = `*${await sid()}`;
     for (const folder of dirs) {
-      const { stdout } = await icacls([folder]);
-      if (hasDenyEntry(stdout)) continue;
+      if (hasDenyEntry((await icacls([folder])).stdout)) continue;
       await icacls([folder, '/deny', `${account}:${DENIED_FOLDER_RIGHTS}`, `${account}:${DENIED_CHILD_RIGHTS}`]);
     }
   },
 
   async unlock(dir: string): Promise<void> {
-    const { files, dirs } = await walk(dir);
     const account = `*${await sid()}`;
+    await removeUnreadableLocks(dir, account);
+    const { files, dirs } = await walk(dir);
     // Folders first, so the files inside can change. Removing a folder's entries removes the
     // copies its children inherited.
     for (const folder of dirs.reverse()) await icacls([folder, '/remove:d', account]);
@@ -163,7 +183,9 @@ const windows = {
     }
   },
 
+  /** A 0.2.0 lock counts as unlocked, so the sync engine locks the folder again, readably. */
   async isLocked(dir: string): Promise<boolean> {
-    return hasDenyEntry((await icacls([dir])).stdout);
+    const { stdout } = await icacls([dir]);
+    return hasDenyEntry(stdout) && !hasUnreadableDenyEntry(stdout);
   },
 };

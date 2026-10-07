@@ -91,6 +91,16 @@ jobs:
         with:
           name: GigaCAD-Windows
           path: clients/desktop/dist/*.exe
+      # Installs it the way a user would (per user, no administrator) and checks where it went.
+      - name: Install the installer
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem clients/desktop/dist/GigaCAD-Setup-*.exe | Select-Object -First 1
+          Start-Process $setup.FullName -ArgumentList '/S' -Wait
+          if (-not (Test-Path "$env:LOCALAPPDATA\Programs\GigaCAD\GigaCAD.exe")) {
+            Get-ChildItem "$env:LOCALAPPDATA\Programs"
+            throw 'GigaCAD.exe is not in %LOCALAPPDATA%\Programs\GigaCAD'
+          }
 
   # The image Railway deploys. Building it catches files missing from its COPY lines.
   api-image:

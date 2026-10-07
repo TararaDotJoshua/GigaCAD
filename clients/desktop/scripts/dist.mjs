@@ -37,6 +37,14 @@ if (!values['skip-build']) {
 const appIcon = join(root, 'build', 'app-icon.png');
 if (!existsSync(appIcon) && !values['allow-missing-icons']) throw new Error('build/app-icon.png is missing; run `pnpm icons` on a Mac');
 
+// A per-user one-click installer names its folder after the package, which would give
+// %LOCALAPPDATA%\Programs\@gigacaddesktop. Naming the package GigaCAD gives …\Programs\GigaCAD.
+// Windows only, so the Mac app's package.json stays as shipped.
+const windowsConfig = {
+  extraMetadata: { name: 'GigaCAD' },
+  ...(existsSync(appIcon) ? { win: { icon: 'build/app-icon.png' } } : {}),
+};
+
 const { build, Platform, Arch } = await import('electron-builder');
 await build({
   projectDir: root,
@@ -44,7 +52,7 @@ await build({
     ? Platform.WINDOWS.createTarget(values.dir ? 'dir' : 'nsis', Arch[values.arch ?? 'x64'])
     : Platform.MAC.createTarget(values.dir ? 'dir' : 'dmg', Arch[values.arch ?? 'universal']),
   // Merged over electron-builder.yml.
-  config: windows && existsSync(appIcon) ? { win: { icon: 'build/app-icon.png' } } : undefined,
+  config: windows ? windowsConfig : undefined,
   publish: 'never',
 });
 node('check-package.mjs', ...(values['allow-missing-icons'] ? ['--allow-missing-icons'] : []));

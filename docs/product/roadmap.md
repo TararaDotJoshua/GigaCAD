@@ -54,8 +54,13 @@ Following the phases in [plan.md](plan.md):
 2. **SolidWorks add-in (phase 4, milestones W5–W6).** Task Pane, read-only banner, references, reconnecting, the pipe server identity check, STL export on version commits, and candidate rebuilds with STEP AP242 and fine STL. It builds only on a computer with SolidWorks installed, because the interop DLLs come from the install. The installer must also register the add-in.
 3. **macOS client (phase 7).** The folder-based app is built. Next: try it on a clean Mac account, then decide whether viewers' root folders should be locked and whether local copies of archived branches should be removed. A File Provider version needs a Developer ID.
 4. **Desktop window UX.** The 2026-10-07 audit's [desktop UX plan](../ui/desktop-ux-plan.md): 9 phases, starting with the layout breakage at the minimum window size. Its five decisions were approved on 2026-10-08.
-5. **Other CAD programs (phase 7).** Fusion, FreeCAD, and Onshape exports through generic parsers.
-6. **Later.** A Windows Cloud Files virtual drive for on-demand files, and a streaming ZIP "Download all" endpoint (web UX phase 6).
+5. **Organizations.** Teams and roles (teams can be approvers), shared billing and storage, company sign-in and admin controls, and public org pages. Organization projects start private. See [the manifesto](../MANIFESTO.md).
+6. **Issues, boards, and sprints.** GigaCAD's own tracker: starting an issue creates its branch, issues link to parts (items), and a release moves the issues it shipped to Done.
+7. **Two-way Jira sync.** Link Jira issues to branches and release requests; releasing moves them to Done and posts the release back.
+8. **Review on the model.** Comments on faces, features, and drawings inside a release request.
+9. **BOMs, drawings, and manufacturing packages** generated from a release.
+10. **Other CAD programs (phase 7).** Fusion, FreeCAD, and Onshape exports through generic parsers.
+11. **Later.** Electronics (KiCad, Altium), a Windows Cloud Files virtual drive for on-demand files, and a streaming ZIP "Download all" endpoint (web UX phase 6).
 
 ## Open product questions
 
@@ -63,3 +68,4 @@ Following the phases in [plan.md](plan.md):
 - Should viewers' root folders be locked in the desktop app?
 - Should local copies of archived branches be removed?
 - The 30-day price-change notice in the terms was assumed, not confirmed.
+- How are organizations priced? Individuals stay storage-only; organizations may differ.

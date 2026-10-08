@@ -14,7 +14,7 @@ This page explains the whole codebase. Each folder below goes deeper into one pa
 | [services/](services/README.md) | The API: routes, services, background jobs, thumbnails, storage, email, live updates | |
 | [data/](data/README.md) | The database, file storage, manifests and items, immutability, quotas | |
 | [auth/](auth/README.md) | Sign-in, sessions, device tokens, roles, and row-level security | |
-| [payments/](payments/README.md) | Plans, storage limits, and Stripe | |
+| [payments/](payments/README.md) | Plans, storage limits, and Stripe | [organizations-pricing.md](payments/organizations-pricing.md) |
 | [clients/](clients/README.md) | The `giga` CLI, the desktop app (macOS and Windows), and the SolidWorks add-in | [windows-app-plan.md](clients/windows-app-plan.md), [windows-pc-runbook.md](clients/windows-pc-runbook.md) |
 | [operations/](operations/README.md) | Hosting, CI, deploys, migrations, local development, and accounts | [deployment.md](operations/deployment.md) (every production setup step) |
 

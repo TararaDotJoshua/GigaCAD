@@ -1,6 +1,8 @@
 # Payments
 
-GigaCAD charges for storage only. Every plan has every feature and unlimited collaborators. Paid plans are live and on sale.
+GigaCAD charges individuals for storage only. Every plan has every feature and unlimited collaborators. Paid plans are live and on sale.
+
+Organizations will pay per editor, with pooled storage. See [organization pricing](organizations-pricing.md) (proposed).
 
 ## Plans
 

@@ -6,7 +6,7 @@ GigaCAD is a hosted, GitHub-style version-control service (PDM) for hobbyist CAD
 |---|---|---|
 | [product/](product/README.md) | What GigaCAD is, its words, and its workflow rules | [plan.md](product/plan.md) (the full product design), [roadmap.md](product/roadmap.md) (live to-do list) |
 | [design/](design/README.md) | The design system: colors, type, layout, components, voice | The design system itself is binding |
-| [ui/](ui/README.md) | The web app (marketing and product) and the desktop app's window | [file-directory-plan.md](ui/file-directory-plan.md), [web-ux-plan.md](ui/web-ux-plan.md) |
+| [ui/](ui/README.md) | The web app (marketing and product) and the desktop app's window | [file-directory-plan.md](ui/file-directory-plan.md), [web-ux-plan.md](ui/web-ux-plan.md), [desktop-ux-plan.md](ui/desktop-ux-plan.md) |
 | [services/](services/README.md) | The API: routes, services, background jobs, thumbnails, storage, email, live updates | |
 | [data/](data/README.md) | The database, file storage, manifests and items, immutability, quotas | |
 | [auth/](auth/README.md) | Sign-in, sessions, device tokens, roles, and row-level security | |

@@ -53,8 +53,9 @@ Following the phases in [plan.md](plan.md):
 1. **Windows app (phase 3).** W1–W4 and W7 are merged (#46–#50). What's left needs the Windows PC, above. See [the Windows app plan](../clients/windows-app-plan.md) and [the runbook](../clients/windows-pc-runbook.md).
 2. **SolidWorks add-in (phase 4, milestones W5–W6).** Task Pane, read-only banner, references, reconnecting, the pipe server identity check, STL export on version commits, and candidate rebuilds with STEP AP242 and fine STL. It builds only on a computer with SolidWorks installed, because the interop DLLs come from the install. The installer must also register the add-in.
 3. **macOS client (phase 7).** The folder-based app is built. Next: try it on a clean Mac account, then decide whether viewers' root folders should be locked and whether local copies of archived branches should be removed. A File Provider version needs a Developer ID.
-4. **Other CAD programs (phase 7).** Fusion, FreeCAD, and Onshape exports through generic parsers.
-5. **Later.** A Windows Cloud Files virtual drive for on-demand files, and a streaming ZIP "Download all" endpoint (web UX phase 6).
+4. **Desktop window UX.** The 2026-10-07 audit's [desktop UX plan](../ui/desktop-ux-plan.md): 9 phases, starting with the layout breakage at the minimum window size. Its five decisions were approved on 2026-10-08.
+5. **Other CAD programs (phase 7).** Fusion, FreeCAD, and Onshape exports through generic parsers.
+6. **Later.** A Windows Cloud Files virtual drive for on-demand files, and a streaming ZIP "Download all" endpoint (web UX phase 6).
 
 ## Open product questions
 

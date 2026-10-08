@@ -1,4 +1,3 @@
-import { DOWNLOAD_URL, MAC_DOWNLOAD_URL } from "../../../components/site";
 
 // The docs table of contents. Each page lists the headings it will cover;
 // pages without `body` render those headings as unwritten sections.
@@ -218,8 +217,8 @@ function FirstProject() {
       <p>
         This walks through a new project from empty to its first release, using the{" "}
         <a href="/docs/cli">command-line tool</a> so every step is visible. The GigaCAD app for{" "}
-        <a href="/docs/install-windows">Windows</a> and <a href="/docs/install-mac">Mac</a> does the same
-        from the right-click menu.
+        <a href="/docs/install-windows">Windows</a> and <a href="/docs/install-mac">Mac</a>, coming soon, will
+        do the same from the right-click menu.
       </p>
 
       <h2 id="create-a-project">Create a project</h2>
@@ -611,6 +610,11 @@ giga rr release --notes "Stiffer jaw, new fingertip"`}</Command>
 function InstallWindows() {
   return (
     <>
+      <p className="doc-draft-note">
+        GigaCAD for Windows is in development and isn’t available to download yet. Until it is, use GigaCAD
+        in your browser or with the <a href="/docs/cli">command-line tool</a>. This page describes how it
+        will work.
+      </p>
       <p>
         GigaCAD for Windows puts your projects in a <code>GigaCAD</code> folder in your user folder, laid out
         like the web directory. Branches you check out are editable; everything else is read-only.
@@ -624,7 +628,7 @@ function InstallWindows() {
 
       <h2 id="run-the-installer">Run the installer</h2>
       <p>
-        <a href={DOWNLOAD_URL}>Download GigaCAD for Windows</a> and run it. It installs for your user account
+        Download GigaCAD for Windows and run it. It installs for your user account
         only, so it doesn’t ask for an administrator, and it opens GigaCAD when it’s done. The installer isn’t
         code-signed yet, so Windows SmartScreen may say it protected your PC. To install anyway:
       </p>
@@ -681,6 +685,11 @@ function InstallWindows() {
 function InstallMac() {
   return (
     <>
+      <p className="doc-draft-note">
+        GigaCAD for macOS is in development and isn’t available to download yet. Until it is, use GigaCAD
+        in your browser or with the <a href="/docs/cli">command-line tool</a>. This page describes how it
+        will work.
+      </p>
       <p>
         GigaCAD for macOS puts your projects in a <code>GigaCAD</code> folder in your home folder, laid out
         like the web directory. Branches you check out are editable; everything else is read-only.
@@ -694,7 +703,7 @@ function InstallMac() {
 
       <h2 id="install-and-open-anyway">Install and Open Anyway</h2>
       <p>
-        <a href={MAC_DOWNLOAD_URL}>Download GigaCAD for Mac</a>, open the disk image, and drag GigaCAD
+        Download GigaCAD for Mac, open the disk image, and drag GigaCAD
         into Applications. GigaCAD isn’t notarized by Apple yet, so the first time you open it macOS says it
         can’t check the app. To open it:
       </p>
@@ -769,14 +778,14 @@ export const docs: DocSection[] = [
       {
         slug: "install-windows",
         title: "Install on Windows",
-        summary: "Install GigaCAD for Windows, sign in, and find your projects in File Explorer.",
+        summary: "Coming soon. Install GigaCAD for Windows, sign in, and find your projects in File Explorer.",
         outline: ["Requirements", "Run the installer", "Sign in with a device code", "The GigaCAD folder", "The command-line tool", "Uninstall"],
         body: InstallWindows,
       },
       {
         slug: "install-mac",
         title: "Install on a Mac",
-        summary: "Install GigaCAD for macOS, open it the first time, and find your projects in Finder.",
+        summary: "Coming soon. Install GigaCAD for macOS, open it the first time, and find your projects in Finder.",
         outline: ["Requirements", "Install and Open Anyway", "Set up and sign in", "The GigaCAD folder", "The command-line tool", "Uninstall"],
         body: InstallMac,
       },

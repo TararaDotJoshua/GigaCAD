@@ -396,24 +396,8 @@ button {
   margin-top: 44px;
 }
 
-.hero-download {
-  margin-top: 24px;
-}
-
-.download-links {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 12px 28px;
-  margin-top: 24px;
-}
-
-.download-links .hero-download {
-  margin-top: 0;
-}
-
 .hero-note {
-  margin-top: 16px;
+  margin-top: 20px;
   font-size: var(--t-small);
   color: var(--paper-faint);
 }

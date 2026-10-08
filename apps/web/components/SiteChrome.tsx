@@ -14,7 +14,6 @@ export function SiteHeader() {
           <Link href="/#features">Features</Link>
           <Link href="/pricing">Pricing</Link>
           <Link href="/docs">Docs</Link>
-          <Link href="/download">Download</Link>
         </nav>
         <div className="nav-actions">
           <a className="nav-login" href={`${APP_URL}/login`}>
@@ -37,7 +36,7 @@ export function SiteFooter() {
         <nav className="footer-links" aria-label="Footer">
           <Link href="/pricing">Pricing</Link>
           <Link href="/docs">Docs</Link>
-          <Link href="/download">Download</Link>
+          <Link href="/download">Desktop app</Link>
           <a href={`${APP_URL}/login`}>Log in</a>
           <Link href="/terms">Terms</Link>
           <Link href="/privacy">Privacy</Link>

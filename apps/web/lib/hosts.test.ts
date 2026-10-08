@@ -8,6 +8,7 @@ describe('routeRequest', () => {
   it('serves marketing pages on gigacad.site and sends everything else to the app', () => {
     expect(routeRequest('gigacad.site', '/', '', prod)).toEqual({ kind: 'next' });
     expect(routeRequest('gigacad.site', '/docs/branches', '', prod)).toEqual({ kind: 'next' });
+    expect(routeRequest('gigacad.site', '/newsroom/feed.xml', '', prod)).toEqual({ kind: 'next' });
     expect(routeRequest('gigacad.site', '/login', '?next=%2Fnew', prod)).toEqual({ kind: 'redirect', url: 'https://app.gigacad.site/login?next=%2Fnew' });
     expect(routeRequest('gigacad.site', '/alex/robot', '', prod)).toEqual({ kind: 'redirect', url: 'https://app.gigacad.site/alex/robot' });
     expect(routeRequest('gigacad.site', '/app', '', prod)).toEqual({ kind: 'redirect', url: 'https://app.gigacad.site/' });
@@ -21,6 +22,7 @@ describe('routeRequest', () => {
     expect(routeRequest('app.gigacad.site', '/download', '', prod)).toEqual({ kind: 'redirect', url: 'https://gigacad.site/download' });
     expect(routeRequest('app.gigacad.site', '/device', '?code=ABCD-2345', prod)).toEqual({ kind: 'next' });
     expect(routeRequest('app.gigacad.site', '/pricing', '', prod)).toEqual({ kind: 'redirect', url: 'https://gigacad.site/pricing' });
+    expect(routeRequest('app.gigacad.site', '/newsroom/hello', '', prod)).toEqual({ kind: 'redirect', url: 'https://gigacad.site/newsroom/hello' });
     expect(routeRequest('gigacad.site', '/billing/checkout', '?plan=maker&interval=yearly', prod)).toEqual({
       kind: 'redirect',
       url: 'https://app.gigacad.site/billing/checkout?plan=maker&interval=yearly',

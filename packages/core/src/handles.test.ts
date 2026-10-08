@@ -8,7 +8,7 @@ describe('handles', () => {
   });
 
   it('reserves the names of top-level pages', () => {
-    for (const handle of ['login', 'settings', 'docs', 'new', 'device', 'Settings']) expect(isReservedHandle(handle)).toBe(true);
+    for (const handle of ['login', 'settings', 'docs', 'newsroom', 'new', 'device', 'Settings']) expect(isReservedHandle(handle)).toBe(true);
     expect(isReservedHandle('alex')).toBe(false);
   });
 

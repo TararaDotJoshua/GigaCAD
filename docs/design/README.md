@@ -105,6 +105,8 @@ Every marketing page lives in `apps/web/app/(marketing)/`. That folder's layout 
 - **Legal** (`components/LegalPage.tsx`): a sticky table of contents on the left and `.prose` text on the right. A Moss "short version" box at the top sums up the rules in plain language. Section titles are plain sentences, not "Section 4.2".
 - **Docs** (`app/(marketing)/docs/`): the sidebar comes from `content.tsx`, and every page is statically generated from that list. On mobile the sidebar collapses into a `<details>` menu.
 - **Unwritten docs pages** show their planned headings in dashed boxes (`.doc-pending`), the same dashed style as hidden edges in the part drawings. A page counts as written once it has a `body` in `content.tsx`.
+- **Newsroom** (`/newsroom`): essays, roadmaps, and news, written as Markdown in `apps/web/content/newsroom/` (see its README). The index has the usual page header, then a dated list: date and kind badges in a left column, the title and summary on the right, hairlines between rows, and the whole row clickable through the title's link. Article pages are one centered 760px column: a "Newsroom" back link, kind badge and date, the title (`.page-title`, sentence case, no period, like docs titles), the summary as a lead, the byline, then `.prose` at 1.125rem. Kinds use plain Moss badges; never Signal. Drafts show only in development, with a quiet "Draft" badge.
+- **Header links.** Wide screens show the page links inline, with the current section in Paper (`aria-current`). Below 760px they move behind a Menu button at the end of the bar, together with Log in.
 - **Long-form text** (`.prose`): max width 68ch, Paper-muted body text, Paper headings, and underlined links in a faint underline color.
 
 ### Product app

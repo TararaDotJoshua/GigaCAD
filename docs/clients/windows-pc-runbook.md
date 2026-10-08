@@ -19,6 +19,7 @@ The `windows` CI job builds an installer for every pull request. It's unsigned, 
 1. On github.com, open the latest successful **CI** run on `main` (Actions → CI). Download the `GigaCAD-Windows` artifact and unzip it.
 2. Run `GigaCAD-Setup-<version>.exe`. SmartScreen will warn that it's unrecognized: choose **More info**, then **Run anyway**.
    - [ ] It installs without asking for an administrator, and GigaCAD opens.
+   - [ ] It installs to `%LOCALAPPDATA%\Programs\GigaCAD`.
 3. **Sign in**
    - [ ] Signing in opens the browser with a code. After you approve it, the app shows your projects.
 4. **Sync**

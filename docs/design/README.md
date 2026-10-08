@@ -81,7 +81,7 @@ Rules:
 │   [part]     for your SolidWorks files.     [part]   │
 │              lead, 2 lines                           │
 │              [ Start a project ]                     │
-│              Download for Windows                    │
+│              desktop apps coming soon (note)         │
 │ ┌──────────────────────────────────────────────────┐ │
 │ │ sidebar │ release request diff pick (live demo)  │ │
 │ └──────────────────────────────────────────────────┘ │
@@ -101,7 +101,7 @@ Rules:
 Every marketing page lives in `apps/web/app/(marketing)/`. That folder's layout adds the shared header and footer from `components/SiteChrome.tsx`. Shared URLs and contact addresses are in `components/site.ts`.
 
 - **Page header** (`.page-head`): left-aligned, with `.page-title` (clamp 2.5–4.5rem, same tight tracking as the hero). The drafting grid appears again, masked toward the top left. Legal pages use `.page-head-compact` without the grid.
-- **Download**: the hero is two columns, copy on the left and a product visual on the right. The sections below reuse `.extras`, `.steps`, and a `.spec-table` definition list.
+- **Download** (`/download`): while the desktop apps are in development this is a "coming soon" page with no installer links. The hero is two columns, copy on the left and a product visual on the right; below it, `.extras` previews what's coming. It's linked from the footer ("Desktop app"), the home hero note, and the product app, but not the header.
 - **Legal** (`components/LegalPage.tsx`): a sticky table of contents on the left and `.prose` text on the right. A Moss "short version" box at the top sums up the rules in plain language. Section titles are plain sentences, not "Section 4.2".
 - **Docs** (`app/(marketing)/docs/`): the sidebar comes from `content.tsx`, and every page is statically generated from that list. On mobile the sidebar collapses into a `<details>` menu.
 - **Unwritten docs pages** show their planned headings in dashed boxes (`.doc-pending`), the same dashed style as hidden edges in the part drawings. A page counts as written once it has a `body` in `content.tsx`.

@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import { sites } from '../../lib/hosts';
-import { DriveIcon } from '../icons';
 import { OpenUploadButton } from './OpenUploadButton';
 
 /**
@@ -22,10 +21,9 @@ export function GettingStarted({ project, compact = false }: { project?: string;
         )}
         <div className="getting-started-option">
           <h3>Work in the GigaCAD drive</h3>
-          <p>Your projects appear as folders on Windows and Mac. Open assemblies in SolidWorks, check out a branch, and save as usual.</p>
-          <a className="btn btn-secondary btn-small" href={`${siteUrl}/download`}>
-            <DriveIcon className="icon" />
-            Download the app
+          <p>Coming soon: your projects as folders on Windows and Mac. Open assemblies in SolidWorks, check out a branch, and save as usual.</p>
+          <a className="muted" href={`${siteUrl}/download`}>
+            About the desktop apps
           </a>
         </div>
         <div className="getting-started-option">

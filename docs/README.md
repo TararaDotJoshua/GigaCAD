@@ -1,6 +1,10 @@
 # GigaCAD documentation
 
-GigaCAD is a hosted, GitHub-style version-control service (PDM) for hobbyist CAD files, SolidWorks first. It lives at **gigacad.site**. This page explains the whole codebase. Each folder below goes deeper into one part of it and holds the plans for that part.
+GigaCAD is a hosted, GitHub-style version-control service (PDM) for CAD files, built for fast-moving hardware teams and open to hobbyists, SolidWorks first. It lives at **gigacad.site**.
+
+Start with [the manifesto](MANIFESTO.md): why GigaCAD exists and how to make decisions.
+
+This page explains the whole codebase. Each folder below goes deeper into one part of it and holds the plans for that part.
 
 | Folder | Covers | Plans inside |
 |---|---|---|

@@ -44,11 +44,12 @@ Any organization on Team or Business can add as many packs as it needs. Packs ar
 
 ### Founder pricing
 
-The first 100 organizations to pay get **25% off their seats for as long as their subscription stays active**: Team at $6 and Business at $13.50 per editor per month. Storage packs are full price.
+The first 100 organizations to pay get **20% off their seats for as long as their subscription stays active**: Team at $6.40 and Business at $14.40 per editor per month. Storage packs are full price.
 
 - It's a Stripe promotion code (`FOUNDER`) on a coupon with `duration: forever`, limited to 100 redemptions, first-time customers only, and applying only to the seat products.
 - The discount follows the subscription, so it stays through seat changes and a move between Team and Business. Canceling ends it for good.
 - Education and nonprofit grants don't use a founder slot.
+- If list prices change later, the 20% applies to the new price.
 
 ### What each plan includes
 

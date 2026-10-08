@@ -176,6 +176,61 @@ const sections: LegalSection[] = [
     ),
   },
   {
+    id: "organizations",
+    title: "Organizations",
+    body: (
+      <>
+        <p>
+          An organization is an account that a team shares. If you create one, you agree to these terms
+          for the organization, and you confirm you’re allowed to. The organization owns its projects.
+          Its owners and admins decide who belongs to it, what role each person has, and how it’s billed.
+        </p>
+        <p>
+          Organization plans are billed per editor seat, monthly or yearly in advance, at the prices on
+          the <a href="/pricing">pricing page</a> when you subscribe, plus any sales tax or VAT. An
+          editor is anyone who can change the organization’s projects, including its owners and admins.
+          Viewers and reviewers, who can read, comment, and approve release requests but not change
+          files, are free. Storage packs add storage for a separate price. Stripe, through Link, is the
+          seller of record, as it is for personal plans.
+        </p>
+        <ul>
+          <li>
+            The organization buys a number of seats. Giving someone editor access needs a free seat.
+          </li>
+          <li>
+            Added seats and storage packs are charged right away for the rest of the period. Removed
+            seats and packs end at the next renewal.
+          </li>
+          <li>
+            A trial lasts 14 days. We take a card when it starts and charge it when the trial ends,
+            unless you cancel first.
+          </li>
+          <li>
+            Founder pricing gives the first 100 organizations that subscribe 20% off their seats for as
+            long as that subscription stays active, including after a price change. It ends for good if
+            the subscription is canceled, and it can’t be moved to another organization. It doesn’t
+            apply to storage packs.
+          </li>
+          <li>
+            We may offer free plans to schools, student teams, and nonprofits that qualify. We may ask
+            for proof, and each grant lasts for the period we tell you.
+          </li>
+        </ul>
+        <p>
+          If an organization’s payment fails, we keep its plan while Stripe retries it. If the
+          subscription or grant ends, the organization becomes read-only: everyone can still view and
+          download its files, including every release, but nothing new can be uploaded, checked out,
+          or released until it’s paid for again. We don’t delete an organization’s files because it
+          stopped paying. Its owners can delete it, with the same 30-day restore window as a project.
+        </p>
+        <p>
+          We’ll tell an organization’s owners at least 30 days before we change the price of a plan,
+          seat, or storage pack it’s on.
+        </p>
+      </>
+    ),
+  },
+  {
     id: "software",
     title: "Desktop software",
     body: (
@@ -249,7 +304,7 @@ export default function TermsPage() {
   return (
     <LegalPage
       title="Terms of Service"
-      updated="September 25, 2026"
+      updated="October 8, 2026"
       summary={[
         "Your files are yours. We only use them to run GigaCAD for you and the people you share with.",
         "Public projects can be viewed and forked by anyone, under the license you choose.",

@@ -428,7 +428,10 @@ test('every page type answers with the right status', async ({ page, browser }) 
   const docs = await signedOut.request.get('/docs');
   const docPage = /href="(\/docs\/[^"#]+)"/.exec(await docs.text())?.[1];
   expect(docPage, 'the docs index links to a docs page').toBeTruthy();
-  for (const path of ['/', '/docs', docPage!, '/download', '/pricing', '/privacy', '/terms', '/login', '/signup', '/forgot-password']) {
+  const newsroom = await signedOut.request.get('/newsroom');
+  const article = /href="(\/newsroom\/(?!feed)[^"#]+)"/.exec(await newsroom.text())?.[1];
+  expect(article, 'the newsroom links to an article').toBeTruthy();
+  for (const path of ['/', '/docs', docPage!, '/newsroom', article!, '/newsroom/feed.xml', '/download', '/pricing', '/privacy', '/terms', '/login', '/signup', '/forgot-password']) {
     expect((await signedOut.request.get(path, { maxRedirects: 0 })).status(), path).toBe(200);
   }
   // Explore and profiles are public. Account pages and private projects send visitors to sign in.

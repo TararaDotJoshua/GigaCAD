@@ -192,3 +192,9 @@ export const MoreIcon = ({ className }: IconProps) => (
     <circle cx="12.5" cy="8" r="1.3" />
   </svg>
 );
+
+export const ArrowLeftIcon = ({ className }: IconProps) => (
+  <svg className={className} {...base}>
+    <path d="M13 8H3M7 4 3 8l4 4" />
+  </svg>
+);

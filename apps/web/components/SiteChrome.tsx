@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Logo } from "./Logo";
+import { SiteMenu, SiteNav } from "./SiteNav";
 import { APP_URL } from "./site";
 
 export function SiteHeader() {
@@ -9,12 +10,7 @@ export function SiteHeader() {
         <Link href="/" aria-label="GigaCAD home">
           <Logo />
         </Link>
-        <nav className="nav-links" aria-label="Main">
-          <Link href="/#how">How it works</Link>
-          <Link href="/#features">Features</Link>
-          <Link href="/pricing">Pricing</Link>
-          <Link href="/docs">Docs</Link>
-        </nav>
+        <SiteNav />
         <div className="nav-actions">
           <a className="nav-login" href={`${APP_URL}/login`}>
             Log in
@@ -22,6 +18,7 @@ export function SiteHeader() {
           <a className="button button-small" href={`${APP_URL}/signup`}>
             Start a project
           </a>
+          <SiteMenu loginHref={`${APP_URL}/login`} />
         </div>
       </div>
     </header>
@@ -36,6 +33,7 @@ export function SiteFooter() {
         <nav className="footer-links" aria-label="Footer">
           <Link href="/pricing">Pricing</Link>
           <Link href="/docs">Docs</Link>
+          <Link href="/newsroom">Newsroom</Link>
           <Link href="/download">Desktop app</Link>
           <a href={`${APP_URL}/login`}>Log in</a>
           <Link href="/terms">Terms</Link>

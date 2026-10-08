@@ -1,10 +1,10 @@
 # Product
 
-What GigaCAD is, the words it uses, and the rules every part of the code follows. [plan.md](plan.md) is the full design, with the data model, API, phases, and verification plan. [roadmap.md](roadmap.md) is the live to-do list.
+What GigaCAD is, the words it uses, and the rules every part of the code follows. [The manifesto](../MANIFESTO.md) says why it exists and how to make decisions. [plan.md](plan.md) is the full design, with the data model, API, phases, and verification plan. [roadmap.md](roadmap.md) is the live to-do list.
 
 ## Who it's for
 
-Hobbyists and enthusiasts who want version control for CAD files without paying for SolidWorks PDM or fighting Git over binary files. It's a hosted service with public sharing and forks. SolidWorks comes first. Other file types are fully versioned; they just miss the SolidWorks extras.
+Fast-moving hardware teams: startups, university and robotics teams, and small hardware companies that design, build, test, and revise every week. They want what software teams have, version control and project management, without paying for SolidWorks PDM or fighting Git over binary files. Hobbyists are welcome too, but when the two conflict, the team workflow wins. It's a hosted service with public sharing and forks. SolidWorks comes first. Other file types are fully versioned; they just miss the SolidWorks extras.
 
 ## Words
 
@@ -57,6 +57,14 @@ Use these exact words in the UI, docs, and code.
 - Hosted cloud service with public sharing and forks. Starting with SolidWorks, so Windows comes first.
 - Storage-only pricing, with every feature and unlimited collaborators on every plan ([payments/](../payments/README.md)).
 - Web UX decisions from 2026-09-30, listed in [web-ux-plan.md](../ui/web-ux-plan.md#decisions).
-- Handle-rename redirects and organizations were left out on purpose.
+- Handle-rename redirects were left out on purpose.
+- From 2026-10-08, set out in [the manifesto](../MANIFESTO.md):
+  - Fast-moving hardware teams are the primary customer. Hobbyists stay welcome; the team workflow wins ties.
+  - Organizations are planned: teams and roles (teams can approve), shared billing and storage, company sign-in and admin controls, and public org pages. Organization projects are private by default.
+  - GigaCAD will have its own issues, boards, and sprints, with a branch per issue and issues linked to parts (items), plus two-way Jira sync. Releasing moves linked issues to Done.
+  - Individuals keep storage-only pricing. Organizations may be priced differently.
+  - Planned direction also includes comments on the 3D model and drawings in release requests, and BOMs, drawings, and manufacturing packages from releases. Electronics (KiCad, Altium) comes later.
+  - The API and CLI stay agent-friendly: AI agents can do anything a person can, under the same locks, roles, and approvals.
+  - Success is measured by iteration speed: the time from an issue to a released, tested part.
 
 Still open: see [roadmap.md](roadmap.md#open-product-questions).

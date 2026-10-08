@@ -4,7 +4,7 @@ The Windows work that needs a real PC, in order. Tick the boxes as you go, and n
 
 Parts 1–3 need only the PC. Part 4 can happen anywhere, since it's Azure setup in a browser. Part 5 needs SolidWorks on the PC.
 
-**Note:** the website's "Download for Windows" button links to `downloads.gigacad.site/desktop/GigaCAD-Setup.exe`, which doesn't exist until Part 2 runs. Until then the button gives a 404.
+**Note:** the website doesn't link to any installers while the desktop apps are in development; `/download` is a "coming soon" page. The installer is still published to `downloads.gigacad.site/desktop/GigaCAD-Setup.exe` by Part 2.
 
 ## Before you start
 
@@ -68,7 +68,6 @@ This publishes to production. It also sends an update to every installed copy of
 3. When it finishes:
    - [ ] <https://downloads.gigacad.site/desktop/GigaCAD-Setup.exe> downloads.
    - [ ] <https://downloads.gigacad.site/desktop/stable/win32/manifest.json> shows the new version.
-   - [ ] The **Download for Windows** button on <https://gigacad.site/download> works.
 4. Install the release on the PC from the website, the way a new user would.
    - [ ] Everything from Part 1 still works.
    - [ ] Folders in `%USERPROFILE%\GigaCAD` now have GigaCAD icons. If they don't appear right away, sign out of Windows and back in; Explorer caches icons.

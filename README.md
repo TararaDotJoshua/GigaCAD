@@ -1,6 +1,6 @@
 # GigaCAD
 
-GitHub-style version control for CAD files (SolidWorks first), hosted at gigacad.site. Start with [docs/README.md](docs/README.md): it explains the whole codebase and links to each area (product, design, UI, services, data, auth, payments, clients, operations) and its plans.
+GitHub-style version control for CAD files (SolidWorks first), hosted at gigacad.site. Read [the manifesto](docs/MANIFESTO.md) for why GigaCAD exists and how to make decisions. Then start with [docs/README.md](docs/README.md): it explains the whole codebase and links to each area (product, design, UI, services, data, auth, payments, clients, operations) and its plans.
 
 ## Layout
 

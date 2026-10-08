@@ -5,12 +5,13 @@ The web app in `apps/web`, and the desktop app's window in `clients/desktop/src/
 Plans in this folder:
 - [file-directory-plan.md](file-directory-plan.md): the project file directory. Shipped in #34; a few questions are still open.
 - [web-ux-plan.md](web-ux-plan.md): the 8-phase fix plan from the 2026-09-30 audit. All eight phases are merged (#52–#55, #58, #59).
+- [desktop-ux-plan.md](desktop-ux-plan.md): the 9-phase fix plan from the 2026-10-07 audit of the desktop app's window, for macOS and Windows. Decisions approved; nothing built yet.
 
 ## One Next.js app, two sites
 
 `apps/web` is a single Next.js app on Cloudflare Workers (through OpenNext). It decides which site to serve from the request's host:
 
-- `gigacad.site`: marketing, docs, pricing, download, and legal pages.
+- `gigacad.site`: marketing, docs, the newsroom, pricing, download, and legal pages.
 - `app.gigacad.site`: the product, sign-in, and `/device` approval.
 
 `lib/hosts.ts` holds the rules (`routeRequest`), and `proxy.ts` applies them and refreshes the Supabase session. On the marketing host, product and sign-in paths redirect to the app host; on the app host, `/` is the dashboard and marketing paths redirect back. When both URLs share a host, as in local development, nothing is split.
@@ -19,7 +20,7 @@ Plans in this folder:
 
 | Group | Pages |
 |---|---|
-| `(marketing)` | Home, `docs` and `docs/[slug]`, `download`, `pricing`, `privacy`, `terms`. Docs content is in `docs/content.tsx`; unwritten pages show dashed `.doc-pending` boxes |
+| `(marketing)` | Home, `docs` and `docs/[slug]`, `newsroom`, `newsroom/[slug]` and `newsroom/feed.xml`, `download`, `pricing`, `privacy`, `terms`. Docs content is in `docs/content.tsx`; unwritten pages show dashed `.doc-pending` boxes. Newsroom articles are Markdown files in `content/newsroom/`, read at build time by `lib/newsroom.ts` |
 | `(auth)` | `login`, `signup`, `forgot-password`, `reset-password`, `device` |
 | `auth` | `auth/confirm` (email links) and the OAuth callback |
 | `(product)/(account)` | `app` (dashboard), `new` (new project), `settings` (account), `settings/billing` |
@@ -40,9 +41,9 @@ Plans in this folder:
 
 | Where | What |
 |---|---|
-| `components/` | Shared and marketing: `SiteChrome` (header and footer), `site.ts` (site URLs), `PartArt` in `parts.tsx` (the generated isometric line art), `icons.tsx`, `Logo.tsx`, `DiffPickDemo` (the working demo on the home page), `BranchDiagram`, `PricingPlans`, `AuthForm`, `DeviceApproval`, `LegalPage` |
+| `components/` | Shared and marketing: `SiteChrome` (header and footer), `SiteNav` (header links and the narrow-screen menu), `site.ts` (site URLs), `PartArt` in `parts.tsx` (the generated isometric line art), `icons.tsx`, `Logo.tsx`, `DiffPickDemo` (the working demo on the home page), `BranchDiagram`, `PricingPlans`, `AuthForm`, `DeviceApproval`, `LegalPage` |
 | `components/product/` | Product UI: `Shell` and `SidebarNav`, `ProjectDirectory` (the file table), `UploadFiles`, `EntryMenu` (right-click menu), `TagPicker`, `PickEditor` (diff pick), `ActivityList`, `ContributionGraph`, `BillingPlans`, `LiveRefresh`, and smaller pieces |
-| `lib/` | `hosts`, `session`, `api`, `product` (reads), `describe` (activity sentences and state treatments), `picks`, `paths`, `readme`, `return-path`, `messages`, `upload`, `viewer`, `preview`, `supabase/` clients |
+| `lib/` | `hosts`, `newsroom`, `session`, `api`, `product` (reads), `describe` (activity sentences and state treatments), `picks`, `paths`, `readme`, `return-path`, `messages`, `upload`, `viewer`, `preview`, `supabase/` clients |
 
 ## The desktop app's window
 

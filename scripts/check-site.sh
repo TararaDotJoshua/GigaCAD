@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Checks the HTTP status of every kind of page on a deployed GigaCAD: marketing, every
-# docs page, sign-in, Explore and a user page, the signed-out product redirect, the host
-# split, and the API.
+# docs page, every newsroom article and the feed, sign-in, Explore and a user page, the
+# signed-out product redirect, the host split, and the API.
 # Status codes only, never page content: a 500 once hid behind a page that still matched.
 #
 #   scripts/check-site.sh            # production
@@ -27,10 +27,12 @@ expect() {
   fi
 }
 
-for path in / /docs /download /pricing /privacy /terms; do expect 200 "$SITE$path"; done
+for path in / /docs /newsroom /download /pricing /privacy /terms; do expect 200 "$SITE$path"; done
 docs=$(curl -s --max-time 20 "$SITE/docs" | grep -o 'href="/docs/[^"#]*"' | sed 's/href="//; s/"$//' | sort -u)
 if [[ -z "$docs" ]]; then echo "FAIL $SITE/docs links to no docs pages"; failed=1; fi
 for path in $docs; do expect 200 "$SITE$path"; done
+news=$(curl -s --max-time 20 "$SITE/newsroom" | grep -o 'href="/newsroom/[^"#]*"' | sed 's/href="//; s/"$//' | sort -u)
+for path in $news; do expect 200 "$SITE$path"; done
 
 expect 200 "$APP/login"
 expect 200 "$APP/signup"

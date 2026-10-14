@@ -4,7 +4,7 @@ import type { AppState, BranchState, ProjectState, ReleaseState, ReleasesToKeep 
 import { platformWords } from '../../shared/platform.js';
 import { act, ago, call, toast, useLoad } from '../api.js';
 import { BranchIcon, DownloadIcon, ExternalIcon, FileIcon, FolderIcon, LockIcon, MergeIcon, PlusIcon } from '../icons.js';
-import { branchItems, copyItem, releaseItems, showContextMenu } from '../menus.js';
+import { branchItems, copyItem, releaseItems, showContextMenu, stopSyncing } from '../menus.js';
 import { useSavedTab } from '../navigation.js';
 import { projectUrl, releaseUrl, requestUrl } from '../urls.js';
 import { ActionButton } from './ActionButton.js';
@@ -78,7 +78,7 @@ export function ProjectView({ state, project, onOpenBranch }: Props) {
           items={[
             { label: 'Copy link', onSelect: () => void act('copyText', url).then((ok) => ok && toast('Link copied')) },
             { label: `Open in ${words.terminal}`, onSelect: () => void act('openTerminal', project.dir) },
-            { label: 'Stop syncing this project', danger: true, onSelect: () => void act('setProjectHidden', project.id, true) },
+            stopSyncing(project),
           ]}
         />
       </Toolbar>
@@ -375,18 +375,16 @@ function RequestsTab({ state, project, requests }: { state: AppState; project: P
   const [branch, setBranch] = useState('');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [opening, setOpening] = useState(false);
   const chosen = branch || openable[0]?.name || '';
 
   const open = async () => {
-    setOpening(true);
     const done = await act('openReleaseRequest', project.id, chosen, title.trim(), body.trim());
-    setOpening(false);
     if (done) {
       setTitle('');
       setBody('');
       requests.reload();
     }
+    return done;
   };
 
   return (
@@ -442,10 +440,7 @@ function RequestsTab({ state, project, requests }: { state: AppState; project: P
           <div className="panel-head">Open a release request</div>
           <form
             className="panel-body"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (chosen) void open();
-            }}
+            onSubmit={(event) => event.preventDefault()}
           >
             <label className="field">
               Branch
@@ -463,10 +458,18 @@ function RequestsTab({ state, project, requests }: { state: AppState; project: P
             <label className="field">
               Description <textarea value={body} onChange={(event) => setBody(event.target.value)} />
             </label>
-            <button type="submit" className="btn btn-primary wide" disabled={opening || !chosen}>
-              {opening ? 'Opening…' : 'Open request'}
-            </button>
-            <p className="field-note">The branch freezes until the request is released or closed. Choosing what goes into the release happens on gigacad.site.</p>
+            <div className="form-actions">
+              <ActionButton
+                variant="primary"
+                label="Open request"
+                pending="Opening…"
+                done={`Opened a release request for ${chosen}`}
+                disabled={!chosen}
+                confirm={`This freezes ${chosen} until the request is released or closed.`}
+                run={open}
+              />
+            </div>
+            <p className="field-note">Choosing what goes into the release happens on gigacad.site.</p>
           </form>
         </section>
       ) : null}

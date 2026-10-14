@@ -5,6 +5,8 @@ export interface MenuItem {
   readonly label: string;
   readonly onSelect: () => void;
   readonly danger?: boolean;
+  /** Asks first, with this sentence, for actions that lose something (desktop UX plan phase 7). */
+  readonly confirm?: string;
 }
 
 /** A ⋯ button with a short list of less common actions. Items that are null are left out. */
@@ -16,15 +18,47 @@ export function MoreMenu({ label = 'More actions', items }: { label?: string; it
       trigger={<MoreIcon className="icon" />}
       triggerClass="btn btn-secondary btn-icon"
       role="menu"
-      render={(close) => (
+      render={(close) => <MenuList label={label} items={shown} close={close} />}
+    />
+  );
+}
+
+/** The menu's items; one that needs confirming turns the menu into its question, in place. */
+function MenuList({ label, items, close }: { label: string; items: readonly MenuItem[]; close: () => void }) {
+  const [asking, setAsking] = useState<MenuItem | null>(null);
+  if (asking) {
+    return (
+      <div className="popover-body" role="alertdialog" aria-label={asking.confirm}>
+        <p>{asking.confirm}</p>
+        <div className="confirm-buttons">
+          <button
+            type="button"
+            className={`btn btn-small ${asking.danger ? 'btn-danger' : 'btn-primary'}`}
+            autoFocus
+            onClick={() => {
+              close();
+              asking.onSelect();
+            }}
+          >
+            {asking.label}
+          </button>
+          <button type="button" className="btn btn-secondary btn-small" onClick={() => setAsking(null)}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+  return (
         <ul className="menu" role="menu" aria-label={label} onKeyDown={moveFocus}>
-          {shown.map((item) => (
+          {items.map((item) => (
             <li key={item.label} role="none">
               <button
                 type="button"
                 role="menuitem"
                 className={`menu-item${item.danger ? ' is-danger' : ''}`}
                 onClick={() => {
+                  if (item.confirm) return setAsking(item);
                   close();
                   item.onSelect();
                 }}
@@ -34,8 +68,6 @@ export function MoreMenu({ label = 'More actions', items }: { label?: string; it
             </li>
           ))}
         </ul>
-      )}
-    />
   );
 }
 

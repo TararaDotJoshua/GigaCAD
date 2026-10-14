@@ -4,7 +4,7 @@ This plan covers the findings from the 2026-10-07 audit of the desktop app's win
 
 macOS and Windows run the same Electron app, so every item applies to both. Where the two systems need different code, the item says how.
 
-Status (2026-10-14): decisions approved. Phases 1–6 and the preview harness are built; the rest is done on macOS first, then checked on Windows with the CI installer.
+Status (2026-10-14): decisions approved. Phases 1–7 and the preview harness are built; the rest is done on macOS first, then checked on Windows with the CI installer.
 
 ## Decisions (approved 2026-10-08)
 
@@ -180,7 +180,7 @@ Use the in-place confirm from decision 1 for:
 | Remove download | "Removes the local copy of wheel-hub. Nothing on gigacad.site changes." |
 | Stop syncing | "GigaCAD stops updating this project's folder. The folder stays where it is." |
 | Sign Out | "Syncing stops until you sign in again. The giga command line tool is signed out too." |
-| Check In with changes that aren't autosaved yet | "2 saves haven't been autosaved yet. Check in anyway?" Only if the engine can tell. |
+| Check In with changes that aren't autosaved yet | Not needed: Check In autosaves waiting saves before it gives up the lock (`main/sync.ts`), so nothing is lost. |
 
 Build one `ConfirmButton` component in the renderer that matches the web's `ActionButton` `confirm` behavior.
 

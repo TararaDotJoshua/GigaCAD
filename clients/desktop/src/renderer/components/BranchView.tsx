@@ -5,7 +5,7 @@ import { unreadErrors, useActivitySeenAt } from '../activity.js';
 import { act, ago, call, toast, useLoad, useTicking } from '../api.js';
 import { groupHistory, type Commit } from '../history.js';
 import { DownloadIcon, ExternalIcon, FolderIcon, LockIcon, SyncIcon } from '../icons.js';
-import { copyItem, showContextMenu, type MenuItems } from '../menus.js';
+import { copyItem, removeSentence, showContextMenu, stopSyncing, type MenuItems } from '../menus.js';
 import { useRequest, useSavedTab } from '../navigation.js';
 import { branchFolderUrl, branchUrl, commitUrl } from '../urls.js';
 import { ActionButton } from './ActionButton.js';
@@ -83,9 +83,11 @@ export function BranchView({ state, project, branch, focusCommit, onOpenProject 
             branch.downloaded &&
               branch.holder !== 'me' && {
                 label: 'Remove download',
+                danger: true,
+                confirm: removeSentence(branch.name),
                 onSelect: () => void act('removeBranch', project.id, branch.name).then((ok) => ok && toast(`Removed the download of ${branch.name}`)),
               },
-            { label: 'Stop syncing this project', danger: true, onSelect: () => void act('setProjectHidden', project.id, true) },
+            stopSyncing(project),
           ]}
         />
       </Toolbar>

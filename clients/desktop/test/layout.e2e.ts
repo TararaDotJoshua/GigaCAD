@@ -18,10 +18,11 @@ for (const platform of ['darwin', 'win32'] as const) {
         await page.goto(`/preview/?fixture=${fixture.name}&platform=${platform}`);
         await page.locator('#root > *').first().waitFor({ timeout: 10_000 });
         if (fixture.tab) await page.getByRole('tab', { name: fixture.tab }).click();
-        if (fixture.press) {
-          await page.getByRole('button', { name: fixture.press, exact: true }).click();
-          await expect(page.locator('.popover, .sheet').first()).toBeVisible();
+        for (const name of typeof fixture.press === 'string' ? [fixture.press] : (fixture.press ?? [])) {
+          await page.getByRole('button', { name, exact: true }).or(page.getByRole('menuitem', { name, exact: true })).click();
         }
+        // A question in place (Sign Out) replaces the button; the rest open a popover or a sheet.
+        if (fixture.press) await expect(page.locator('.popover, .sheet, .confirm-inline').first()).toBeVisible();
         // Data loads through the fake bridge on the next tick.
         await page.waitForTimeout(100);
         await page.screenshot({ path: `test-results/layout/${platform}/${size.width}x${size.height}/${fixture.name}.png` });

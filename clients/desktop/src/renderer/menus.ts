@@ -5,6 +5,7 @@ import { platformWords } from '../shared/platform.js';
 import type { AppState, BranchState, ProjectState, ReleaseState } from '../shared/types.js';
 import { act, call, toast } from './api.js';
 import type { MenuItem } from './components/Menu.js';
+import { ask } from './confirm.js';
 import { branchUrl, projectUrl, releaseUrl } from './urls.js';
 
 export type MenuItems = readonly (MenuItem | null | false | undefined)[];
@@ -19,7 +20,7 @@ export function projectItems(state: AppState, project: ProjectState): MenuItems 
     { label: 'Open on gigacad.site', onSelect: () => void act('openExternal', url) },
     { label: 'Copy link', onSelect: () => copy(url) },
     { label: `Open in ${words.terminal}`, onSelect: () => void act('openTerminal', project.dir) },
-    { label: 'Stop syncing this project', danger: true, onSelect: () => void act('setProjectHidden', project.id, true) },
+    stopSyncing(project),
   ];
 }
 
@@ -38,9 +39,11 @@ export function branchItems(state: AppState, project: ProjectState, branch: Bran
     branch.downloaded &&
       branch.holder !== 'me' && {
         label: 'Remove download',
+        danger: true,
+        confirm: removeSentence(branch.name),
         onSelect: () => void act('removeBranch', project.id, branch.name).then((ok) => ok && toast(`Removed the download of ${branch.name}`)),
       },
-    { label: 'Stop syncing this project', danger: true, onSelect: () => void act('setProjectHidden', project.id, true) },
+    stopSyncing(project),
   ];
 }
 
@@ -56,6 +59,17 @@ export function releaseItems(state: AppState, project: ProjectState, release: Re
   ];
 }
 
+/** The sentences from the desktop UX plan, phase 7. */
+export const removeSentence = (name: string) => `Removes the local copy of ${name}. Nothing on gigacad.site changes.`;
+export const STOP_SYNCING = 'GigaCAD stops updating this project’s folder. The folder stays where it is.';
+
+export const stopSyncing = (project: ProjectState): MenuItem => ({
+  label: 'Stop syncing this project',
+  danger: true,
+  confirm: STOP_SYNCING,
+  onSelect: () => void act('setProjectHidden', project.id, true),
+});
+
 export const copyItem = (text: string, label = 'Copy link', what = 'Link'): MenuItem => ({ label, onSelect: () => copy(text, what) });
 
 /** Shows the items as a native menu at the pointer and runs the one chosen. */
@@ -68,6 +82,9 @@ export function showContextMenu(event: MouseEvent, items: MenuItems): void {
     'contextMenu',
     shown.map((item, index) => ({ id: String(index), label: item.label, separatorBefore: item.danger === true && index > 0 })),
   ).then((chosen) => {
-    if (chosen !== null) shown[Number(chosen)]?.onSelect();
+    const item = chosen === null ? undefined : shown[Number(chosen)];
+    if (!item) return;
+    if (item.confirm) ask({ sentence: item.confirm, label: item.label, danger: item.danger === true, onConfirm: item.onSelect, x: event.clientX, y: event.clientY });
+    else item.onSelect();
   });
 }

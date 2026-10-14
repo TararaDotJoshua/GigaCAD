@@ -131,8 +131,8 @@ export interface Fixture {
   readonly navigate?: Navigate;
   /** A tab to open after loading, by its label. */
   readonly tab?: string;
-  /** A button to press after loading, by its accessible name: a menu or popover to check. */
-  readonly press?: string;
+  /** Buttons (or menu items) to press after loading, by accessible name: a menu or question to check. */
+  readonly press?: string | readonly string[];
 }
 
 const withProjects = (change: (project: ProjectState) => ProjectState): readonly ProjectState[] =>
@@ -158,6 +158,7 @@ export const FIXTURES: readonly Fixture[] = [
   { name: 'branch-mine', state: base, navigate: { projectId: 'rover', branch: 'suspension-v3' } },
   { name: 'branch-history', state: base, navigate: { projectId: 'rover', branch: 'suspension-v3' }, tab: 'History' },
   { name: 'branch-menu', state: base, navigate: { projectId: 'rover', branch: 'suspension-v3' }, press: 'More actions' },
+  { name: 'branch-menu-confirm', state: base, navigate: { projectId: 'rover', branch: 'wheel-hub' }, press: ['More actions', 'Remove download'] },
   { name: 'branch-other', state: base, navigate: { projectId: 'rover', branch: 'wheel-hub' } },
   { name: 'branch-not-downloaded', state: base, navigate: { projectId: 'rover', branch: 'gripper' } },
   {
@@ -206,6 +207,7 @@ export const FIXTURES: readonly Fixture[] = [
     state: { ...base, setup: doneSteps.map((step) => (step.id === 'cli' ? { ...step, status: 'error', detail: 'Couldn’t write /usr/local/bin/giga: permission denied' } : step)) },
     navigate: { projectId: 'settings' },
   },
+  { name: 'settings-sign-out', state: base, navigate: { projectId: 'settings' }, press: 'Sign Out' },
   {
     name: 'sync-problem',
     state: { ...base, sync: { status: 'error', active: 0, message: 'api.gigacad.site answered 503', lastSyncedAt: minutesAgo(40) } },

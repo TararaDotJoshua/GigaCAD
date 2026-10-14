@@ -2,6 +2,7 @@ import type { AppState } from '../../shared/types.js';
 import { platformWords } from '../../shared/platform.js';
 import { act, ago } from '../api.js';
 import { pluginSummary } from '../plugins.js';
+import { ActionButton } from './ActionButton.js';
 import { Setup } from './Setup.js';
 import { Toolbar } from './Toolbar.js';
 
@@ -30,9 +31,13 @@ export function Settings({ state }: { state: AppState }) {
           <span>
             Signed in as <strong>@{state.user?.handle}</strong> <span className="faint">({state.user?.apiUrl})</span>
           </span>
-          <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('signOut')}>
-            Sign Out
-          </button>
+          <ActionButton
+            small
+            label="Sign Out"
+            pending="Signing out…"
+            confirm="Syncing stops until you sign in again. The giga command line tool is signed out too."
+            run={() => act('signOut')}
+          />
         </div>
         <p className="field-note">The giga command line tool on {words.thisComputer} uses the same sign-in.</p>
 

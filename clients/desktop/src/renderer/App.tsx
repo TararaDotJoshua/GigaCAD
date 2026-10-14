@@ -6,6 +6,7 @@ import type { AppState } from '../shared/types.js';
 import { SelectContext } from './activity.js';
 import { act, useAppState, useNavigate } from './api.js';
 import { BranchView } from './components/BranchView.js';
+import { ConfirmLayer } from './components/ConfirmLayer.js';
 import { ProjectView } from './components/ProjectView.js';
 import { Settings } from './components/Settings.js';
 import { Setup } from './components/Setup.js';
@@ -88,6 +89,7 @@ export function App() {
         <Sidebar state={state} selection={selection} onSelect={setSelection} />
         <main className="main">{renderMain(state, selection, setSelection)}</main>
         <Toasts />
+        <ConfirmLayer />
       </div>
     </SelectContext.Provider>
   );

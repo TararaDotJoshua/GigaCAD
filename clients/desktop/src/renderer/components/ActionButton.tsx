@@ -18,16 +18,42 @@ interface Props {
   readonly small?: boolean;
   readonly disabled?: boolean;
   readonly shortcut?: string;
+  /** Asks first, in place: this sentence, then the same button again (the web's ActionButton `confirm`). */
+  readonly confirm?: string;
 }
 
 /** A button that says what it's doing until the work is finished, then confirms it. */
-export function ActionButton({ label, pending, done, run, busy = false, icon, iconOnly = false, variant = 'secondary', small = false, disabled = false, shortcut }: Props) {
+export function ActionButton({ label, pending, done, run, busy = false, icon, iconOnly = false, variant = 'secondary', small = false, disabled = false, shortcut, confirm }: Props) {
   const [running, setRunning] = useState(false);
+  const [asking, setAsking] = useState(false);
   // Started here: keep the pending label until the engine lets go of the branch.
   const started = useRef(false);
   useEffect(() => {
     if (!busy && !running) started.current = false;
   }, [busy, running]);
+
+  const go = async () => {
+    setAsking(false);
+    started.current = true;
+    setRunning(true);
+    const ok = await run();
+    setRunning(false);
+    if (ok && done) toast(done);
+  };
+
+  if (asking) {
+    return (
+      <span className="confirm-inline" role="group" onKeyDown={(event) => event.key === 'Escape' && setAsking(false)}>
+        <span className="confirm-text">{confirm}</span>
+        <button type="button" className={`btn btn-${variant === 'primary' ? 'primary' : 'secondary'}${small ? ' btn-small' : ''}`} autoFocus onClick={() => void go()}>
+          {label}
+        </button>
+        <button type="button" className={`btn btn-secondary${small ? ' btn-small' : ''}`} onClick={() => setAsking(false)}>
+          Cancel
+        </button>
+      </span>
+    );
+  }
 
   const working = running || (busy && started.current);
   const text = working ? pending : label;
@@ -40,13 +66,7 @@ export function ActionButton({ label, pending, done, run, busy = false, icon, ic
       aria-busy={working}
       aria-label={iconOnly ? text : undefined}
       title={tooltip}
-      onClick={async () => {
-        started.current = true;
-        setRunning(true);
-        const ok = await run();
-        setRunning(false);
-        if (ok && done) toast(done);
-      }}
+      onClick={() => (confirm ? setAsking(true) : void go())}
     >
       {icon ? <span className={`btn-glyph${working ? ' spin' : ''}`}>{icon}</span> : null}
       {iconOnly ? null : <span className="btn-label">{text}</span>}

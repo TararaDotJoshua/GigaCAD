@@ -447,6 +447,8 @@ export class Controller {
       const project = this.project(projectId);
       return giga(['rr', 'open', '--project', `${project.owner}/${project.slug}`, '--branch', branch, ...(title ? ['--title', title] : []), ...(body ? ['--body', body] : [])], this.opts());
     },
+    rootFiles: async (projectId) =>
+      (await apiClient(this.settings.apiUrl)).get(`/v1/projects/${projectId}/files?area=root&sort=modified&order=desc&limit=30`),
     approveReleaseRequest: async (projectId, number) => {
       const project = this.project(projectId);
       await giga(['rr', 'approve', String(number), '--project', `${project.owner}/${project.slug}`], this.opts());

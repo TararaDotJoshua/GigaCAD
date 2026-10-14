@@ -70,7 +70,16 @@ function renderMain(state: AppState, selection: Selection, select: (selection: S
       return (
         <div className="center drag">
           <div className="empty">
-            {state.sync.status === 'syncing' ? 'Looking for your projects…' : 'No projects yet. Create one on gigacad.site, or ask to be added to one.'}
+            {state.sync.status === 'syncing' ? (
+              'Looking for your projects…'
+            ) : (
+              <>
+                <p>No projects yet. Create one on gigacad.site, or ask to be added to one.</p>
+                <button type="button" className="btn btn-primary" onClick={() => void act('openExternal', `${state.settings.appUrl}/new`)}>
+                  Create a project
+                </button>
+              </>
+            )}
           </div>
         </div>
       );

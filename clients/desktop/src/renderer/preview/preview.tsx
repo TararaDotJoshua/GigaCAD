@@ -3,7 +3,7 @@
 // Never part of the bundle: vite.config.ts builds only ../index.html.
 import type { Bridge, Navigate } from '../../preload/index.js';
 import type { AppState, CommandName, CommandResult } from '../../shared/types.js';
-import { FIXTURES, SAMPLE_HISTORY, SAMPLE_REQUESTS, SAMPLE_STATUS } from './fixtures.js';
+import { FIXTURES, SAMPLE_HISTORY, SAMPLE_REQUESTS, SAMPLE_ROOT_FILES, SAMPLE_STATUS } from './fixtures.js';
 
 const params = new URLSearchParams(location.search);
 const fixture = FIXTURES.find((candidate) => candidate.name === params.get('fixture')) ?? FIXTURES.find((candidate) => candidate.name === 'project')!;
@@ -22,6 +22,8 @@ function run(name: CommandName, args: readonly unknown[]): unknown {
       return SAMPLE_HISTORY;
     case 'releaseRequests':
       return SAMPLE_REQUESTS;
+    case 'rootFiles':
+      return SAMPLE_ROOT_FILES;
     case 'webUrl':
       return `${state.settings.appUrl}/${String(args[1] ?? '')}`;
     case 'setProjectHidden': {

@@ -20,7 +20,7 @@ for (const platform of ['darwin', 'win32'] as const) {
         if (fixture.tab) await page.getByRole('tab', { name: fixture.tab }).click();
         if (fixture.press) {
           await page.getByRole('button', { name: fixture.press }).click();
-          await expect(page.locator('.popover')).toBeVisible();
+          await expect(page.locator('.popover, .sheet').first()).toBeVisible();
         }
         // Data loads through the fake bridge on the next tick.
         await page.waitForTimeout(100);
@@ -44,7 +44,7 @@ for (const platform of ['darwin', 'win32'] as const) {
                 .map((child) => child.className)
             : [];
           // Names in lists cut down to a few letters (or nothing) are unreadable.
-          const squeezed = [...document.querySelectorAll('.rows > li > .strong, .rows > li > .grow')]
+          const squeezed = [...document.querySelectorAll('.rows > li > .strong, .rows > li > .grow, .table-row > .cell-name')]
             .filter((element) => element.textContent && (box(element).width < 1 || (element.scrollWidth > element.clientWidth + 1 && box(element).width < 96)))
             .map((element) => `${element.textContent} (${Math.round(box(element).width)} px)`);
           // The current place in the breadcrumb, cut to a few letters.

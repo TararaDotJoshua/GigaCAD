@@ -120,6 +120,7 @@ export class SyncEngine {
           })),
           releases: releases.map((release): ReleaseState => ({
             number: release.number,
+            title: release.title ?? null,
             downloaded: this.downloaded.has(releaseDir(settings.folder, summary.ownerHandle, summary.slug, release.number)),
             dir: releaseDir(settings.folder, summary.ownerHandle, summary.slug, release.number),
             createdAt: release.createdAt,

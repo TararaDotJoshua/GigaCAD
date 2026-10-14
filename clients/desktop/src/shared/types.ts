@@ -37,6 +37,8 @@ export interface BranchState {
 
 export interface ReleaseState {
   readonly number: number;
+  /** The release request's title, which names the release (as on the web). */
+  readonly title: string | null;
   readonly downloaded: boolean;
   readonly dir: string;
   readonly createdAt: string;
@@ -181,6 +183,8 @@ export interface Commands {
   releaseRequests(projectId: string): unknown;
   openReleaseRequest(projectId: string, branch: string, title: string, body: string): unknown;
   approveReleaseRequest(projectId: string, number: number): void;
+  /** Recently changed root files, newest first: GET /v1/projects/:id/files?area=root&sort=modified. */
+  rootFiles(projectId: string): unknown;
 
   reveal(path: string): void;
   openExternal(url: string): void;
@@ -205,7 +209,7 @@ export type CommandName = keyof Commands;
 export const COMMAND_NAMES: readonly CommandName[] = [
   'getState', 'signIn', 'cancelSignIn', 'signOut', 'syncNow', 'setPaused', 'updateSettings', 'chooseFolder', 'setReleasesToKeep', 'setProjectHidden', 'dismissConflict',
   'checkout', 'checkin', 'commitVersion', 'pull', 'downloadBranch', 'removeBranch', 'downloadRelease', 'createBranch',
-  'branchStatus', 'branchHistory', 'releaseRequests', 'openReleaseRequest', 'approveReleaseRequest',
+  'branchStatus', 'branchHistory', 'releaseRequests', 'openReleaseRequest', 'approveReleaseRequest', 'rootFiles',
   'reveal', 'openExternal', 'openTerminal', 'copyText', 'webUrl',
   'runSetup', 'finishSetup', 'moveToApplications', 'installCli',
   'checkForUpdates', 'restartToUpdate', 'dismissUpdate', 'dismissRollback',

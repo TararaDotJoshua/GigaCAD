@@ -24,8 +24,8 @@ function branch(name: string, change: Partial<BranchState> = {}): BranchState {
   };
 }
 
-function release(number: number, notes: string, days: number, downloaded = false): ReleaseState {
-  return { number, notes, downloaded, dir: `/Users/sam/GigaCAD/josh/mars-rover-chassis/Releases/v${number}`, createdAt: daysAgo(days) };
+function release(number: number, title: string | null, notes: string, days: number, downloaded = false): ReleaseState {
+  return { number, title, notes, downloaded, dir: `/Users/sam/GigaCAD/josh/mars-rover-chassis/Releases/v${number}`, createdAt: daysAgo(days) };
 }
 
 const rover: ProjectState = {
@@ -44,9 +44,9 @@ const rover: ProjectState = {
     branch('mast-camera', { downloaded: false }),
   ],
   releases: [
-    release(4, 'Stiffer rocker arms and the new wheel hub bearings', 13, true),
-    release(3, 'First print-ready chassis', 40),
-    release(2, 'Battery tray moved forward', 61),
+    release(4, 'Stiffer rocker arms', 'Thicker walls on both rocker arms, and the new wheel hub bearings', 13, true),
+    release(3, 'Print-ready chassis', 'First version that prints without supports', 40),
+    release(2, null, 'Battery tray moved forward', 61),
   ],
   error: null,
   conflicts: [],
@@ -63,7 +63,7 @@ const projects: readonly ProjectState[] = [
     dir: '/Users/sam/GigaCAD/josh/soft-gripper',
     hidden: false,
     branches: [branch('fingers-v2', { downloaded: false })],
-    releases: [release(1, 'First release', 5)],
+    releases: [release(1, 'First fingers', '', 5)],
     error: null,
     conflicts: [],
   },
@@ -147,7 +147,11 @@ export const FIXTURES: readonly Fixture[] = [
     },
   },
   { name: 'project', state: base, navigate: { projectId: 'rover' } },
+  { name: 'project-releases', state: base, navigate: { projectId: 'rover' }, tab: 'Releases' },
   { name: 'project-requests', state: base, navigate: { projectId: 'rover' }, tab: 'Release requests' },
+  { name: 'project-root-files', state: base, navigate: { projectId: 'rover' }, tab: 'Root files' },
+  { name: 'new-branch', state: base, navigate: { projectId: 'rover' }, press: 'New Branch' },
+  { name: 'no-projects', state: { ...base, projects: [] } },
   { name: 'project-empty', state: base, navigate: { projectId: 'drone' } },
   { name: 'branch-mine', state: base, navigate: { projectId: 'rover', branch: 'suspension-v3' } },
   { name: 'branch-history', state: base, navigate: { projectId: 'rover', branch: 'suspension-v3' }, tab: 'History' },
@@ -232,6 +236,17 @@ export const SAMPLE_HISTORY: readonly Commit[] = [
   { id: 'c6', kind: 'autosave', message: '', versionLabel: null, authorHandle: 'sam', createdAt: daysAgo(2) },
   { id: 'c5', kind: 'version', message: 'Branch from v4', versionLabel: null, authorHandle: 'sam', createdAt: daysAgo(13) },
 ];
+
+export const SAMPLE_ROOT_FILES = {
+  entries: [
+    { entryId: 'e1', name: 'motor-mounts.xlsx', path: 'specs/motor-mounts.xlsx', revision: 7, size: 48_210, modifiedAt: minutesAgo(4), modifiedByHandle: 'sam' },
+    { entryId: 'e2', name: 'README.md', path: 'README.md', revision: 12, size: 3_120, modifiedAt: minutesAgo(95), modifiedByHandle: 'josh' },
+    { entryId: 'e3', name: 'wiring-diagram.pdf', path: 'docs/electrical/wiring-diagram.pdf', revision: 3, size: 1_820_000, modifiedAt: daysAgo(2), modifiedByHandle: 'josh' },
+    { entryId: 'e4', name: 'bom.csv', path: 'bom.csv', revision: 21, size: 9_400, modifiedAt: daysAgo(6), modifiedByHandle: 'sam' },
+  ],
+  total: 4,
+  nextOffset: null,
+};
 
 export const SAMPLE_REQUESTS = [
   { id: 'r7', number: 7, title: 'Battery tray rev B', status: 'candidate', branchName: 'battery-tray-rev-b', requesterHandle: 'josh', updatedAt: minutesAgo(50) },

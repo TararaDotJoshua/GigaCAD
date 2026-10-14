@@ -50,8 +50,8 @@ for (const platform of ['darwin', 'win32'] as const) {
           // The current place in the breadcrumb, cut to a few letters.
           const current = document.querySelector('.crumb.is-current');
           if (current && current.scrollWidth > current.clientWidth + 1 && box(current).width < 96) squeezed.push(`${current.textContent} (${Math.round(box(current).width)} px)`);
-          // Rows in one list share a height, whether or not they have a button.
-          const unevenLists = [...document.querySelectorAll('.rows:not(.nested)')]
+          // Rows in one list share a height, whether or not they have a button. Activity wraps.
+          const unevenLists = [...document.querySelectorAll('.rows:not(.nested):not(.activity)')]
             .map((list) => [...new Set([...list.children].filter((row) => !row.querySelector('.rows')).map((row) => Math.round(box(row).height)))])
             .filter((heights) => heights.length > 1);
           const update = document.querySelector('.update');

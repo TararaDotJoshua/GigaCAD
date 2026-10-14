@@ -15,6 +15,16 @@ export function Settings({ state }: { state: AppState }) {
     <>
       <Toolbar state={state} crumbs={[{ label: 'Settings' }]} />
       <div className="content settings">
+        {state.setup.some((step) => step.status === 'error') ? (
+          <div className="notice is-error" role="alert">
+            <div className="grow">
+              A setup step failed: {state.setup.filter((step) => step.status === 'error').map((step) => step.title).join(', ')}. Details and Repair are below.
+            </div>
+            <button type="button" className="btn btn-secondary btn-small" onClick={() => document.getElementById('setup')?.scrollIntoView({ behavior: 'smooth' })}>
+              Show
+            </button>
+          </div>
+        ) : null}
         <h3>Account</h3>
         <div className="inline">
           <span>
@@ -96,7 +106,7 @@ export function Settings({ state }: { state: AppState }) {
           {updates.kind === 'ready' ? ` · Version ${updates.version} applies when GigaCAD restarts` : ''}
         </p>
 
-        <h3>Repair</h3>
+        <h3 id="setup">Repair</h3>
         <p className="field-note">Checks the GigaCAD folder, {words.rightClickMenu}, gigacad:// links, and the rest of setup, and fixes what it can.</p>
         <Setup state={state} />
       </div>

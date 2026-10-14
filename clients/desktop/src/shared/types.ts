@@ -43,6 +43,14 @@ export interface ReleaseState {
   readonly notes: string;
 }
 
+/** A root file changed here and on gigacad.site at once. The site's version won; yours was kept as `copy`. */
+export interface ConflictState {
+  /** Paths inside the project folder. */
+  readonly path: string;
+  readonly copy: string;
+  readonly at: string;
+}
+
 export interface ProjectState {
   readonly id: string;
   readonly owner: string;
@@ -54,6 +62,8 @@ export interface ProjectState {
   readonly branches: readonly BranchState[];
   readonly releases: readonly ReleaseState[];
   readonly error: string | null;
+  /** Shown until dismissed. */
+  readonly conflicts: readonly ConflictState[];
 }
 
 export type SyncStatus = 'idle' | 'syncing' | 'paused' | 'offline' | 'error' | 'signed-out';
@@ -62,6 +72,9 @@ export interface ActivityItem {
   readonly at: string;
   readonly text: string;
   readonly kind: 'info' | 'error';
+  /** What it's about, so the window can link to it. */
+  readonly projectId?: string | undefined;
+  readonly branch?: string | undefined;
 }
 
 export type SetupStepId = 'applications' | 'signin' | 'folder' | 'quickActions' | 'urlScheme' | 'cli' | 'login';
@@ -152,6 +165,7 @@ export interface Commands {
   chooseFolder(): void;
   setReleasesToKeep(projectId: string, keep: ReleasesToKeep): void;
   setProjectHidden(projectId: string, hidden: boolean): void;
+  dismissConflict(projectId: string, path: string): void;
 
   checkout(projectId: string, branch: string): void;
   checkin(projectId: string, branch: string): void;
@@ -189,7 +203,7 @@ export interface Commands {
 export type CommandName = keyof Commands;
 
 export const COMMAND_NAMES: readonly CommandName[] = [
-  'getState', 'signIn', 'cancelSignIn', 'signOut', 'syncNow', 'setPaused', 'updateSettings', 'chooseFolder', 'setReleasesToKeep', 'setProjectHidden',
+  'getState', 'signIn', 'cancelSignIn', 'signOut', 'syncNow', 'setPaused', 'updateSettings', 'chooseFolder', 'setReleasesToKeep', 'setProjectHidden', 'dismissConflict',
   'checkout', 'checkin', 'commitVersion', 'pull', 'downloadBranch', 'removeBranch', 'downloadRelease', 'createBranch',
   'branchStatus', 'branchHistory', 'releaseRequests', 'openReleaseRequest', 'approveReleaseRequest',
   'reveal', 'openExternal', 'openTerminal', 'copyText', 'webUrl',

@@ -64,6 +64,19 @@ export function ProjectView({ state, project, onOpenBranch }: Props) {
       </div>
       <div className="content">
         {project.error ? <div className="notice is-error">{project.error}</div> : null}
+        {project.conflicts.map((conflict) => (
+          <div key={conflict.path} className="notice is-caution" role="alert">
+            <div className="grow">
+              <strong>{conflict.path}</strong> changed here and on gigacad.site. The site’s version is in place; yours is kept as <strong>{conflict.copy}</strong>.
+            </div>
+            <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('reveal', `${project.dir}/${conflict.copy}`)}>
+              Show both
+            </button>
+            <button type="button" className="link" onClick={() => void act('dismissConflict', project.id, conflict.path)}>
+              Dismiss
+            </button>
+          </div>
+        ))}
         {tab === 'branches' ? (
           <Branches state={state} project={project} onOpenBranch={onOpenBranch} newBranch={newBranch} />
         ) : (

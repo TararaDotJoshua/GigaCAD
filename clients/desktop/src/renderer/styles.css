@@ -475,6 +475,14 @@ button.crumb:hover {
 }
 
 @container (max-width: 860px) {
+  [data-platform='win32'] .toolbar {
+    gap: 6px;
+  }
+
+  [data-platform='win32'] .toolbar .sync-status {
+    padding-inline: 4px;
+  }
+
   [data-platform='win32'] .toolbar .crumb:not(.is-current),
   [data-platform='win32'] .toolbar .crumb-sep {
     display: none;
@@ -877,6 +885,36 @@ button.crumb:hover {
   user-select: text;
 }
 
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.toast-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.toast-body .link {
+  margin-top: 6px;
+  font-size: var(--t-micro);
+}
+
+.toast-close {
+  flex: none;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: var(--paper-faint);
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.toast-close:hover {
+  color: var(--paper);
+}
+
 .toast.is-error {
   border-color: var(--danger);
 }
@@ -934,6 +972,30 @@ button.crumb:hover {
   background: var(--danger);
 }
 
+.dot-caution {
+  background: var(--caution);
+}
+
+.settings-button {
+  position: relative;
+}
+
+.settings-button .dot {
+  position: absolute;
+  top: -2px;
+  right: -3px;
+}
+
+.tab-dot {
+  display: inline-block;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.sync-status .dot {
+  margin-left: 2px;
+}
+
 .link.is-active {
   color: var(--paper);
 }
@@ -949,6 +1011,9 @@ button.crumb:hover {
 }
 
 .notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 16px;
   padding: 10px 12px;
   border: 1px solid var(--line-strong);
@@ -959,6 +1024,19 @@ button.crumb:hover {
 
 .notice.is-error {
   border-color: var(--danger);
+}
+
+.notice.is-caution {
+  border-color: var(--caution);
+}
+
+.notice .grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.notice > :not(.grow) {
+  flex: none;
 }
 
 .select {
@@ -1082,4 +1160,53 @@ button.crumb:hover {
 
 .menu-item.is-danger {
   color: var(--danger);
+}
+
+/* Activity: in the sync status popover and on branch pages */
+
+.activity-popover {
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  padding: 0;
+}
+
+.popover:has(.activity-popover) {
+  max-width: none;
+  padding: 0;
+}
+
+.popover-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.popover-head > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.activity-scroll {
+  max-height: min(420px, calc(100vh - 160px));
+  overflow-y: auto;
+}
+
+.rows.activity > li {
+  align-items: flex-start;
+}
+
+.rows.activity > li > .icon {
+  margin-top: 2px;
+  color: var(--danger);
+}
+
+.activity-text {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.rows.activity .grow {
+  white-space: normal;
 }

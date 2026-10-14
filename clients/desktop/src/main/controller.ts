@@ -421,6 +421,7 @@ export class Controller {
       }));
       if (!hidden) void this.engine.syncProject(projectId);
     },
+    dismissConflict: (projectId, path) => this.engine.dismissConflict(projectId, path),
 
     checkout: (projectId, branch) => this.engine.checkout(projectId, branch),
     checkin: (projectId, branch) => this.engine.checkin(projectId, branch),

@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AppState, BranchState, ProjectState } from '../../shared/types.js';
 import { platformWords } from '../../shared/platform.js';
+import { unreadErrors, useActivitySeenAt } from '../activity.js';
 import { act, ago, call, toast, useLoad } from '../api.js';
 import { groupHistory, type Commit } from '../history.js';
 import { DownloadIcon, ExternalIcon, FolderIcon, LockIcon, SyncIcon } from '../icons.js';
 import { branchUrl, commitUrl } from '../urls.js';
 import { ActionButton } from './ActionButton.js';
+import { ActivityList } from './Activity.js';
 import { MoreMenu } from './Menu.js';
 import { Toolbar } from './Toolbar.js';
 
@@ -25,7 +27,10 @@ interface Status {
 
 export function BranchView({ state, project, branch, focusCommit, onOpenProject }: Props) {
   const words = platformWords(state.app.platform);
-  const [tab, setTab] = useState<'changes' | 'history'>('changes');
+  const [tab, setTab] = useState<'changes' | 'history' | 'activity'>('changes');
+  const seen = useActivitySeenAt();
+  const activity = state.activity.filter((item) => item.projectId === project.id && item.branch === branch.name);
+  const unread = unreadErrors(activity, seen).length;
   useEffect(() => {
     if (focusCommit) setTab('changes');
   }, [focusCommit]);
@@ -88,9 +93,17 @@ export function BranchView({ state, project, branch, focusCommit, onOpenProject 
         <button type="button" role="tab" aria-selected={tab === 'history'} className={`tab${tab === 'history' ? ' is-active' : ''}`} onClick={() => setTab('history')}>
           History
         </button>
+        <button type="button" role="tab" aria-selected={tab === 'activity'} className={`tab${tab === 'activity' ? ' is-active' : ''}`} onClick={() => setTab('activity')}>
+          Activity
+          {unread > 0 ? <span className="dot dot-danger tab-dot" aria-label={`${unread} new`} /> : null}
+        </button>
       </div>
       <div className="content">
-        {!branch.downloaded ? (
+        {tab === 'activity' ? (
+          <section className="panel">
+            <ActivityList state={state} items={activity} />
+          </section>
+        ) : !branch.downloaded ? (
           <NotDownloaded project={project} branch={branch} thisComputer={words.thisComputer} />
         ) : tab === 'changes' ? (
           <Changes project={project} branch={branch} focusCommit={focusCommit} thisComputer={words.thisComputer} />

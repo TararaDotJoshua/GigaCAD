@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { UpdateState } from '../src/shared/types.js';
+import { unreadErrors } from '../src/renderer/activity.js';
 import { bannerFor } from '../src/renderer/banner.js';
 import { groupHistory, type Commit } from '../src/renderer/history.js';
 import { FIXTURES } from '../src/renderer/preview/fixtures.js';
@@ -59,5 +60,17 @@ describe('mainView', () => {
   it('shows the first synced project when nothing is selected', () => {
     expect(mainView(hide('rover'), { kind: 'none' })).toMatchObject({ kind: 'project', project: { id: 'gripper' } });
     expect(mainView({ ...state, projects: [] }, { kind: 'none' })).toEqual({ kind: 'empty' });
+  });
+});
+
+describe('unreadErrors', () => {
+  it('counts only errors newer than the last look', () => {
+    const items = [
+      { at: '2026-10-14T10:05:00Z', text: 'Couldn’t autosave', kind: 'error' as const },
+      { at: '2026-10-14T10:04:00Z', text: 'Autosaved', kind: 'info' as const },
+      { at: '2026-10-14T09:00:00Z', text: 'Offline', kind: 'error' as const },
+    ];
+    expect(unreadErrors(items, '').map((item) => item.at)).toEqual(['2026-10-14T10:05:00Z', '2026-10-14T09:00:00Z']);
+    expect(unreadErrors(items, '2026-10-14T10:00:00Z').map((item) => item.text)).toEqual(['Couldn’t autosave']);
   });
 });

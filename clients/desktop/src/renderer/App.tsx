@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { Navigate } from '../preload/index.js';
 import { platformWords } from '../shared/platform.js';
 import type { AppState } from '../shared/types.js';
+import { SelectContext } from './activity.js';
 import { act, useAppState, useNavigate } from './api.js';
 import { BranchView } from './components/BranchView.js';
 import { ProjectView } from './components/ProjectView.js';
@@ -50,11 +51,13 @@ export function App() {
   }
 
   return (
-    <div className="app">
-      <Sidebar state={state} selection={selection} onSelect={setSelection} />
-      <main className="main">{renderMain(state, selection, setSelection)}</main>
-      <Toasts />
-    </div>
+    <SelectContext.Provider value={setSelection}>
+      <div className="app">
+        <Sidebar state={state} selection={selection} onSelect={setSelection} />
+        <main className="main">{renderMain(state, selection, setSelection)}</main>
+        <Toasts />
+      </div>
+    </SelectContext.Provider>
   );
 }
 

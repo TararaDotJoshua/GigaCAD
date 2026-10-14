@@ -143,6 +143,15 @@ export function useLoad<T>(load: () => Promise<T>, deps: readonly unknown[]): { 
 
 // --- Formatting --------------------------------------------------------------------------
 
+/** Re-renders every half minute, so relative times ("2 min ago") stay true. */
+export function useTicking(interval = 30_000): void {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setTick((tick) => tick + 1), interval);
+    return () => clearInterval(timer);
+  }, [interval]);
+}
+
 export function ago(iso: string | null | undefined, now = Date.now()): string {
   if (!iso) return 'never';
   const seconds = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));

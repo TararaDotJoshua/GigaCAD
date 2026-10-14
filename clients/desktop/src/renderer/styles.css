@@ -760,7 +760,9 @@ button.crumb:hover {
 
 .field input,
 .field textarea,
-.field select {
+.field select,
+.commit-box input,
+.commit-box textarea {
   width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--line-strong);
@@ -1383,4 +1385,193 @@ button.crumb:hover {
 .confirm-text {
   color: var(--paper-muted);
   font-size: var(--t-small);
+}
+
+/* Branch page: changes, the commit box, and history */
+
+.stack {
+  display: grid;
+  gap: 16px;
+}
+
+.rows.changes > li {
+  cursor: default;
+}
+
+.rows.changes > li:hover {
+  background: rgb(245 245 247 / 0.03);
+}
+
+.change-kind {
+  width: 14px;
+  font: 600 var(--t-small) / 1 var(--mono);
+  text-align: center;
+}
+
+.change-kind.is-modified {
+  color: var(--caution);
+}
+
+.change-kind.is-added {
+  color: var(--signal);
+}
+
+.change-kind.is-deleted {
+  color: var(--danger);
+}
+
+.change-kind.is-moved {
+  color: var(--paper-muted);
+}
+
+.row-actions {
+  opacity: 0;
+}
+
+.rows > li:hover .row-actions,
+.rows > li:focus-within .row-actions,
+.row-actions:has([aria-expanded='true']) {
+  opacity: 1;
+}
+
+.row-actions .btn-icon {
+  width: 26px;
+  height: 26px;
+}
+
+.checkout-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  font-size: var(--t-small);
+  color: var(--paper-muted);
+}
+
+.commit-box {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+}
+
+.commit-box textarea {
+  min-height: 60px;
+  resize: vertical;
+}
+
+.commit-box input {
+  font-size: var(--t-small);
+}
+
+.commit-row {
+  display: flex;
+  gap: 8px;
+}
+
+.commit-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.commit-row .btn {
+  flex: none;
+}
+
+.commit-box .field-note {
+  margin: 0;
+}
+
+.timeline {
+  margin: 0;
+  padding: 6px 0;
+  list-style: none;
+}
+
+.timeline > li {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 14px 8px 40px;
+  font-size: var(--t-small);
+}
+
+/* The line through the dots */
+.timeline > li::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 21px;
+  width: 1px;
+  background: var(--line-strong);
+}
+
+.timeline > li:first-child::before {
+  top: 16px;
+}
+
+.timeline > li:last-child::before {
+  bottom: calc(100% - 16px);
+}
+
+.timeline-dot {
+  position: absolute;
+  top: 11px;
+  left: 16px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--paper);
+}
+
+/* Autosaves: hollow and dashed, the drawing convention for hidden edges. */
+.is-autosaves > .timeline-dot {
+  border: 1.5px dashed var(--paper-muted);
+  background: var(--forest);
+}
+
+.timeline .grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.timeline > li > .popover-root {
+  opacity: 0;
+}
+
+.timeline > li:hover > .popover-root,
+.timeline > li:focus-within > .popover-root,
+.timeline .popover-root:has([aria-expanded='true']) {
+  opacity: 1;
+}
+
+.timeline .btn-icon,
+.timeline .nested .btn-icon {
+  width: 26px;
+  height: 26px;
+}
+
+.timeline-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--paper);
+}
+
+.timeline-toggle .caret {
+  display: inline-block;
+  transition: transform 120ms;
+}
+
+.timeline-toggle[aria-expanded='true'] .caret {
+  transform: rotate(90deg);
+}
+
+.timeline .rows.nested {
+  margin-top: 6px;
+}
+
+.nav-row.is-cloud {
+  opacity: 0.6;
 }

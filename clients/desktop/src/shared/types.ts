@@ -187,6 +187,8 @@ export interface Commands {
   rootFiles(projectId: string): unknown;
 
   reveal(path: string): void;
+  /** Opens a file with its app (SolidWorks for a part). */
+  openPath(path: string): void;
   openExternal(url: string): void;
   openTerminal(path: string): void;
   copyText(text: string): void;
@@ -210,7 +212,7 @@ export const COMMAND_NAMES: readonly CommandName[] = [
   'getState', 'signIn', 'cancelSignIn', 'signOut', 'syncNow', 'setPaused', 'updateSettings', 'chooseFolder', 'setReleasesToKeep', 'setProjectHidden', 'dismissConflict',
   'checkout', 'checkin', 'commitVersion', 'pull', 'downloadBranch', 'removeBranch', 'downloadRelease', 'createBranch',
   'branchStatus', 'branchHistory', 'releaseRequests', 'openReleaseRequest', 'approveReleaseRequest', 'rootFiles',
-  'reveal', 'openExternal', 'openTerminal', 'copyText', 'webUrl',
+  'reveal', 'openPath', 'openExternal', 'openTerminal', 'copyText', 'webUrl',
   'runSetup', 'finishSetup', 'moveToApplications', 'installCli',
   'checkForUpdates', 'restartToUpdate', 'dismissUpdate', 'dismissRollback',
 ];

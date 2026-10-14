@@ -19,7 +19,7 @@ for (const platform of ['darwin', 'win32'] as const) {
         await page.locator('#root > *').first().waitFor({ timeout: 10_000 });
         if (fixture.tab) await page.getByRole('tab', { name: fixture.tab }).click();
         if (fixture.press) {
-          await page.getByRole('button', { name: fixture.press }).click();
+          await page.getByRole('button', { name: fixture.press, exact: true }).click();
           await expect(page.locator('.popover, .sheet').first()).toBeVisible();
         }
         // Data loads through the fake bridge on the next tick.

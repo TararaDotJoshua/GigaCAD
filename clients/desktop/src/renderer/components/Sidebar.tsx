@@ -72,7 +72,8 @@ function ProjectRows({
   thisComputer: string;
 }) {
   const selected = selection.kind === 'project' && selection.projectId === project.id;
-  const shown = project.branches.filter((branch) => branch.downloaded || branch.holder === 'me');
+  // Downloaded branches and yours, plus the one that's open (dimmed when it isn't downloaded).
+  const shown = project.branches.filter((branch) => branch.downloaded || branch.holder === 'me' || (selected && selection.branch === branch.name));
   return (
     <li>
       <button
@@ -91,7 +92,8 @@ function ProjectRows({
             <li key={branch.id}>
               <button
                 type="button"
-                className={`nav-row is-branch${selected && selection.branch === branch.name ? ' is-active' : ''}`}
+                className={`nav-row is-branch${selected && selection.branch === branch.name ? ' is-active' : ''}${branch.downloaded ? '' : ' is-cloud'}`}
+                title={branch.downloaded ? undefined : `${branch.name} isn’t downloaded`}
                 onClick={() => onSelect({ kind: 'project', projectId: project.id, branch: branch.name })}
               >
                 <BranchIcon className="icon" />

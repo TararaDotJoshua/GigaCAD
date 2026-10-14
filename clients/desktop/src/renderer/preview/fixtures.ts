@@ -159,6 +159,11 @@ export const FIXTURES: readonly Fixture[] = [
   { name: 'branch-other', state: base, navigate: { projectId: 'rover', branch: 'wheel-hub' } },
   { name: 'branch-not-downloaded', state: base, navigate: { projectId: 'rover', branch: 'gripper' } },
   {
+    name: 'branch-available',
+    state: { ...base, projects: withProjects((project) => ({ ...project, branches: project.branches.map((item) => (item.name === 'mast-camera' ? { ...item, downloaded: true } : item)) })) },
+    navigate: { projectId: 'rover', branch: 'mast-camera' },
+  },
+  {
     name: 'project-hidden',
     state: { ...base, projects: withProjects((project) => ({ ...project, hidden: true })), settings: { ...base.settings, hiddenProjects: ['rover'] } },
     navigate: { projectId: 'rover' },

@@ -8,3 +8,8 @@ export const branchUrl = (state: AppState, project: ProjectState, branch: string
 export const releaseUrl = (state: AppState, project: ProjectState, number: number) => `${base(state, project)}/releases/${number}`;
 export const requestUrl = (state: AppState, project: ProjectState, number: number) => `${base(state, project)}/release-requests/${number}`;
 export const commitUrl = (state: AppState, project: ProjectState, id: string) => `${base(state, project)}/commits/${id}`;
+/** The folder holding a file of a branch, in the web directory (its file pages are per item). */
+export const branchFolderUrl = (state: AppState, project: ProjectState, branch: string, path: string) => {
+  const folder = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+  return `${base(state, project)}/tree/${['Branches', branch, ...folder.split('/').filter(Boolean)].map(encodeURIComponent).join('/')}`;
+};

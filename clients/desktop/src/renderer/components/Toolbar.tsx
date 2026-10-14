@@ -1,7 +1,7 @@
-import { Fragment, useEffect, useState, type ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import type { AppState } from '../../shared/types.js';
 import { unreadErrors, useActivitySeenAt } from '../activity.js';
-import { act, ago } from '../api.js';
+import { act, ago, useTicking } from '../api.js';
 import { AlertIcon, CheckIcon, SyncIcon } from '../icons.js';
 import { ActivityList } from './Activity.js';
 import { Popover } from './Menu.js';
@@ -51,12 +51,7 @@ export function SyncStatus({ state }: { state: AppState }) {
   const { sync } = state;
   const seen = useActivitySeenAt();
   const unread = unreadErrors(state.activity, seen).length;
-  // Re-render every half minute so "Synced 2 min ago" stays true between state updates.
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const timer = setInterval(() => setTick((tick) => tick + 1), 30_000);
-    return () => clearInterval(timer);
-  }, []);
+  useTicking();
 
   const problem = sync.status === 'error' || sync.status === 'offline';
   const label =

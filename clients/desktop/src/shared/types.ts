@@ -18,6 +18,10 @@ export interface Settings {
   readonly setupDone: boolean;
   /** An update version whose banner was closed with ×. */
   readonly dismissedUpdate: string | null;
+  /** The window's zoom level (0 is actual size). */
+  readonly zoom: number;
+  /** Where the window was, to open it there again. */
+  readonly window: { readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly maximized: boolean } | null;
 }
 
 export type Holder = 'me' | 'other' | null;
@@ -154,6 +158,14 @@ export interface GigaErrorInfo {
   readonly hint?: string | undefined;
 }
 
+export interface ContextMenuItem {
+  readonly id: string;
+  readonly label: string;
+  readonly enabled?: boolean;
+  /** A line above this item. */
+  readonly separatorBefore?: boolean;
+}
+
 /** What the window asks the main process to do. Each maps to one IPC channel. */
 export interface Commands {
   getState(): AppState;
@@ -192,6 +204,9 @@ export interface Commands {
   openExternal(url: string): void;
   openTerminal(path: string): void;
   copyText(text: string): void;
+  /** A native right-click menu at the pointer; resolves the chosen item's id, or null. */
+  contextMenu(items: readonly ContextMenuItem[]): Promise<string | null>;
+  zoom(direction: 'in' | 'out' | 'reset'): void;
   webUrl(projectId: string, path: string): string;
 
   runSetup(): void;
@@ -212,7 +227,7 @@ export const COMMAND_NAMES: readonly CommandName[] = [
   'getState', 'signIn', 'cancelSignIn', 'signOut', 'syncNow', 'setPaused', 'updateSettings', 'chooseFolder', 'setReleasesToKeep', 'setProjectHidden', 'dismissConflict',
   'checkout', 'checkin', 'commitVersion', 'pull', 'downloadBranch', 'removeBranch', 'downloadRelease', 'createBranch',
   'branchStatus', 'branchHistory', 'releaseRequests', 'openReleaseRequest', 'approveReleaseRequest', 'rootFiles',
-  'reveal', 'openPath', 'openExternal', 'openTerminal', 'copyText', 'webUrl',
+  'reveal', 'openPath', 'openExternal', 'openTerminal', 'copyText', 'contextMenu', 'zoom', 'webUrl',
   'runSetup', 'finishSetup', 'moveToApplications', 'installCli',
   'checkForUpdates', 'restartToUpdate', 'dismissUpdate', 'dismissRollback',
 ];

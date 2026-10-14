@@ -4,9 +4,12 @@ import type { AppState, BranchState, ProjectState, ReleaseState, ReleasesToKeep 
 import { platformWords } from '../../shared/platform.js';
 import { act, ago, call, toast, useLoad } from '../api.js';
 import { BranchIcon, DownloadIcon, ExternalIcon, FileIcon, FolderIcon, LockIcon, MergeIcon, PlusIcon } from '../icons.js';
-import { branchUrl, projectUrl, releaseUrl, requestUrl } from '../urls.js';
+import { branchItems, copyItem, releaseItems, showContextMenu } from '../menus.js';
+import { useSavedTab } from '../navigation.js';
+import { projectUrl, releaseUrl, requestUrl } from '../urls.js';
 import { ActionButton } from './ActionButton.js';
 import { MoreMenu } from './Menu.js';
+import { Tabs } from './Tabs.js';
 import { Toolbar } from './Toolbar.js';
 
 interface Props {
@@ -34,7 +37,7 @@ const needsYou = (project: ProjectState, requests: readonly RequestSummary[] | u
 
 export function ProjectView({ state, project, onOpenBranch }: Props) {
   const words = platformWords(state.app.platform);
-  const [tab, setTab] = useState<Tab>('branches');
+  const [tab, setTab] = useSavedTab<Tab>('project', ['branches', 'releases', 'requests', 'files'], 'branches');
   const [creating, setCreating] = useState(false);
   const url = projectUrl(state, project);
 
@@ -79,19 +82,23 @@ export function ProjectView({ state, project, onOpenBranch }: Props) {
           ]}
         />
       </Toolbar>
-      <div className="tabs" role="tablist">
-        {tabs.map((item) => (
-          <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} className={`tab${tab === item.id ? ' is-active' : ''}`} onClick={() => setTab(item.id)}>
-            {item.label}
-            {item.count !== undefined && item.count > 0 ? (
-              <span className={`count${item.caution ? ' is-caution' : ''}`} title={item.caution ? 'Waiting for your approval' : undefined}>
-                {item.count}
-              </span>
-            ) : null}
-          </button>
-        ))}
-      </div>
-      <div className="content">
+      <Tabs
+        value={tab}
+        onChange={setTab}
+        tabs={tabs.map((item) => ({
+          id: item.id,
+          label: (
+            <>
+              {item.label}
+              {item.count !== undefined && item.count > 0 ? (
+                <span className={`count${item.caution ? ' is-caution' : ''}`} title={item.caution ? 'Waiting for your approval' : undefined}>
+                  {item.count}
+                </span>
+              ) : null}
+            </>
+          ),
+        }))}
+      >
         {project.error ? <div className="notice is-error">{project.error}</div> : null}
         {project.conflicts.map((conflict) => (
           <div key={conflict.path} className="notice is-caution" role="alert">
@@ -123,7 +130,7 @@ export function ProjectView({ state, project, onOpenBranch }: Props) {
         ) : (
           <RootFilesTab state={state} project={project} />
         )}
-      </div>
+      </Tabs>
       {creating ? <NewBranchSheet project={project} onClose={() => setCreating(false)} onCreated={onOpenBranch} /> : null}
     </>
   );
@@ -226,11 +233,15 @@ function BranchesTab({
 }
 
 function BranchRow({ state, project, branch, onOpen }: { state: AppState; project: ProjectState; branch: BranchState; onOpen: () => void }) {
-  const words = platformWords(state.app.platform);
-  const url = branchUrl(state, project, branch.name);
   return (
     // The row opens the branch; its buttons stop the click from doing that too.
-    <div className="table-row" role="row" tabIndex={0} onClick={onOpen} onKeyDown={(event) => event.key === 'Enter' && event.target === event.currentTarget && onOpen()}>
+    <div
+      className="table-row"
+      role="row"
+      tabIndex={0}
+      onClick={onOpen}
+      onContextMenu={(event) => showContextMenu(event, branchItems(state, project, branch))}
+      onKeyDown={(event) => event.key === 'Enter' && event.target === event.currentTarget && onOpen()}>
       <span role="cell" className="strong cell-name" title={branch.name}>
         <BranchIcon className="icon faint" />
         {branch.name}
@@ -257,19 +268,7 @@ function BranchRow({ state, project, branch, onOpen }: { state: AppState; projec
             run={() => act('downloadBranch', project.id, branch.name)}
           />
         )}
-        <MoreMenu
-          label={`More actions for ${branch.name}`}
-          items={[
-            { label: 'Open on gigacad.site', onSelect: () => void act('openExternal', url) },
-            { label: 'Copy link', onSelect: () => void act('copyText', url).then((ok) => ok && toast('Link copied')) },
-            branch.downloaded && { label: words.showInFileManager, onSelect: () => void act('reveal', branch.dir) },
-            branch.downloaded &&
-              branch.holder !== 'me' && {
-                label: 'Remove download',
-                onSelect: () => void act('removeBranch', project.id, branch.name).then((ok) => ok && toast(`Removed the download of ${branch.name}`)),
-              },
-          ]}
-        />
+        <MoreMenu label={`More actions for ${branch.name}`} items={branchItems(state, project, branch)} />
       </span>
     </div>
   );
@@ -333,7 +332,7 @@ function ReleasesTab({ state, project }: { state: AppState; project: ProjectStat
 function ReleaseRow({ state, project, release }: { state: AppState; project: ProjectState; release: ReleaseState }) {
   const words = platformWords(state.app.platform);
   return (
-    <li>
+    <li onContextMenu={(event) => showContextMenu(event, releaseItems(state, project, release))}>
       <span className="strong mono">v{release.number}</span>
       <span className="grow" title={release.notes || undefined}>
         {release.title ?? `Release ${release.number}`}
@@ -508,8 +507,22 @@ function RootFilesTab({ state, project }: { state: AppState; project: ProjectSta
         <ul className="rows">
           {files.data.entries.map((file) => {
             const folder = file.path.includes('/') ? file.path.slice(0, file.path.lastIndexOf('/') + 1) : '';
+            const local = `${project.dir}/${file.path}`;
+            const web = `${projectUrl(state, project)}/entries/${file.entryId}`;
             return (
-              <li key={file.entryId}>
+              <li
+                key={file.entryId}
+                onContextMenu={(event) =>
+                  showContextMenu(event, [
+                    { label: words.showInFileManager, onSelect: () => void act('reveal', local) },
+                    { label: 'Open', onSelect: () => void act('openPath', local) },
+                    copyItem(local, 'Copy path', 'Path'),
+                    { label: 'Open on gigacad.site', onSelect: () => void act('openExternal', web) },
+                    copyItem(web),
+                  ])
+                }
+                onDoubleClick={() => void act('openPath', local)}
+              >
                 <span className="grow mono" title={file.path}>
                   <span className="faint">{folder}</span>
                   {file.name}

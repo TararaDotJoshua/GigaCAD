@@ -24,6 +24,10 @@ function run(name: CommandName, args: readonly unknown[]): unknown {
       return SAMPLE_REQUESTS;
     case 'rootFiles':
       return SAMPLE_ROOT_FILES;
+    case 'contextMenu':
+      // No native menus in a browser: log what it would offer.
+      console.info('preview: context menu', (args[0] as { label: string }[]).map((item) => item.label).join(' · '));
+      return null;
     case 'webUrl':
       return `${state.settings.appUrl}/${String(args[1] ?? '')}`;
     case 'setProjectHidden': {
@@ -49,6 +53,7 @@ const bridge: Bridge = {
     if (fixture.navigate) setTimeout(() => listener(fixture.navigate!), 0);
     return () => {};
   },
+  onShortcut: () => () => {},
 };
 
 // Stand-ins for what the system draws over the window: macOS's traffic lights, and on

@@ -106,6 +106,8 @@ const base: AppState = {
     hiddenProjects: [],
     setupDone: true,
     dismissedUpdate: null,
+    zoom: 0,
+    window: null,
   },
   sync: { status: 'idle', active: 0, message: null, lastSyncedAt: minutesAgo(3) },
   projects,
@@ -158,6 +160,11 @@ export const FIXTURES: readonly Fixture[] = [
   { name: 'branch-menu', state: base, navigate: { projectId: 'rover', branch: 'suspension-v3' }, press: 'More actions' },
   { name: 'branch-other', state: base, navigate: { projectId: 'rover', branch: 'wheel-hub' } },
   { name: 'branch-not-downloaded', state: base, navigate: { projectId: 'rover', branch: 'gripper' } },
+  {
+    name: 'branch-busy',
+    state: { ...base, projects: withProjects((project) => ({ ...project, branches: project.branches.map((item) => (item.name === 'wheel-hub' ? { ...item, busy: true } : item)) })) },
+    navigate: { projectId: 'rover', branch: 'wheel-hub' },
+  },
   {
     name: 'branch-available',
     state: { ...base, projects: withProjects((project) => ({ ...project, branches: project.branches.map((item) => (item.name === 'mast-camera' ? { ...item, downloaded: true } : item)) })) },

@@ -8,7 +8,7 @@ export interface MenuItem {
 }
 
 /** A ⋯ button with a short list of less common actions. Items that are null are left out. */
-export function MoreMenu({ label = 'More actions', items }: { label?: string; items: readonly (MenuItem | null | false)[] }) {
+export function MoreMenu({ label = 'More actions', items }: { label?: string; items: readonly (MenuItem | null | false | undefined)[] }) {
   const shown = items.filter((item): item is MenuItem => Boolean(item));
   return (
     <Popover

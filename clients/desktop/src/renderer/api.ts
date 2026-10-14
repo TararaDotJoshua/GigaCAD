@@ -2,6 +2,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { Bridge, Navigate } from '../preload/index.js';
 import type { AppState, CommandName, Commands, GigaErrorInfo } from '../shared/types.js';
+import { useRefreshes } from './navigation.js';
 
 declare global {
   interface Window {
@@ -117,6 +118,7 @@ export function useLoad<T>(load: () => Promise<T>, deps: readonly unknown[]): { 
   const [error, setError] = useState<CommandError | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0);
+  const refreshes = useRefreshes();
   useEffect(() => {
     let live = true;
     setLoading(true);
@@ -137,7 +139,7 @@ export function useLoad<T>(load: () => Promise<T>, deps: readonly unknown[]): { 
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [...deps, tick]);
+  }, [...deps, tick, refreshes]);
   return { data, error, loading, reload: () => setTick((value) => value + 1) };
 }
 

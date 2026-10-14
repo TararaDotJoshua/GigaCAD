@@ -4,6 +4,7 @@ import { unreadErrors } from '../src/renderer/activity.js';
 import { bannerFor } from '../src/renderer/banner.js';
 import { groupHistory, type Commit } from '../src/renderer/history.js';
 import { FIXTURES } from '../src/renderer/preview/fixtures.js';
+import { sidebarProjects } from '../src/renderer/shortcuts.js';
 import { mainView } from '../src/renderer/view.js';
 
 const ready: UpdateState = { kind: 'ready', version: '0.3.0', notes: 'Faster sync', notesUrl: null, restarting: false, lastChecked: null };
@@ -72,5 +73,14 @@ describe('unreadErrors', () => {
     ];
     expect(unreadErrors(items, '').map((item) => item.at)).toEqual(['2026-10-14T10:05:00Z', '2026-10-14T09:00:00Z']);
     expect(unreadErrors(items, '2026-10-14T10:00:00Z').map((item) => item.text)).toEqual(['Couldn’t autosave']);
+  });
+});
+
+describe('sidebarProjects', () => {
+  it('orders projects as the sidebar does, for Mod+1 to Mod+9', () => {
+    const state = FIXTURES.find((fixture) => fixture.name === 'project')!.state;
+    expect(sidebarProjects(state).map((project) => project.id)).toEqual(['rover', 'gripper', 'drone']);
+    const hidden = { ...state, projects: state.projects.map((project) => (project.id === 'rover' ? { ...project, hidden: true } : project)) };
+    expect(sidebarProjects(hidden).map((project) => project.id)).toEqual(['gripper', 'drone']);
   });
 });

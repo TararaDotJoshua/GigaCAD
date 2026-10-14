@@ -5,10 +5,13 @@ import { unreadErrors, useActivitySeenAt } from '../activity.js';
 import { act, ago, call, toast, useLoad, useTicking } from '../api.js';
 import { groupHistory, type Commit } from '../history.js';
 import { DownloadIcon, ExternalIcon, FolderIcon, LockIcon, SyncIcon } from '../icons.js';
+import { copyItem, showContextMenu, type MenuItems } from '../menus.js';
+import { useRequest, useSavedTab } from '../navigation.js';
 import { branchFolderUrl, branchUrl, commitUrl } from '../urls.js';
 import { ActionButton } from './ActionButton.js';
 import { ActivityList } from './Activity.js';
 import { MoreMenu } from './Menu.js';
+import { Tabs } from './Tabs.js';
 import { Toolbar } from './Toolbar.js';
 
 interface Props {
@@ -27,13 +30,13 @@ interface Status {
 
 export function BranchView({ state, project, branch, focusCommit, onOpenProject }: Props) {
   const words = platformWords(state.app.platform);
-  const [tab, setTab] = useState<'changes' | 'history' | 'activity'>('changes');
+  const [tab, setTab] = useSavedTab('branch', ['changes', 'history', 'activity'] as const, 'changes');
   const seen = useActivitySeenAt();
   const activity = state.activity.filter((item) => item.projectId === project.id && item.branch === branch.name);
   const unread = unreadErrors(activity, seen).length;
   useEffect(() => {
     if (focusCommit) setTab('changes');
-  }, [focusCommit]);
+  }, [focusCommit, setTab]);
   const readOnly = project.role === 'viewer' || branch.status !== 'open';
   const url = branchUrl(state, project, branch.name);
 
@@ -86,19 +89,23 @@ export function BranchView({ state, project, branch, focusCommit, onOpenProject 
           ]}
         />
       </Toolbar>
-      <div className="tabs" role="tablist">
-        <button type="button" role="tab" aria-selected={tab === 'changes'} className={`tab${tab === 'changes' ? ' is-active' : ''}`} onClick={() => setTab('changes')}>
-          Changes
-        </button>
-        <button type="button" role="tab" aria-selected={tab === 'history'} className={`tab${tab === 'history' ? ' is-active' : ''}`} onClick={() => setTab('history')}>
-          History
-        </button>
-        <button type="button" role="tab" aria-selected={tab === 'activity'} className={`tab${tab === 'activity' ? ' is-active' : ''}`} onClick={() => setTab('activity')}>
-          Activity
-          {unread > 0 ? <span className="dot dot-danger tab-dot" aria-label={`${unread} new`} /> : null}
-        </button>
-      </div>
-      <div className="content">
+      <Tabs
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { id: 'changes', label: 'Changes' },
+          { id: 'history', label: 'History' },
+          {
+            id: 'activity',
+            label: (
+              <>
+                Activity
+                {unread > 0 ? <span className="dot dot-danger tab-dot" aria-label={`${unread} new`} /> : null}
+              </>
+            ),
+          },
+        ]}
+      >
         {tab === 'activity' ? (
           <section className="panel">
             <ActivityList state={state} items={activity} />
@@ -110,7 +117,7 @@ export function BranchView({ state, project, branch, focusCommit, onOpenProject 
         ) : (
           <Changes state={state} project={project} branch={branch} focusCommit={focusCommit} />
         )}
-      </div>
+      </Tabs>
     </>
   );
 }
@@ -202,6 +209,12 @@ function Changes({ state, project, branch, focusCommit }: { state: AppState; pro
   const mine = branch.holder === 'me';
   const changes = status.data?.changes ?? [];
   const local = (path: string) => `${branch.dir}/${path}`;
+  const fileItems = (change: Change): MenuItems => [
+    change.kind !== 'deleted' && { label: words.showInFileManager, onSelect: () => void act('reveal', local(change.path)) },
+    change.kind !== 'deleted' && { label: 'Open', onSelect: () => void act('openPath', local(change.path)) },
+    copyItem(local(change.path), 'Copy path', 'Path'),
+    { label: 'Open folder on gigacad.site', onSelect: () => void act('openExternal', branchFolderUrl(state, project, branch.name, change.path)) },
+  ];
   return (
     <div className="stack">
       <section className="panel">
@@ -226,9 +239,12 @@ function Changes({ state, project, branch, focusCommit }: { state: AppState; pro
           </div>
         ) : (
           <ul className="rows changes" aria-label="Changed files">
-            {changes.map((change) => (
+            {changes.map((change) => {
+              const items = fileItems(change);
+              return (
               <li
                 key={`${change.kind}:${change.path}`}
+                onContextMenu={(event) => showContextMenu(event, items)}
                 tabIndex={0}
                 title={`${KIND[change.kind].label}. Click to show in ${words.fileManager}, double-click to open.`}
                 onClick={() => change.kind !== 'deleted' && void act('reveal', local(change.path))}
@@ -248,18 +264,11 @@ function Changes({ state, project, branch, focusCommit }: { state: AppState; pro
                   ) : null}
                 </span>
                 <span className="row-actions" onClick={(event) => event.stopPropagation()}>
-                  <MoreMenu
-                    label={`More actions for ${change.path}`}
-                    items={[
-                      change.kind !== 'deleted' && { label: words.showInFileManager, onSelect: () => void act('reveal', local(change.path)) },
-                      change.kind !== 'deleted' && { label: 'Open', onSelect: () => void act('openPath', local(change.path)) },
-                      { label: 'Copy path', onSelect: () => void act('copyText', local(change.path)).then((ok) => ok && toast('Path copied')) },
-                      { label: 'Open folder on gigacad.site', onSelect: () => void act('openExternal', branchFolderUrl(state, project, branch.name, change.path)) },
-                    ]}
-                  />
+                  <MoreMenu label={`More actions for ${change.path}`} items={items} />
                 </span>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </section>
@@ -309,6 +318,8 @@ function CommitBox({
     if (focusCommit) messageRef.current?.focus();
   }, [focusCommit]);
   const mac = state.app.platform !== 'win32';
+  // Mod+Enter anywhere on the page: commit when there's a message, otherwise start one.
+  useRequest('commit', () => (message.trim() ? void commit() : messageRef.current?.focus()));
   const commit = async () => {
     if (!message.trim() || committing) return;
     setCommitting(true);
@@ -329,12 +340,6 @@ function CommitBox({
       onSubmit={(event) => {
         event.preventDefault();
         void commit();
-      }}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' && (mac ? event.metaKey : event.ctrlKey)) {
-          event.preventDefault();
-          void commit();
-        }
       }}
     >
       <textarea ref={messageRef} value={message} aria-label="Message" placeholder="What changed and why" rows={2} onChange={(event) => setMessage(event.target.value)} />
@@ -358,21 +363,17 @@ function History({ state, project, branch }: { state: AppState; project: Project
   if (!history.data) return <div className="panel empty">Loading…</div>;
   if (history.data.length === 0) return <div className="panel empty">No commits yet.</div>;
   const rows = groupHistory(history.data);
-  const links = (id: string, what: string) => (
-    <MoreMenu
-      label={`More actions for ${what}`}
-      items={[
-        { label: 'Open on gigacad.site', onSelect: () => void act('openExternal', commitUrl(state, project, id)) },
-        { label: 'Copy link', onSelect: () => void act('copyText', commitUrl(state, project, id)).then((ok) => ok && toast('Link copied')) },
-      ]}
-    />
-  );
+  const items = (id: string): MenuItems => [
+    { label: 'Open on gigacad.site', onSelect: () => void act('openExternal', commitUrl(state, project, id)) },
+    copyItem(commitUrl(state, project, id)),
+  ];
+  const links = (id: string, what: string) => <MoreMenu label={`More actions for ${what}`} items={items(id)} />;
   return (
     <section className="panel">
       <ol className="timeline">
         {rows.map((row) =>
           row.version ? (
-            <li key={row.key} className="is-version">
+            <li key={row.key} className="is-version" onContextMenu={(event) => showContextMenu(event, items(row.version!.id))}>
               <span className="timeline-dot" aria-hidden="true" />
               <div className="grow">
                 <div className="timeline-title">
@@ -400,7 +401,7 @@ function History({ state, project, branch }: { state: AppState; project: Project
                 {open === row.key ? (
                   <ul className="rows nested">
                     {row.autosaves!.map((commit) => (
-                      <li key={commit.id}>
+                      <li key={commit.id} onContextMenu={(event) => showContextMenu(event, items(commit.id))}>
                         <span className="grow faint">{new Date(commit.createdAt).toLocaleString()}</span>
                         {links(commit.id, 'this autosave')}
                       </li>

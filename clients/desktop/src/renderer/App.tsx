@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { Navigate } from '../preload/index.js';
 import { platformWords } from '../shared/platform.js';
+import { shortcutFor, type ShortcutAction } from '../shared/shortcuts.js';
 import type { AppState } from '../shared/types.js';
 import { SelectContext } from './activity.js';
 import { act, useAppState, useNavigate } from './api.js';
@@ -12,19 +13,50 @@ import { Sidebar } from './components/Sidebar.js';
 import { SignIn } from './components/SignIn.js';
 import { Toasts } from './components/Toasts.js';
 import { Toolbar } from './components/Toolbar.js';
+import { useNavigation } from './navigation.js';
+import { runShortcutAction } from './shortcuts.js';
 import { mainView, type Selection } from './view.js';
 
 export function App() {
   const state = useAppState();
-  const [selection, setSelection] = useState<Selection>({ kind: 'none' });
+  const { selection, select: setSelection, back, forward } = useNavigation();
 
   // The menu (Settings…) and Quick Actions (Show in GigaCAD, Commit Version…) open views.
   useNavigate(
-    useCallback((to: Navigate) => {
-      if (to.projectId === 'settings') setSelection({ kind: 'settings' });
-      else if (to.projectId) setSelection({ kind: 'project', projectId: to.projectId, branch: to.branch, commit: to.commit });
-    }, []),
+    useCallback(
+      (to: Navigate) => {
+        if (to.projectId === 'settings') setSelection({ kind: 'settings' });
+        else if (to.projectId) setSelection({ kind: 'project', projectId: to.projectId, branch: to.branch, commit: to.commit });
+      },
+      [setSelection],
+    ),
   );
+
+  // Shortcuts: keys in the window on both systems, and the View and Go menus on macOS.
+  const latest = useRef({ state, selection });
+  latest.current = { state, selection };
+  const runShortcut = useCallback(
+    (action: ShortcutAction) => {
+      const { state, selection } = latest.current;
+      if (!state?.user || !state.settings.setupDone) return;
+      runShortcutAction(action, state, selection, { select: setSelection, back, forward });
+    },
+    [setSelection, back, forward],
+  );
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const action = shortcutFor(event, latest.current.state?.app.platform ?? 'darwin');
+      if (!action) return;
+      event.preventDefault();
+      runShortcut(action);
+    };
+    window.addEventListener('keydown', onKey);
+    const off = window.gigacad.onShortcut(runShortcut);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      off();
+    };
+  }, [runShortcut]);
 
   // The title bar differs by system (styles.css): macOS's buttons sit left, Windows' right.
   const platform = state?.app.platform;

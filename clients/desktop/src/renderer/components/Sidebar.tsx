@@ -1,6 +1,6 @@
 import { platformWords } from '../../shared/platform.js';
 import type { AppState, BranchState, ProjectState } from '../../shared/types.js';
-import type { Selection } from '../App.js';
+import type { Selection } from '../view.js';
 import { act } from '../api.js';
 import { BranchIcon, CubeIcon, LockIcon, Logo, SettingsIcon } from '../icons.js';
 import { UpdateBanner } from './UpdateBanner.js';

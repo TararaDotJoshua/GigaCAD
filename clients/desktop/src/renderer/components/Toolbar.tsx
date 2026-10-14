@@ -29,7 +29,7 @@ export function SyncStatus({ state }: { state: AppState }) {
     return (
       <span className="sync-status" role="status">
         <SyncIcon className="icon spin" />
-        Syncing
+        <span className="sync-label">Syncing</span>
       </span>
     );
   }
@@ -37,15 +37,16 @@ export function SyncStatus({ state }: { state: AppState }) {
     return (
       <span className="sync-status is-problem" role="status" title={sync.message ?? undefined}>
         <AlertIcon className="icon" />
-        {sync.status === 'offline' ? 'Offline' : 'Sync problem'}
+        <span className="sync-label">{sync.status === 'offline' ? 'Offline' : 'Sync problem'}</span>
       </span>
     );
   }
   if (sync.status === 'paused') return <span className="sync-status">Paused</span>;
+  const synced = `Synced ${ago(sync.lastSyncedAt)}`;
   return (
-    <span className="sync-status" title={sync.lastSyncedAt ? `Last synced ${new Date(sync.lastSyncedAt).toLocaleString()}` : undefined}>
+    <span className="sync-status" title={sync.lastSyncedAt ? `${synced} · ${new Date(sync.lastSyncedAt).toLocaleString()}` : undefined}>
       <CheckIcon className="icon" />
-      Synced {ago(sync.lastSyncedAt)}
+      <span className="sync-label">{synced}</span>
     </span>
   );
 }

@@ -53,10 +53,33 @@ export function Settings({ state }: { state: AppState }) {
         </div>
 
         <h3>Syncing</h3>
-        <label className="check">
-          <input type="checkbox" checked={settings.paused} onChange={(event) => void act('setPaused', event.target.checked)} />
-          Pause syncing
-        </label>
+        {settings.paused ? (
+          <div className="inline">
+            <span>
+              Syncing is paused
+              {settings.pausedUntil
+                ? ` until ${new Date(settings.pausedUntil).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`
+                : ' until you resume it'}
+              .
+            </span>
+            <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('setPaused', false)}>
+              Resume
+            </button>
+          </div>
+        ) : (
+          <div className="inline">
+            <span>Pause syncing</span>
+            <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('setPaused', true, 'hour')}>
+              For 1 hour
+            </button>
+            <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('setPaused', true, 'tomorrow')}>
+              Until tomorrow
+            </button>
+            <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('setPaused', true, null)}>
+              Until I resume
+            </button>
+          </div>
+        )}
         <label className="check">
           <input type="checkbox" checked={settings.startAtLogin} onChange={(event) => void act('updateSettings', { startAtLogin: event.target.checked })} />
           Start GigaCAD when you log in
@@ -78,6 +101,22 @@ export function Settings({ state }: { state: AppState }) {
             </ul>
           </>
         ) : null}
+
+        <h3>Notifications</h3>
+        <p className="field-note">While the GigaCAD window is closed, tell me when:</p>
+        {(
+          [
+            ['conflicts', 'A root file changes here and on gigacad.site at once'],
+            ['approvals', 'A release request is waiting for my approval'],
+            ['checkouts', `Someone checks out a branch I have on ${words.thisComputer}`],
+            ['problems', 'Syncing has been failing for 5 minutes'],
+          ] as const
+        ).map(([kind, label]) => (
+          <label key={kind} className="check">
+            <input type="checkbox" checked={settings.notify[kind]} onChange={(event) => void act('setNotify', kind, event.target.checked)} />
+            {label}
+          </label>
+        ))}
 
         <h3>Command line tool</h3>
         {app.cliInstalled ? (

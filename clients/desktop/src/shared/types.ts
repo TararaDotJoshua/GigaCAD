@@ -9,6 +9,10 @@ export interface Settings {
   readonly appUrl: string;
   readonly startAtLogin: boolean;
   readonly paused: boolean;
+  /** When a timed pause ends (ISO); null pauses until resumed. */
+  readonly pausedUntil: string | null;
+  /** Which system notifications to show while the window is hidden. */
+  readonly notify: NotifyKinds;
   /** Per project id; 'latest' when unset. */
   readonly releases: Readonly<Record<string, ReleasesToKeep>>;
   /** Branch names downloaded per project id (branches you check out are downloaded too). */
@@ -22,6 +26,23 @@ export interface Settings {
   readonly zoom: number;
   /** Where the window was, to open it there again. */
   readonly window: { readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly maximized: boolean } | null;
+}
+
+export interface NotifyKinds {
+  readonly conflicts: boolean;
+  readonly approvals: boolean;
+  /** Someone else checking out a branch you have downloaded. */
+  readonly checkouts: boolean;
+  /** A sync problem lasting more than 5 minutes. */
+  readonly problems: boolean;
+}
+
+/** A release request waiting for this person's approval. */
+export interface Approval {
+  readonly projectId: string;
+  readonly number: number;
+  readonly title: string;
+  readonly branchName: string;
 }
 
 export type Holder = 'me' | 'other' | null;
@@ -137,6 +158,8 @@ export interface AppState {
   readonly sync: { readonly status: SyncStatus; readonly active: number; readonly message: string | null; readonly lastSyncedAt: string | null };
   readonly projects: readonly ProjectState[];
   readonly activity: readonly ActivityItem[];
+  /** Release requests waiting for your approval, across projects. */
+  readonly approvals: readonly Approval[];
   readonly setup: readonly SetupStep[];
   readonly updates: UpdateState;
   readonly rolledBackFrom: string | null;
@@ -173,7 +196,9 @@ export interface Commands {
   cancelSignIn(): void;
   signOut(): void;
   syncNow(): void;
-  setPaused(paused: boolean): void;
+  /** Pauses for an hour, until tomorrow morning, or until resumed (null). */
+  setPaused(paused: boolean, duration?: 'hour' | 'tomorrow' | null): void;
+  setNotify(kind: keyof NotifyKinds, on: boolean): void;
   updateSettings(change: Partial<Pick<Settings, 'startAtLogin' | 'folder'>>): void;
   /** Asks for a new GigaCAD folder; the next sync fills it. */
   chooseFolder(): void;
@@ -224,7 +249,7 @@ export interface Commands {
 export type CommandName = keyof Commands;
 
 export const COMMAND_NAMES: readonly CommandName[] = [
-  'getState', 'signIn', 'cancelSignIn', 'signOut', 'syncNow', 'setPaused', 'updateSettings', 'chooseFolder', 'setReleasesToKeep', 'setProjectHidden', 'dismissConflict',
+  'getState', 'signIn', 'cancelSignIn', 'signOut', 'syncNow', 'setPaused', 'setNotify', 'updateSettings', 'chooseFolder', 'setReleasesToKeep', 'setProjectHidden', 'dismissConflict',
   'checkout', 'checkin', 'commitVersion', 'pull', 'downloadBranch', 'removeBranch', 'downloadRelease', 'createBranch',
   'branchStatus', 'branchHistory', 'releaseRequests', 'openReleaseRequest', 'approveReleaseRequest', 'rootFiles',
   'reveal', 'openPath', 'openExternal', 'openTerminal', 'copyText', 'contextMenu', 'zoom', 'webUrl',

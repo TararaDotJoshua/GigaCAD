@@ -4,9 +4,10 @@ import { stat } from 'node:fs/promises';
 import { join, normalize } from 'node:path';
 import { platformWords } from '../shared/platform.js';
 import { SHORTCUTS, type ShortcutAction } from '../shared/shortcuts.js';
+import { ago } from '../shared/time.js';
 import type { BundleRuntime } from '../shared/runtime.js';
 import { supportDir } from '../shared/runtime.js';
-import type { AppState, Commands, PluginState, Settings, UpdateState } from '../shared/types.js';
+import type { AppState, Approval, Commands, PluginState, Settings, UpdateState } from '../shared/types.js';
 import { apiClient } from './api.js';
 import { branchSignatures, changedFolders, registerAddInMethods } from './addInMethods.js';
 import { SignIn } from './auth.js';
@@ -20,6 +21,8 @@ import { parseActionUrl, type QuickAction } from './quickActions.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { Setup } from './setup.js';
 import { restorableBounds } from './windowState.js';
+import { needsYouCount, notices, pauseEnd, snapshot, type Snapshot } from './attention.js';
+import type { TrayState } from './iconArt.js';
 import { describe, SyncEngine } from './sync.js';
 import { defaultManifestUrl, Updater } from './updates.js';
 
@@ -47,6 +50,16 @@ export class Controller {
   private installations = new Map<string, PluginState['installations']>();
   /** Branch folder states last announced to CAD add-ins. */
   private announced = new Map<string, string>();
+  /** Release requests waiting for this person's approval, polled from the API. */
+  private approvals: Approval[] = [];
+  private approvalsTimer: NodeJS.Timeout | undefined;
+  /** What the last notifications were worked out from. */
+  private attention: Snapshot | null = null;
+  /** When the current sync problem started, and whether it has been notified. */
+  private problem: { since: number; told: boolean } | null = null;
+  private pauseTimer: NodeJS.Timeout | undefined;
+  private readonly trayImages = new Map<string, Electron.NativeImage>();
+  private trayKey = '';
 
   private constructor(private readonly runtime: BundleRuntime) {
     this.rolledBackFrom = runtime.rolledBackFrom ?? null;
@@ -121,6 +134,10 @@ export class Controller {
 
     if (!this.settings.setupDone || !signedIn) this.showWindow();
     this.updater.start();
+    this.schedulePauseEnd();
+    void this.pollApprovals();
+    // A sync problem is only worth a notification once it has lasted 5 minutes.
+    setInterval(() => this.updateAttention(this.state()), 60_000).unref();
 
     // The bundle is healthy once the window has loaded and syncing has started, or after 20 s without a crash.
     this.healthyTimer = setTimeout(() => this.runtime.markHealthy(), 20_000);
@@ -181,6 +198,7 @@ export class Controller {
       sync: this.engine.syncState(),
       projects: this.engine.projectStates(),
       activity: this.engine.activity,
+      approvals: this.approvals,
       setup: this.setup.list(),
       updates: this.updater.state,
       rolledBackFrom: this.rolledBackFrom,
@@ -197,6 +215,7 @@ export class Controller {
       const state = this.state();
       this.window?.webContents.send('gigacad:state', state);
       this.updateTray(state);
+      this.updateAttention(state);
       this.announceToAddIns(state);
     }, 100);
   }
@@ -270,6 +289,7 @@ export class Controller {
       this.window.on('focus', () => {
         this.updater.focused();
         void this.engine.poll();
+        void this.pollApprovals();
       });
       // Links open in the browser, never inside the app.
       this.window.webContents.setWindowOpenHandler(({ url }) => {
@@ -332,22 +352,129 @@ export class Controller {
               : sync.status === 'error'
                 ? 'Sync problem: open GigaCAD'
                 : 'Up to date';
+    const trayState = sync.status === 'syncing' ? 'syncing' : sync.status === 'error' || sync.status === 'offline' ? 'problem' : sync.status === 'paused' ? 'paused' : 'idle';
+    this.setTrayImage(trayState);
+    const synced = sync.lastSyncedAt ? `Synced ${ago(sync.lastSyncedAt)}` : 'Not synced yet';
+    this.tray.setToolTip(`GigaCAD · ${sync.status === 'idle' ? synced : status}`);
+    // The projects most recently worked on, from the activity list.
+    const recent = [...new Set(state.activity.map((item) => item.projectId).filter((id): id is string => Boolean(id)))]
+      .map((id) => state.projects.find((project) => project.id === id && !project.hidden))
+      .filter((project): project is NonNullable<typeof project> => Boolean(project))
+      .slice(0, 5);
     const items: MenuItemConstructorOptions[] = [
       { label: status, enabled: false },
       ...state.activity.slice(0, 3).map((item) => ({ label: truncate(item.text, 60), enabled: false })),
       { type: 'separator' },
+      ...(recent.length > 0
+        ? [
+            { label: 'Recent Projects', enabled: false },
+            ...recent.map((project): MenuItemConstructorOptions => ({ label: project.name, click: () => this.showWindow({ projectId: project.id }) })),
+            { type: 'separator' as const },
+          ]
+        : []),
     ];
     if (updates.kind === 'ready') items.push({ label: `Restart to Update to ${updates.version}`, click: () => void this.updater.restart() }, { type: 'separator' });
     items.push(
       { label: 'Open GigaCAD Folder', click: () => void shell.openPath(this.settings.folder) },
       { label: 'Open GigaCAD', click: () => this.showWindow() },
       { label: 'Sync Now', enabled: state.user !== null && !this.settings.paused, click: () => void this.engine.syncAll() },
-      { label: this.settings.paused ? 'Resume Syncing' : 'Pause Syncing', enabled: state.user !== null, click: () => void this.run('setPaused', [!this.settings.paused]) },
+      this.settings.paused
+        ? {
+            label: this.settings.pausedUntil ? `Resume Syncing (paused until ${new Date(this.settings.pausedUntil).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })})` : 'Resume Syncing',
+            enabled: state.user !== null,
+            click: () => void this.run('setPaused', [false]),
+          }
+        : {
+            label: 'Pause Syncing',
+            enabled: state.user !== null,
+            submenu: [
+              { label: 'For 1 Hour', click: () => void this.run('setPaused', [true, 'hour']) },
+              { label: 'Until Tomorrow', click: () => void this.run('setPaused', [true, 'tomorrow']) },
+              { label: 'Until I Resume', click: () => void this.run('setPaused', [true, null]) },
+            ],
+          },
       { type: 'separator' },
       { label: 'Check for Updates…', click: () => void this.updater.check() },
       { label: 'Quit GigaCAD', role: 'quit' },
     );
     this.tray.setContextMenu(Menu.buildFromTemplate(items));
+  }
+
+  private setTrayImage(state: TrayState): void {
+    if (!this.tray || this.trayKey === state) return;
+    this.trayKey = state;
+    const name = `${isWindows ? 'trayWin' : 'trayTemplate'}${state === 'idle' ? '' : `-${state}`}.png`;
+    let image = this.trayImages.get(name);
+    if (!image) {
+      image = nativeImage.createFromPath(join(this.runtime.dir, 'icons', name));
+      if (!isWindows) image.setTemplateImage(true);
+      this.trayImages.set(name, image);
+    }
+    // Bundles from before the state icons keep the plain one.
+    if (!image.isEmpty()) this.tray.setImage(image);
+  }
+
+  // --- Things that need you --------------------------------------------------------------------
+
+  /** Release requests waiting for this person's approval, every two minutes and on focus. */
+  private async pollApprovals(): Promise<void> {
+    clearTimeout(this.approvalsTimer);
+    this.approvalsTimer = setTimeout(() => void this.pollApprovals(), 120_000);
+    this.approvalsTimer.unref();
+    if (!this.engine.user || this.settings.paused) return;
+    const api = await apiClient(this.settings.apiUrl);
+    const editable = this.engine.projectStates().filter((project) => !project.hidden && project.role !== null && project.role !== 'viewer');
+    const found: Approval[] = [];
+    for (const project of editable) {
+      const requests = await api.get<{ number: number; title: string; status: string; branchName: string; requesterHandle: string | null }[]>(`/v1/projects/${project.id}/release-requests`).catch(() => []);
+      for (const request of requests) {
+        // Your own request isn't waiting for you.
+        if (request.status === 'candidate' && request.requesterHandle !== this.engine.user?.handle) found.push({ projectId: project.id, number: request.number, title: request.title, branchName: request.branchName });
+      }
+    }
+    if (JSON.stringify(found) !== JSON.stringify(this.approvals)) {
+      this.approvals = found;
+      this.changed();
+    }
+  }
+
+  /** System notifications while the window is hidden, and the Dock or taskbar count. */
+  private updateAttention(state: AppState): void {
+    const next = snapshot(state.projects, state.approvals);
+    const hidden = !this.window?.isVisible();
+    if (hidden && Notification.isSupported()) {
+      for (const notice of notices(this.attention, next, state.projects, state.approvals, this.settings.notify)) this.notify(notice.title, notice.body, { projectId: notice.projectId, branch: notice.branch });
+    }
+    this.attention = next;
+
+    const troubled = state.sync.status === 'error' || state.sync.status === 'offline';
+    if (!troubled) this.problem = null;
+    else if (!this.problem) this.problem = { since: Date.now(), told: false };
+    else if (!this.problem.told && Date.now() - this.problem.since > 5 * 60_000) {
+      this.problem.told = true;
+      if (hidden && this.settings.notify.problems && Notification.isSupported()) {
+        this.notify(state.sync.status === 'offline' ? 'GigaCAD is offline' : 'GigaCAD can’t sync', state.sync.message ?? 'Syncing has been failing for 5 minutes. Open GigaCAD for details.');
+      }
+    }
+
+    const count = needsYouCount(state);
+    if (isWindows) {
+      const overlay = count > 0 ? nativeImage.createFromPath(join(this.runtime.dir, 'icons', 'overlay.png')) : null;
+      this.window?.setOverlayIcon(overlay && !overlay.isEmpty() ? overlay : null, count > 0 ? `${count} ${count === 1 ? 'thing needs' : 'things need'} you` : '');
+    } else {
+      app.setBadgeCount(count);
+    }
+  }
+
+  /** Ends a timed pause on time, including one that ended while GigaCAD was closed. */
+  private schedulePauseEnd(): void {
+    clearTimeout(this.pauseTimer);
+    const until = this.settings.paused ? this.settings.pausedUntil : null;
+    if (!until) return;
+    const wait = new Date(until).getTime() - Date.now();
+    if (wait <= 0) return void this.run('setPaused', [false]);
+    // Timers longer than about 24.8 days overflow; pauses never run that long.
+    this.pauseTimer = setTimeout(() => void this.run('setPaused', [false]), Math.min(wait, 2 ** 31 - 1));
   }
 
   private buildAppMenu(): void {
@@ -422,8 +549,9 @@ export class Controller {
       this.setup.setStatus('signin', 'todo');
     },
     syncNow: () => void this.engine.syncAll(),
-    setPaused: async (paused) => {
-      await this.updateSettings((settings) => ({ ...settings, paused }));
+    setPaused: async (paused, duration = null) => {
+      await this.updateSettings((settings) => ({ ...settings, paused, pausedUntil: paused ? pauseEnd(duration) : null }));
+      this.schedulePauseEnd();
       if (!paused) void this.engine.syncAll();
     },
     updateSettings: async (change) => {
@@ -456,6 +584,9 @@ export class Controller {
       if (!hidden) void this.engine.syncProject(projectId);
     },
     dismissConflict: (projectId, path) => this.engine.dismissConflict(projectId, path),
+    setNotify: async (kind, on) => {
+      await this.updateSettings((settings) => ({ ...settings, notify: { ...settings.notify, [kind]: on } }));
+    },
 
     checkout: (projectId, branch) => this.engine.checkout(projectId, branch),
     checkin: (projectId, branch) => this.engine.checkin(projectId, branch),
@@ -644,8 +775,12 @@ export class Controller {
     }
   }
 
-  private notify(title: string, body: string): void {
-    if (Notification.isSupported()) new Notification({ title, body }).show();
+  /** A system notification; `opens` is where clicking it takes the window. */
+  private notify(title: string, body: string, opens?: { projectId?: string; branch?: string | undefined }): void {
+    if (!Notification.isSupported()) return;
+    const notification = new Notification({ title, body });
+    notification.on('click', () => this.showWindow(opens));
+    notification.show();
   }
 
   private tell(title: string, message: string): void {

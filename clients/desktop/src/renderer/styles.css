@@ -207,7 +207,7 @@ select {
   gap: 4px;
   margin-left: auto;
   font-size: var(--t-micro);
-  color: var(--paper-faint);
+  color: var(--paper-muted);
   white-space: nowrap;
 }
 
@@ -530,7 +530,7 @@ button.crumb:hover {
   align-items: center;
   gap: 6px;
   font-size: var(--t-micro);
-  color: var(--paper-faint);
+  color: var(--paper-muted);
 }
 
 .tabs {
@@ -1009,7 +1009,7 @@ button.crumb:hover {
 .field-note {
   margin: 8px 0 0;
   font-size: var(--t-micro);
-  color: var(--paper-faint);
+  color: var(--paper-muted);
 }
 
 .notice {
@@ -1668,4 +1668,193 @@ button.crumb:hover {
 .form-actions {
   display: flex;
   justify-content: flex-end;
+}
+
+/* Settings: one narrow column of sections, names left and controls right */
+
+.settings-column {
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.settings-section {
+  margin-bottom: 28px;
+}
+
+.settings-section h3 {
+  margin: 0 0 8px;
+  font-size: var(--t-body);
+  font-weight: 600;
+}
+
+.settings-rows {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: rgb(245 245 247 / 0.02);
+}
+
+.setting {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 48px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+  font-size: var(--t-small);
+}
+
+.settings-rows > .setting:first-child,
+.settings-intro + .setting {
+  border-top: 0;
+}
+
+.setting-label {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.setting-note {
+  margin-top: 2px;
+  color: var(--paper-muted);
+  font-size: var(--t-micro);
+}
+
+.setting-control {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.setting-control:has(.confirm-inline) {
+  flex: 1 1 65%;
+}
+
+.settings-intro {
+  margin: 0;
+  padding: 10px 14px 0;
+  color: var(--paper-muted);
+  font-size: var(--t-small);
+}
+
+.settings-section > .settings-intro {
+  padding: 0 0 8px;
+}
+
+.switch {
+  position: relative;
+  display: inline-flex;
+}
+
+.switch input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+}
+
+.switch-track {
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--line-strong);
+  transition: background 120ms;
+}
+
+.switch-track::after {
+  content: '';
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin: 2px;
+  border-radius: 50%;
+  background: var(--paper);
+  transition: transform 120ms;
+}
+
+.switch input:checked + .switch-track {
+  background: var(--signal);
+}
+
+.switch input:checked + .switch-track::after {
+  transform: translateX(14px);
+}
+
+.switch input:focus-visible + .switch-track {
+  outline: 2px solid var(--paper);
+  outline-offset: 2px;
+}
+
+.repair summary {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  list-style: none;
+  cursor: default;
+}
+
+.repair summary::-webkit-details-marker {
+  display: none;
+}
+
+.repair summary::before {
+  content: '▸';
+  font-size: 0.7rem;
+  color: var(--paper-muted);
+  transition: transform 120ms;
+}
+
+.repair[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.repair-state {
+  color: var(--paper-muted);
+  font-size: var(--t-small);
+}
+
+.repair-state.is-problem {
+  color: var(--danger);
+}
+
+.repair > .settings-intro {
+  padding: 0 0 10px;
+}
+
+/* Loading: shapes of the lists they stand in for */
+
+.skeleton > li {
+  justify-content: space-between;
+}
+
+.skeleton-bar {
+  display: block;
+  height: 10px;
+  border-radius: 5px;
+  background: rgb(245 245 247 / 0.08);
+  animation: skeleton 1.4s ease-in-out infinite;
+}
+
+.skeleton-bar.is-short {
+  width: 56px;
+}
+
+.skeleton-bar.is-nav {
+  height: 12px;
+  margin: 14px 8px;
+}
+
+@keyframes skeleton {
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-bar {
+    animation: none;
+  }
 }

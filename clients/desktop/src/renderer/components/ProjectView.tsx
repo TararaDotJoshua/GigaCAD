@@ -9,6 +9,7 @@ import { useSavedTab } from '../navigation.js';
 import { projectUrl, releaseUrl, requestUrl } from '../urls.js';
 import { ActionButton } from './ActionButton.js';
 import { MoreMenu } from './Menu.js';
+import { SkeletonRows } from './Skeleton.js';
 import { Tabs } from './Tabs.js';
 import { Toolbar } from './Toolbar.js';
 
@@ -400,7 +401,7 @@ function RequestsTab({ state, project, requests }: { state: AppState; project: P
         {requests.error ? (
           <div className="empty">{requests.error.message}</div>
         ) : !requests.data ? (
-          <div className="empty">Loading…</div>
+          <SkeletonRows />
         ) : requests.data.length === 0 ? (
           <div className="empty">No release requests yet.</div>
         ) : (
@@ -503,7 +504,7 @@ function RootFilesTab({ state, project }: { state: AppState; project: ProjectSta
       {files.error ? (
         <div className="empty">{files.error.message}</div>
       ) : !files.data ? (
-        <div className="empty">Loading…</div>
+        <SkeletonRows />
       ) : files.data.entries.length === 0 ? (
         <div className="empty">No root files yet. Files you put in the project folder, outside Branches and Releases, sync both ways and show up here.</div>
       ) : (

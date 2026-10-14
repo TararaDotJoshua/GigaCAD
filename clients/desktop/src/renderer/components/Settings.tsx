@@ -1,4 +1,5 @@
-import type { AppState } from '../../shared/types.js';
+import type { ReactNode } from 'react';
+import type { AppState, NotifyKinds } from '../../shared/types.js';
 import { platformWords } from '../../shared/platform.js';
 import { act, ago } from '../api.js';
 import { pluginSummary } from '../plugins.js';
@@ -6,176 +7,203 @@ import { ActionButton } from './ActionButton.js';
 import { Setup } from './Setup.js';
 import { Toolbar } from './Toolbar.js';
 
+/** One setting: its name (and a note under it) on the left, its controls on the right. */
+function Row({ label, note, children }: { label: ReactNode; note?: ReactNode; children?: ReactNode }) {
+  return (
+    <div className="setting">
+      <div className="setting-label">
+        <div>{label}</div>
+        {note ? <div className="setting-note">{note}</div> : null}
+      </div>
+      <div className="setting-control">{children}</div>
+    </div>
+  );
+}
+
+/** An on/off switch: a styled checkbox, so keyboards and screen readers treat it as one. */
+function Switch({ checked, label, onChange }: { checked: boolean; label: string; onChange: (on: boolean) => void }) {
+  return (
+    <label className="switch">
+      <input type="checkbox" role="switch" aria-label={label} checked={checked} onChange={(event) => onChange(event.target.checked)} />
+      <span className="switch-track" aria-hidden="true" />
+    </label>
+  );
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="settings-section">
+      <h3>{title}</h3>
+      <div className="settings-rows">{children}</div>
+    </section>
+  );
+}
+
 export function Settings({ state }: { state: AppState }) {
   const { settings, updates, app } = state;
   const hidden = state.projects.filter((project) => project.hidden);
   const checking = updates.kind === 'checking' || updates.kind === 'downloading';
   const words = platformWords(state.app.platform);
+  const failed = state.setup.filter((step) => step.status === 'error');
+  const needsRepair = failed.length > 0 || state.setup.some((step) => !step.optional && step.status === 'todo');
+
+  const notifications: readonly [keyof NotifyKinds, string][] = [
+    ['conflicts', 'A root file changes here and on gigacad.site at once'],
+    ['approvals', 'A release request is waiting for my approval'],
+    ['checkouts', `Someone checks out a branch I have on ${words.thisComputer}`],
+    ['problems', 'Syncing has been failing for 5 minutes'],
+  ];
 
   return (
     <>
       <Toolbar state={state} crumbs={[{ label: 'Settings' }]} />
       <div className="content settings">
-        {state.setup.some((step) => step.status === 'error') ? (
-          <div className="notice is-error" role="alert">
-            <div className="grow">
-              A setup step failed: {state.setup.filter((step) => step.status === 'error').map((step) => step.title).join(', ')}. Details and Repair are below.
+        <div className="settings-column">
+          {failed.length > 0 ? (
+            <div className="notice is-error" role="alert">
+              <div className="grow">A setup step failed: {failed.map((step) => step.title).join(', ')}.</div>
+              <button type="button" className="btn btn-secondary btn-small" onClick={() => document.getElementById('setup')?.scrollIntoView({ behavior: 'smooth' })}>
+                Show
+              </button>
             </div>
-            <button type="button" className="btn btn-secondary btn-small" onClick={() => document.getElementById('setup')?.scrollIntoView({ behavior: 'smooth' })}>
-              Show
-            </button>
-          </div>
-        ) : null}
-        <h3>Account</h3>
-        <div className="inline">
-          <span>
-            Signed in as <strong>@{state.user?.handle}</strong> <span className="faint">({state.user?.apiUrl})</span>
-          </span>
-          <ActionButton
-            small
-            label="Sign Out"
-            pending="Signing out…"
-            confirm="Syncing stops until you sign in again. The giga command line tool is signed out too."
-            run={() => act('signOut')}
-          />
-        </div>
-        <p className="field-note">The giga command line tool on {words.thisComputer} uses the same sign-in.</p>
+          ) : null}
 
-        <h3>GigaCAD folder</h3>
-        <div className="inline">
-          <span className="mono">{settings.folder}</span>
-          <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('reveal', settings.folder)}>
-            {words.showInFileManager}
-          </button>
-          <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('chooseFolder')}>
-            Change…
-          </button>
-        </div>
+          <Section title="Account">
+            <Row
+              label={
+                <>
+                  Signed in as <strong>@{state.user?.handle}</strong>
+                </>
+              }
+              note={`The giga command line tool on ${words.thisComputer} uses the same sign-in.`}
+            >
+              <ActionButton
+                small
+                label="Sign Out"
+                pending="Signing out…"
+                confirm="Syncing stops until you sign in again. The giga command line tool is signed out too."
+                run={() => act('signOut')}
+              />
+            </Row>
+          </Section>
 
-        <h3>Syncing</h3>
-        {settings.paused ? (
-          <div className="inline">
-            <span>
-              Syncing is paused
-              {settings.pausedUntil
-                ? ` until ${new Date(settings.pausedUntil).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`
-                : ' until you resume it'}
-              .
-            </span>
-            <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('setPaused', false)}>
-              Resume
-            </button>
-          </div>
-        ) : (
-          <div className="inline">
-            <span>Pause syncing</span>
-            <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('setPaused', true, 'hour')}>
-              For 1 hour
-            </button>
-            <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('setPaused', true, 'tomorrow')}>
-              Until tomorrow
-            </button>
-            <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('setPaused', true, null)}>
-              Until I resume
-            </button>
-          </div>
-        )}
-        <label className="check">
-          <input type="checkbox" checked={settings.startAtLogin} onChange={(event) => void act('updateSettings', { startAtLogin: event.target.checked })} />
-          Start GigaCAD when you log in
-        </label>
-        {hidden.length > 0 ? (
-          <>
-            <p className="field-note">Not synced to {words.thisComputer}:</p>
-            <ul className="rows panel">
-              {hidden.map((project) => (
-                <li key={project.id}>
-                  <span className="grow">
-                    {project.owner}/{project.slug}
-                  </span>
-                  <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('setProjectHidden', project.id, false)}>
-                    Sync again
-                  </button>
-                </li>
+          <Section title="GigaCAD folder">
+            <Row label={<span className="mono">{settings.folder}</span>} note="Your projects, as folders.">
+              <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('reveal', settings.folder)}>
+                {words.showInFileManager}
+              </button>
+              <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('chooseFolder')}>
+                Change…
+              </button>
+            </Row>
+          </Section>
+
+          <Section title="Syncing">
+            {settings.paused ? (
+              <Row
+                label="Paused"
+                note={
+                  settings.pausedUntil
+                    ? `Until ${new Date(settings.pausedUntil).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`
+                    : 'Until you resume it'
+                }
+              >
+                <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('setPaused', false)}>
+                  Resume
+                </button>
+              </Row>
+            ) : (
+              <Row label="Pause syncing" note="Nothing uploads or downloads while paused.">
+                <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('setPaused', true, 'hour')}>
+                  For 1 hour
+                </button>
+                <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('setPaused', true, 'tomorrow')}>
+                  Until tomorrow
+                </button>
+                <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('setPaused', true, null)}>
+                  Until I resume
+                </button>
+              </Row>
+            )}
+            <Row label="Start GigaCAD when you log in">
+              <Switch checked={settings.startAtLogin} label="Start GigaCAD when you log in" onChange={(on) => void act('updateSettings', { startAtLogin: on })} />
+            </Row>
+            {hidden.map((project) => (
+              <Row key={project.id} label={`${project.owner}/${project.slug}`} note={`Not synced to ${words.thisComputer}`}>
+                <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('setProjectHidden', project.id, false)}>
+                  Sync again
+                </button>
+              </Row>
+            ))}
+          </Section>
+
+          <Section title="Notifications">
+            <p className="settings-intro">While the GigaCAD window is closed, tell me when:</p>
+            {notifications.map(([kind, label]) => (
+              <Row key={kind} label={label}>
+                <Switch checked={settings.notify[kind]} label={label} onChange={(on) => void act('setNotify', kind, on)} />
+              </Row>
+            ))}
+          </Section>
+
+          <Section title="Command line tool">
+            {app.cliInstalled ? (
+              <Row
+                label={
+                  <>
+                    {words.terminal === 'Terminal' ? 'Terminal' : 'The terminal'} runs <span className="mono">giga</span>
+                  </>
+                }
+                note={<span className="mono">{app.cliInstalled}</span>}
+              />
+            ) : (
+              <Row label="giga isn’t installed" note={`Use giga in ${words.terminal} without installing Node.`}>
+                <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('installCli')}>
+                  Install Command Line Tool…
+                </button>
+              </Row>
+            )}
+          </Section>
+
+          {app.platform === 'win32' ? (
+            <Section title="CAD programs">
+              {state.plugins.map((plugin) => (
+                <Row key={plugin.id} label={<strong>{plugin.name}</strong>} note={pluginSummary(plugin)}>
+                  {plugin.addInsConnected > 0 ? <span className="dot dot-signal" title="Add-in connected" /> : null}
+                </Row>
               ))}
-            </ul>
-          </>
-        ) : null}
+              {state.plugins.length === 0 ? <Row label="None found" note="Repair looks for newly installed CAD programs." /> : null}
+            </Section>
+          ) : null}
 
-        <h3>Notifications</h3>
-        <p className="field-note">While the GigaCAD window is closed, tell me when:</p>
-        {(
-          [
-            ['conflicts', 'A root file changes here and on gigacad.site at once'],
-            ['approvals', 'A release request is waiting for my approval'],
-            ['checkouts', `Someone checks out a branch I have on ${words.thisComputer}`],
-            ['problems', 'Syncing has been failing for 5 minutes'],
-          ] as const
-        ).map(([kind, label]) => (
-          <label key={kind} className="check">
-            <input type="checkbox" checked={settings.notify[kind]} onChange={(event) => void act('setNotify', kind, event.target.checked)} />
-            {label}
-          </label>
-        ))}
+          <Section title="Updates">
+            <Row
+              label={`Version ${app.version}${app.source === 'dev' ? ' (development)' : ''}`}
+              note={
+                <>
+                  Last checked {ago(updates.lastChecked)}
+                  {updates.kind === 'error' ? ` · Couldn’t reach the update server: ${updates.message}` : ''}
+                  {updates.kind === 'ready' ? ` · Version ${updates.version} applies when GigaCAD restarts` : ''}
+                </>
+              }
+            >
+              <button type="button" className="btn btn-secondary btn-small" disabled={checking} onClick={() => void act('checkForUpdates')}>
+                {checking ? 'Checking…' : 'Check for Updates'}
+              </button>
+            </Row>
+          </Section>
 
-        <h3>Command line tool</h3>
-        {app.cliInstalled ? (
-          <p className="field-note">
-            {words.terminal === 'Terminal' ? 'Terminal' : 'The terminal'} runs <span className="mono">giga</span> from <span className="mono">{app.cliInstalled}</span>.
-          </p>
-        ) : (
-          <div className="inline">
-            <span className="muted">Use giga in {words.terminal} without installing Node.</span>
-            <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('installCli')}>
-              Install Command Line Tool…
-            </button>
-          </div>
-        )}
-
-        {app.platform === 'win32' ? <Plugins state={state} /> : null}
-
-        <h3>Updates</h3>
-        <div className="inline">
-          <span>
-            Version {app.version}
-            {app.source === 'dev' ? ' (development)' : ''}
-          </span>
-          <button type="button" className="btn btn-secondary btn-small" disabled={checking} onClick={() => void act('checkForUpdates')}>
-            {checking ? 'Checking…' : 'Check for Updates'}
-          </button>
+          {/* Collapsed while everything passes; open when something needs fixing. */}
+          <details className="settings-section repair" id="setup" open={needsRepair}>
+            <summary>
+              <h3>Repair</h3>
+              <span className={`repair-state${needsRepair ? ' is-problem' : ''}`}>{needsRepair ? 'Needs attention' : 'Everything is set up'}</span>
+            </summary>
+            <p className="settings-intro">Checks the GigaCAD folder, {words.rightClickMenu}, gigacad:// links, and the rest of setup, and fixes what it can.</p>
+            <Setup state={state} />
+          </details>
         </div>
-        <p className="field-note">
-          Last checked {ago(updates.lastChecked)}
-          {updates.kind === 'error' ? ` · Couldn’t reach the update server: ${updates.message}` : ''}
-          {updates.kind === 'ready' ? ` · Version ${updates.version} applies when GigaCAD restarts` : ''}
-        </p>
-
-        <h3 id="setup">Repair</h3>
-        <p className="field-note">Checks the GigaCAD folder, {words.rightClickMenu}, gigacad:// links, and the rest of setup, and fixes what it can.</p>
-        <Setup state={state} />
       </div>
-    </>
-  );
-}
-
-/** CAD programs GigaCAD works with (SolidWorks for now), and whether their add-ins are set up and running. */
-function Plugins({ state }: { state: AppState }) {
-  return (
-    <>
-      <h3>CAD programs</h3>
-      <ul className="rows panel">
-        {state.plugins.map((plugin) => (
-          <li key={plugin.id}>
-            <span className="grow">
-              <strong>{plugin.name}</strong>
-              <br />
-              <span className="faint">{pluginSummary(plugin)}</span>
-            </span>
-            {plugin.addInsConnected > 0 ? <span className="dot dot-signal" title="Add-in connected" /> : null}
-          </li>
-        ))}
-      </ul>
-      <p className="field-note">Repair looks for newly installed CAD programs.</p>
     </>
   );
 }

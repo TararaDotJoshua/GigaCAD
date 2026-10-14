@@ -4,7 +4,7 @@ This plan covers the findings from the 2026-10-07 audit of the desktop app's win
 
 macOS and Windows run the same Electron app, so every item applies to both. Where the two systems need different code, the item says how.
 
-Status (2026-10-14): decisions approved. Phases 1–8 and the preview harness are built; the rest is done on macOS first, then checked on Windows with the CI installer.
+Status (2026-10-14): all nine phases and the preview harness are built, on macOS first (PRs #70–#78). Still to do: try them on Windows with the CI installer (the [Windows PC runbook](../clients/windows-pc-runbook.md)), and in the signed-in Mac app for what the browser preview can't show: native menus, notifications, the badge and tray icons, and window bounds.
 
 ## Decisions (approved 2026-10-08)
 

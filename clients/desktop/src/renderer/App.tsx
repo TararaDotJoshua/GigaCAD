@@ -12,6 +12,7 @@ import { Settings } from './components/Settings.js';
 import { Setup } from './components/Setup.js';
 import { Sidebar } from './components/Sidebar.js';
 import { SignIn } from './components/SignIn.js';
+import { AppSkeleton } from './components/Skeleton.js';
 import { Toasts } from './components/Toasts.js';
 import { Toolbar } from './components/Toolbar.js';
 import { useNavigation } from './navigation.js';
@@ -65,7 +66,7 @@ export function App() {
     if (platform) document.documentElement.dataset.platform = platform;
   }, [platform]);
 
-  if (!state) return <div className="app-loading" />;
+  if (!state) return <AppSkeleton />;
   if (!state.user) {
     return (
       <>

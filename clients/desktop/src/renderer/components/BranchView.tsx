@@ -11,6 +11,7 @@ import { branchFolderUrl, branchUrl, commitUrl } from '../urls.js';
 import { ActionButton } from './ActionButton.js';
 import { ActivityList } from './Activity.js';
 import { MoreMenu } from './Menu.js';
+import { SkeletonRows } from './Skeleton.js';
 import { Tabs } from './Tabs.js';
 import { Toolbar } from './Toolbar.js';
 
@@ -233,7 +234,7 @@ function Changes({ state, project, branch, focusCommit }: { state: AppState; pro
             {status.error.hint ? <div>{status.error.hint}</div> : null}
           </div>
         ) : status.loading && !status.data ? (
-          <div className="empty">Checking…</div>
+          <SkeletonRows rows={3} label="Checking for changes" />
         ) : changes.length === 0 ? (
           <div className="empty">
             No changes waiting.{' '}
@@ -362,7 +363,12 @@ function History({ state, project, branch }: { state: AppState; project: Project
   const history = useLoad(() => call('branchHistory', project.id, branch.name) as Promise<Commit[]>, [project.id, branch.name, branch.headCommitId]);
   const [open, setOpen] = useState<string | null>(null);
   if (history.error) return <div className="panel empty">{history.error.message}</div>;
-  if (!history.data) return <div className="panel empty">Loading…</div>;
+  if (!history.data)
+    return (
+      <section className="panel">
+        <SkeletonRows label="Loading history" />
+      </section>
+    );
   if (history.data.length === 0) return <div className="panel empty">No commits yet.</div>;
   const rows = groupHistory(history.data);
   const items = (id: string): MenuItems => [

@@ -755,7 +755,7 @@ export class Controller {
     }
     if (location.area !== 'branch' || !location.name) {
       this.tell(
-        location.area === 'project-root' ? 'Root files don’t need a checkout' : 'Choose a branch folder',
+        location.area === 'project-root' ? 'Root files don’t need to be checked out' : 'Choose a branch folder',
         location.area === 'project-root' ? 'Files at the project root sync on their own; each save records a new revision.' : 'Check out, check in, and commit work on the folders inside Branches.',
       );
       return;

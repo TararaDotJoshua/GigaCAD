@@ -11,7 +11,7 @@ export function ActivityList({ state, items, onOpen, markSeen = false }: { state
   useEffect(() => {
     if (markSeen && newest) markActivitySeen(newest);
   }, [markSeen, newest]);
-  if (items.length === 0) return <div className="empty">Nothing yet. Checkouts, autosaves, versions and downloads show up here.</div>;
+  if (items.length === 0) return <div className="empty">Nothing yet. What you check out, autosave, commit and download shows up here.</div>;
   return (
     <ul className="rows activity">
       {items.map((item, index) => {

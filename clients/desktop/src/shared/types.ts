@@ -171,6 +171,7 @@ export interface Commands {
   reveal(path: string): void;
   openExternal(url: string): void;
   openTerminal(path: string): void;
+  copyText(text: string): void;
   webUrl(projectId: string, path: string): string;
 
   runSetup(): void;
@@ -191,7 +192,7 @@ export const COMMAND_NAMES: readonly CommandName[] = [
   'getState', 'signIn', 'cancelSignIn', 'signOut', 'syncNow', 'setPaused', 'updateSettings', 'chooseFolder', 'setReleasesToKeep', 'setProjectHidden',
   'checkout', 'checkin', 'commitVersion', 'pull', 'downloadBranch', 'removeBranch', 'downloadRelease', 'createBranch',
   'branchStatus', 'branchHistory', 'releaseRequests', 'openReleaseRequest', 'approveReleaseRequest',
-  'reveal', 'openExternal', 'openTerminal', 'webUrl',
+  'reveal', 'openExternal', 'openTerminal', 'copyText', 'webUrl',
   'runSetup', 'finishSetup', 'moveToApplications', 'installCli',
   'checkForUpdates', 'restartToUpdate', 'dismissUpdate', 'dismissRollback',
 ];

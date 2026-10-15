@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Navigate } from '../preload/index.js';
-import type { AppState, BranchState, ProjectState } from '../shared/types.js';
-import { useAppState, useNavigate } from './api.js';
+import { platformWords } from '../shared/platform.js';
+import type { AppState } from '../shared/types.js';
+import { act, useAppState, useNavigate } from './api.js';
 import { BranchView } from './components/BranchView.js';
 import { ProjectView } from './components/ProjectView.js';
 import { Settings } from './components/Settings.js';
@@ -9,12 +10,8 @@ import { Setup } from './components/Setup.js';
 import { Sidebar } from './components/Sidebar.js';
 import { SignIn } from './components/SignIn.js';
 import { Toasts } from './components/Toasts.js';
-
-/** What the main column shows. */
-export type Selection =
-  | { readonly kind: 'project'; readonly projectId: string; readonly branch?: string | undefined; readonly commit?: boolean | undefined }
-  | { readonly kind: 'settings' }
-  | { readonly kind: 'none' };
+import { Toolbar } from './components/Toolbar.js';
+import { mainView, type Selection } from './view.js';
 
 export function App() {
   const state = useAppState();
@@ -62,23 +59,35 @@ export function App() {
 }
 
 function renderMain(state: AppState, selection: Selection, select: (selection: Selection) => void) {
-  if (selection.kind === 'settings') return <Settings state={state} />;
-  const visible = state.projects.filter((project) => !project.hidden);
-  const project: ProjectState | undefined =
-    selection.kind === 'project' ? state.projects.find((candidate) => candidate.id === selection.projectId) : visible[0];
-  if (!project) {
-    return (
-      <div className="center drag">
-        <div className="empty">
-          {state.sync.status === 'syncing' ? 'Looking for your projects…' : 'No projects yet. Create one on gigacad.site, or ask to be added to one.'}
+  const view = mainView(state, selection);
+  switch (view.kind) {
+    case 'settings':
+      return <Settings state={state} />;
+    case 'empty':
+      return (
+        <div className="center drag">
+          <div className="empty">
+            {state.sync.status === 'syncing' ? 'Looking for your projects…' : 'No projects yet. Create one on gigacad.site, or ask to be added to one.'}
+          </div>
         </div>
-      </div>
-    );
+      );
+    case 'hidden':
+      return (
+        <>
+          <Toolbar state={state} eyebrow={view.project.owner} title={view.project.name} />
+          <div className="center">
+            <div className="empty">
+              <p>Not synced to {platformWords(state.app.platform).thisComputer}</p>
+              <button type="button" className="btn btn-primary" onClick={() => void act('setProjectHidden', view.project.id, false)}>
+                Sync again
+              </button>
+            </div>
+          </div>
+        </>
+      );
+    case 'branch':
+      return <BranchView key={`${view.project.id}:${view.branch.name}`} state={state} project={view.project} branch={view.branch} focusCommit={view.focusCommit} />;
+    case 'project':
+      return <ProjectView key={view.project.id} state={state} project={view.project} onOpenBranch={(name) => select({ kind: 'project', projectId: view.project.id, branch: name })} />;
   }
-  const branch: BranchState | undefined =
-    selection.kind === 'project' && selection.branch ? project.branches.find((candidate) => candidate.name === selection.branch) : undefined;
-  if (branch) {
-    return <BranchView key={`${project.id}:${branch.name}`} state={state} project={project} branch={branch} focusCommit={selection.kind === 'project' && selection.commit === true} />;
-  }
-  return <ProjectView key={project.id} state={state} project={project} onOpenBranch={(name) => select({ kind: 'project', projectId: project.id, branch: name })} />;
 }

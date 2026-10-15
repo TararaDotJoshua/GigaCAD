@@ -48,13 +48,13 @@ export function BranchView({ state, project, branch, focusCommit }: Props) {
         )}
         {branch.downloaded ? (
           <>
-            <button type="button" className="btn btn-secondary" disabled={branch.busy} onClick={() => void act('pull', project.id, branch.name)}>
+            <button type="button" className="btn btn-secondary" title="Pull" disabled={branch.busy} onClick={() => void act('pull', project.id, branch.name)}>
               <SyncIcon className="icon" />
-              Pull
+              <span className="btn-label">Pull</span>
             </button>
-            <button type="button" className="btn btn-secondary" onClick={() => void act('reveal', branch.dir)}>
+            <button type="button" className="btn btn-secondary" title={words.showInFileManager} onClick={() => void act('reveal', branch.dir)}>
               <FolderIcon className="icon" />
-              {words.showInFileManager}
+              <span className="btn-label">{words.showInFileManager}</span>
             </button>
           </>
         ) : null}

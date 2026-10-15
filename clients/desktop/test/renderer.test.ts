@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { UpdateState } from '../src/shared/types.js';
 import { bannerFor } from '../src/renderer/banner.js';
 import { groupHistory, type Commit } from '../src/renderer/history.js';
+import { FIXTURES } from '../src/renderer/preview/fixtures.js';
+import { mainView } from '../src/renderer/view.js';
 
 const ready: UpdateState = { kind: 'ready', version: '0.3.0', notes: 'Faster sync', notesUrl: null, restarting: false, lastChecked: null };
 
@@ -38,5 +40,24 @@ describe('groupHistory', () => {
   it('folds each run of autosaves into one row', () => {
     const rows = groupHistory([commit('a3', 'autosave'), commit('a2', 'autosave'), commit('v2', 'version'), commit('a1', 'autosave'), commit('v1', 'version')]);
     expect(rows.map((row) => (row.version ? row.version.id : row.autosaves!.map((c) => c.id).join('+')))).toEqual(['a3+a2', 'v2', 'a1', 'v1']);
+  });
+});
+
+describe('mainView', () => {
+  const state = FIXTURES.find((fixture) => fixture.name === 'project')!.state;
+  const hide = (id: string) => ({ ...state, projects: state.projects.map((project) => (project.id === id ? { ...project, hidden: true } : project)) });
+
+  it('opens a selected branch, and a project without one', () => {
+    expect(mainView(state, { kind: 'project', projectId: 'rover', branch: 'wheel-hub' })).toMatchObject({ kind: 'branch', branch: { name: 'wheel-hub' } });
+    expect(mainView(state, { kind: 'project', projectId: 'rover' })).toMatchObject({ kind: 'project', project: { id: 'rover' } });
+  });
+
+  it('offers Sync again for a project that stopped syncing, instead of still showing it', () => {
+    expect(mainView(hide('rover'), { kind: 'project', projectId: 'rover', branch: 'wheel-hub' })).toMatchObject({ kind: 'hidden', project: { id: 'rover' } });
+  });
+
+  it('shows the first synced project when nothing is selected', () => {
+    expect(mainView(hide('rover'), { kind: 'none' })).toMatchObject({ kind: 'project', project: { id: 'gripper' } });
+    expect(mainView({ ...state, projects: [] }, { kind: 'none' })).toEqual({ kind: 'empty' });
   });
 });

@@ -293,6 +293,38 @@ select {
   color: var(--paper);
 }
 
+.update.is-short {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.update.is-short .update-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.update.is-short .update-close {
+  margin-left: 2px;
+}
+
+.notes.is-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  z-index: 10;
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.4);
+  white-space: pre-wrap;
+}
+
 .update-quiet {
   margin-bottom: 8px;
   padding: 6px 8px;
@@ -332,22 +364,66 @@ select {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  container-type: inline-size;
 }
 
+.main > .center {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+
+/* One row, always 52 px: on Windows the caption buttons are drawn over it at that height
+   (titleBarOverlay in main/controller.ts). The title gives way first, down to 120 px. */
 .toolbar {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 10px;
-  min-height: 52px;
-  padding: 10px 20px;
+  height: 52px;
+  padding: 0 20px;
   border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.toolbar > * {
+  flex: none;
 }
 
 .toolbar-title {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
-  min-width: 0;
-  margin-right: auto;
+  min-width: 120px;
+  line-height: 1.25;
+}
+
+.toolbar-title .project {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Narrow windows: toolbar buttons with an icon drop their label (it stays for screen readers
+   and in the tooltip). Windows has less room, since the caption buttons cover 150 px. */
+@container (max-width: 700px) {
+  .toolbar .btn:has(.icon) .btn-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+
+@container (max-width: 860px) {
+  [data-platform='win32'] .toolbar .btn:has(.icon) .btn-label,
+  [data-platform='win32'] .toolbar .sync-status:has(.icon) .sync-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
 }
 
 .toolbar-title .project {
@@ -364,6 +440,7 @@ select {
 
 .sync-status {
   display: inline-flex;
+  white-space: nowrap;
   align-items: center;
   gap: 6px;
   font-size: var(--t-micro);
@@ -484,6 +561,12 @@ select {
   align-items: start;
 }
 
+@container (max-width: 760px) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .panel {
   border: 1px solid var(--line);
   border-radius: var(--r-md);
@@ -514,6 +597,7 @@ select {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-height: 44px;
   padding: 8px 14px;
   border-top: 1px solid var(--line);
   font-size: var(--t-small);
@@ -521,6 +605,11 @@ select {
 
 .rows > li:first-child {
   border-top: 0;
+}
+
+.rows > li > :not(.grow) {
+  flex: none;
+  white-space: nowrap;
 }
 
 .rows .grow {
@@ -803,6 +892,7 @@ select {
 }
 
 .rows.nested > li {
+  min-height: 0;
   padding: 4px 0;
 }
 

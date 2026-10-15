@@ -4,7 +4,7 @@ This plan covers the findings from the 2026-10-07 audit of the desktop app's win
 
 macOS and Windows run the same Electron app, so every item applies to both. Where the two systems need different code, the item says how.
 
-Status (2026-10-08): decisions approved; nothing is built yet.
+Status (2026-10-14): decisions approved. Phase 1 and the preview harness are built; the rest is done on macOS first, then checked on Windows with the CI installer.
 
 ## Decisions (approved 2026-10-08)
 
@@ -41,7 +41,7 @@ At 860×560, the smallest window the app allows, these all go wrong at once.
 |---|---|---|---|
 | 1.1 | The toolbar title shrinks to "M." (15 px wide) because the toolbar buttons never shrink. "Synced 3 min ago" wraps onto three lines, and the toolbar grows to 75 px tall. | Let the title shrink first: `flex: 1 1 auto; min-width: 120px` on the title, `white-space: nowrap` on the sync status. When there isn't room, move secondary buttons into a ⋯ menu (phase 2). | `renderer/components/Toolbar.tsx`, `renderer/styles.css` |
 | 1.2 | On Windows, the caption-button strip is fixed at 52 px (`titleBarOverlay.height`), so it stops lining up when the toolbar grows. | Fix the toolbar at 52 px on every system: one row, never wrapping. After 1.1 it never needs more. | `main/controller.ts:227`, `renderer/styles.css` |
-| 1.3 | `.split` always gives the right column 320 px, leaving the left column 216 px at the minimum size. "wheel-hub" disappears entirely (0 px wide), "gripper" shows as "grip", release notes get 3 px, and "13 d ago" wraps. | Make `.main` a container (`container-type: inline-size`) and stack `.split` into one column below 900 px. Phases 4 and 5 remove most two-column layouts anyway. | `renderer/styles.css` |
+| 1.3 | `.split` always gives the right column 320 px, leaving the left column 216 px at the minimum size. "wheel-hub" disappears entirely (0 px wide), "gripper" shows as "grip", release notes get 3 px, and "13 d ago" wraps. | Make `.main` a container (`container-type: inline-size`) and stack `.split` into one column when the main column is under 760 px (a window under about 1024 px wide; the default window keeps two columns). Phases 4 and 5 remove most two-column layouts anyway. | `renderer/styles.css` |
 | 1.4 | The update banner takes about 150 px of a 560 px tall sidebar. | Below 640 px of window height, collapse it to one line ("Update ready · Restart") with the notes in a popover. | `renderer/components/UpdateBanner.tsx`, `renderer/styles.css` |
 | 1.5 | Branch and release rows are 36 or 43 px tall depending on whether they have a button. | Set a fixed `min-height` on `.rows > li`. Action buttons shouldn't change the row's height. | `renderer/styles.css` |
 | 1.6 | After "Stop syncing this project", the main view keeps showing the project, because `renderMain` also finds hidden projects. It even still offers "Stop syncing", and nothing there turns syncing back on. | When the selected project is hidden, show "Not synced to this Mac" with a Sync again button. | `renderer/App.tsx:67`, `renderer/components/ProjectView.tsx` |

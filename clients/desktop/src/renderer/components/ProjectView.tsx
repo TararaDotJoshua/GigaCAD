@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { AppState, ProjectState, ReleasesToKeep } from '../../shared/types.js';
 import { platformWords } from '../../shared/platform.js';
 import { act, ago, call, useLoad } from '../api.js';
-import { BranchIcon, DownloadIcon, FolderIcon, MergeIcon, PlusIcon, TagIcon } from '../icons.js';
+import { BranchIcon, DownloadIcon, ExternalIcon, FolderIcon, MergeIcon, PlusIcon, TagIcon } from '../icons.js';
 import { BranchNote } from './Sidebar.js';
 import { Toolbar } from './Toolbar.js';
 
@@ -18,12 +18,18 @@ export function ProjectView({ state, project, onOpenBranch }: Props) {
   return (
     <>
       <Toolbar state={state} eyebrow={project.owner} title={project.name}>
-        <button type="button" className="btn btn-secondary" onClick={() => void act('reveal', project.dir)}>
+        <button type="button" className="btn btn-secondary" title={words.showInFileManager} onClick={() => void act('reveal', project.dir)}>
           <FolderIcon className="icon" />
-          {words.showInFileManager}
+          <span className="btn-label">{words.showInFileManager}</span>
         </button>
-        <button type="button" className="btn btn-secondary" onClick={() => void act('openExternal', `${state.settings.appUrl}/${project.owner}/${project.slug}`)}>
-          Open on gigacad.site
+        <button
+          type="button"
+          className="btn btn-secondary"
+          title="Open on gigacad.site"
+          onClick={() => void act('openExternal', `${state.settings.appUrl}/${project.owner}/${project.slug}`)}
+        >
+          <ExternalIcon className="icon" />
+          <span className="btn-label">Open on gigacad.site</span>
         </button>
       </Toolbar>
       <div className="tabs" role="tablist">

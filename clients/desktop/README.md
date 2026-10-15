@@ -38,6 +38,18 @@ instead of GigaCAD. Test them with a packaged build.
 
 Unit tests run with the rest of the repository (`pnpm test`). The lock tests need macOS.
 
+To work on the window without signing in, run it in a browser with sample states:
+
+```sh
+pnpm --filter @gigacad/desktop preview      # http://localhost:5179/preview/?fixture=branch-mine&platform=win32
+pnpm --filter @gigacad/desktop layout       # every fixture, both systems, 1120×740 and 860×560
+```
+
+The fixtures are in `src/renderer/preview/fixtures.ts`. `layout` saves screenshots to
+`test-results/layout/` and fails on horizontal overflow, a toolbar taller than 52 px or with a
+title under 120 px, names cut to a few letters, uneven row heights, and console errors. CI runs
+it on every pull request.
+
 ## Package
 
 ```sh

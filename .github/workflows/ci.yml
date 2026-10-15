@@ -50,6 +50,14 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm vitest run clients/desktop
+      # The window in a browser at the default and minimum sizes, as macOS and as Windows.
+      - run: pnpm --filter @gigacad/desktop exec playwright install chromium
+      - run: pnpm --filter @gigacad/desktop layout
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-layout
+          path: clients/desktop/test-results/layout/
       - run: node clients/desktop/scripts/check-shell.mjs origin/main
       # Signed with a throwaway key: this DMG only runs bundles built on the same runner.
       - run: pnpm --filter @gigacad/desktop dist

@@ -6,6 +6,7 @@ export type EventKind =
   | 'project_updated'
   | 'project_deleted'
   | 'project_restored'
+  | 'project_forked'
   | 'member_changed'
   | 'approval_rules_changed'
   | 'branch_created'

@@ -84,7 +84,7 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
 
       <section className="section">
         <h2>Password</h2>
-        <PasswordForm />
+        <PasswordForm email={email} />
       </section>
 
       <section className="section">

@@ -1,4 +1,4 @@
-import type { ApprovalRules, ProjectRole } from '@gigacad/core';
+import { isPlaceholderHandle, type ApprovalRules, type ProjectRole } from '@gigacad/core';
 import type { Db, Sql } from '../db.js';
 import { badRequest, conflict, forbidden, notFound, unprocessable } from '../errors.js';
 import type { Mailer } from '../mail.js';
@@ -45,12 +45,22 @@ export async function summarize(db: Db, projectId: string, role: ProjectRole | n
   };
 }
 
+/**
+ * Project addresses start with the owner's handle, so a placeholder one (user-<hex>) would
+ * make an address that breaks when they choose theirs.
+ */
+export async function requireChosenHandle(db: Db, userId: string): Promise<void> {
+  const [profile] = await db<{ handle: string }[]>`select handle from profiles where id = ${userId}`;
+  if (!profile || isPlaceholderHandle(profile.handle)) throw unprocessable('handle_required', 'Choose a handle first. Project addresses start with it.');
+}
+
 export async function createProject(
   sql: Sql,
   userId: string,
   input: { slug: string; name: string; description?: string | undefined; visibility?: 'public' | 'private' | undefined },
 ): Promise<ProjectSummary> {
   return sql.begin(async (tx) => {
+    await requireChosenHandle(tx, userId);
     const [project] = await tx<{ id: string }[]>`
       insert into projects (owner_id, slug, name, description, visibility)
       values (${userId}, ${input.slug}, ${input.name}, ${input.description ?? ''}, ${input.visibility ?? 'private'})
@@ -322,11 +332,17 @@ export async function setApprovalRules(sql: Sql, projectId: string, userId: stri
   });
 }
 
+/** Who joined, left, or changed role is for members; everyone else sees the work. */
+const MEMBERS_ONLY_EVENTS = ['member_changed'];
+
 export async function listEvents(sql: Sql, projectId: string, userId: string | null, after: number, limit: number, order: 'asc' | 'desc' = 'asc') {
-  await projectAccess(sql, projectId, userId);
-  return sql<{ id: string; kind: string; actorId: string | null; subjectId: string | null; payload: unknown; createdAt: Date }[]>`
-    select id::text, kind, actor_id, subject_id, payload, created_at
-    from project_events where project_id = ${projectId} and id > ${after}
-    order by id ${order === 'desc' ? sql`desc` : sql`asc`} limit ${limit}
+  const { role } = await projectAccess(sql, projectId, userId);
+  // The actor's handle comes with each event, so feeds can name people who have since left.
+  return sql<{ id: string; kind: string; actorId: string | null; actorHandle: string | null; subjectId: string | null; payload: unknown; createdAt: Date }[]>`
+    select e.id::text, e.kind, e.actor_id, a.handle as actor_handle, e.subject_id, e.payload, e.created_at
+    from project_events e left join profiles a on a.id = e.actor_id
+    where e.project_id = ${projectId} and e.id > ${after}
+      ${role === null ? sql`and e.kind <> all(${MEMBERS_ONLY_EVENTS}::text[])` : sql``}
+    order by e.id ${order === 'desc' ? sql`desc` : sql`asc`} limit ${limit}
   `;
 }

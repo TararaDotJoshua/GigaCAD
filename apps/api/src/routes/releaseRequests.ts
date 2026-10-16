@@ -73,7 +73,8 @@ export function releaseRequestRoutes(app: FastifyInstance, { sql }: AppDeps): vo
       }),
       request.body,
     );
-    return reportRebuild(sql, id, requireCaller(request).userId, input);
+    const caller = requireCaller(request);
+    return reportRebuild(sql, id, caller.userId, input, { via: caller.via, deviceName: caller.deviceName });
   });
 
   app.post('/v1/release-requests/:id/approvals', async (request) => {

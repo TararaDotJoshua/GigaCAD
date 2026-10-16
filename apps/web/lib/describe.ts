@@ -113,8 +113,14 @@ export function describeEvent(
   const payload = event.payload ?? {};
   const branch = names.branch(event.subjectId);
   switch (event.kind) {
-    case 'project_created':
-      return `${who} created the project`;
+    case 'project_created': {
+      const from = payload.forkedFrom as { ownerHandle?: string; slug?: string; releaseNumber?: number } | string | undefined;
+      return typeof from === 'object' && from?.ownerHandle ? `${who} forked @${from.ownerHandle}/${from.slug} v${from.releaseNumber}` : `${who} created the project`;
+    }
+    case 'project_forked': {
+      const fork = payload.fork as { ownerHandle?: string; slug?: string } | undefined;
+      return `${who} forked v${String(payload.releaseNumber)} into ${fork?.ownerHandle}/${fork?.slug}`;
+    }
     case 'project_restored':
       return `${who} restored the project`;
     case 'branch_created':

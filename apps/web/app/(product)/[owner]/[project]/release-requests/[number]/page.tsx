@@ -210,6 +210,19 @@ export default async function RequestPage({ params }: { params: Promise<RequestP
               {request.rebuildStatus ? (
                 <>
                   <StatusBadge tone={request.rebuildStatus === 'failed' ? 'danger' : request.rebuildStatus === 'passed_with_warnings' ? 'caution' : 'signal'}>{request.rebuildStatus.replace(/_/g, ' ')}</StatusBadge>
+                  {request.rebuildReport?.reportedBy && (
+                    <p className="muted">
+                      Reported by @{request.rebuildReport.reportedBy.handle ?? 'someone'}
+                      {request.rebuildReport.reportedAt && (
+                        <>
+                          {' '}
+                          <RelativeTime value={request.rebuildReport.reportedAt} />
+                        </>
+                      )}
+                      {request.rebuildReport.via === 'device' ? ` from “${request.rebuildReport.deviceName ?? 'a desktop sign-in'}”` : ' from the website'}
+                      {request.rebuildReport.reportedBy.userId === request.requesterId && ', who opened this request'}.
+                    </p>
+                  )}
                   {request.rebuildReport?.messages.length ? (
                     <ul className="warning-list">
                       {request.rebuildReport.messages.map((message, index) => (

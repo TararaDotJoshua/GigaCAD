@@ -2,8 +2,10 @@ import { HANDLE_PATTERN, isPlaceholderHandle, isReservedHandle } from '@gigacad/
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
-import { badRequest, notFound } from '../errors.js';
+import type { Db } from '../db.js';
+import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { idParams, parse, requireCaller, requireSessionCaller } from '../http.js';
+import { createRateLimit } from '../rateLimit.js';
 import { approveDeviceSignIn, issueToken, listTokens, pendingDeviceSignIn, pollDeviceSignIn, revokeToken, startDeviceSignIn } from '../services/device.js';
 import { AVATAR_TYPES, MAX_AVATAR_BYTES, avatarUrl, clearAvatar, setAvatar } from '../services/profiles.js';
 
@@ -28,26 +30,51 @@ const optionalText = (max: number) =>
     .nullable()
     .optional();
 
+/** Days a handle someone gave up stays theirs, so links and emails naming it can't reach someone else. */
+export const HANDLE_HOLD_DAYS = 90;
+
+/**
+ * Whether another account gave up this handle recently, or ever while it owned public projects
+ * (whose links stay out there). The account that gave it up can always take it back.
+ */
+async function handleIsHeld(db: Db, handle: string, userId: string): Promise<boolean> {
+  const [held] = await db`
+    select 1 from handle_history
+    where handle = ${handle} and user_id <> ${userId}
+      and (had_public_projects or released_at > now() - make_interval(days => ${HANDLE_HOLD_DAYS}))
+  `;
+  return Boolean(held);
+}
+
 export function authRoutes(app: FastifyInstance, { sql, storage, webOrigin }: AppDeps): void {
+  // Starting a sign-in needs no account, so it's limited per address; a client polls every
+  // 5 seconds, so a code gets a little more than that; approving is limited per person.
+  const startLimit = createRateLimit({ limit: 20, windowMs: 60_000 });
+  const pollLimit = createRateLimit({ limit: 30, windowMs: 60_000 });
+  const approveLimit = createRateLimit({ limit: 20, windowMs: 60_000 });
+
   app.post('/v1/auth/device/code', async (request) => {
+    startLimit(request.ip);
     const { clientName } = parse(z.object({ clientName: z.string().min(1).max(100) }), request.body);
     return startDeviceSignIn(sql, webOrigin, clientName);
   });
 
   app.post('/v1/auth/device/approve', async (request) => {
     const caller = requireSessionCaller(request);
+    approveLimit(caller.userId);
     const { userCode } = parse(z.object({ userCode: z.string().min(4).max(20) }), request.body);
     return approveDeviceSignIn(sql, caller.userId, userCode);
   });
 
   app.get('/v1/auth/device/pending/:userCode', async (request) => {
-    requireSessionCaller(request);
+    approveLimit(requireSessionCaller(request).userId);
     const { userCode } = parse(z.object({ userCode: z.string().min(4).max(20) }), request.params);
     return pendingDeviceSignIn(sql, userCode);
   });
 
   app.post('/v1/auth/device/token', async (request) => {
     const { deviceCode } = parse(z.object({ deviceCode: z.string().min(1).max(200) }), request.body);
+    pollLimit(`${request.ip} ${deviceCode}`);
     return pollDeviceSignIn(sql, deviceCode);
   });
 
@@ -62,7 +89,10 @@ export function authRoutes(app: FastifyInstance, { sql, storage, webOrigin }: Ap
 
   app.delete('/v1/me/tokens/:id', async (request, reply) => {
     const { id } = parse(idParams, request.params);
-    await revokeToken(sql, requireCaller(request).userId, id);
+    const caller = requireCaller(request);
+    // A leaked desktop token mustn't be able to sign the person out everywhere else.
+    if (caller.via === 'device' && caller.tokenId !== id) throw forbidden('A device can only sign itself out. Sign out other devices on gigacad.site');
+    await revokeToken(sql, caller.userId, id);
     reply.status(204);
   });
 
@@ -77,8 +107,9 @@ export function authRoutes(app: FastifyInstance, { sql, storage, webOrigin }: Ap
 
   app.get('/v1/me', async (request) => me(requireCaller(request).userId));
 
+  // Changing the handle or profile is for the website: a desktop or CLI token can't rename the account.
   app.patch('/v1/me', async (request) => {
-    const { userId } = requireCaller(request);
+    const { userId } = requireSessionCaller(request);
     const changes = parse(
       z
         .object({
@@ -99,7 +130,14 @@ export function authRoutes(app: FastifyInstance, { sql, storage, webOrigin }: Ap
       request.body,
     );
     const defined = Object.fromEntries(Object.entries(changes).filter(([, value]) => value !== undefined));
-    if (Object.keys(defined).length > 0) await sql`update profiles set ${sql(defined)} where id = ${userId}`;
+    if (Object.keys(defined).length > 0) {
+      await sql.begin(async (tx) => {
+        if (changes.handle && (await handleIsHeld(tx, changes.handle, userId))) {
+          throw conflict('handle_unavailable', 'Someone used this handle recently, so old links to it could reach your projects. Choose another.');
+        }
+        await tx`update profiles set ${tx(defined)} where id = ${userId}`;
+      });
+    }
     return me(userId);
   });
 
@@ -108,13 +146,13 @@ export function authRoutes(app: FastifyInstance, { sql, storage, webOrigin }: Ap
     scope.addContentTypeParser([...AVATAR_TYPES], { parseAs: 'buffer', bodyLimit: MAX_AVATAR_BYTES }, (_request, body, done) => done(null, body));
 
     scope.put('/v1/me/avatar', async (request) => {
-      const { userId } = requireCaller(request);
+      const { userId } = requireSessionCaller(request);
       if (!(request.body instanceof Buffer)) throw badRequest('invalid_image', 'Upload a PNG, JPEG, or WebP image');
       return { avatarUrl: await setAvatar(sql, storage, userId, request.body) };
     });
 
     scope.delete('/v1/me/avatar', async (request, reply) => {
-      await clearAvatar(sql, storage, requireCaller(request).userId);
+      await clearAvatar(sql, storage, requireSessionCaller(request).userId);
       reply.status(204);
     });
   });

@@ -114,6 +114,8 @@ export interface ProjectCard {
   createdAt: string;
   latestReleaseNumber: number | null;
   starCount: number;
+  /** Copied from another project's release. */
+  isFork?: boolean;
   /** A short-lived link to the project's cover thumbnail, if it has one. */
   thumbnailUrl: string | null;
 }
@@ -276,7 +278,14 @@ export interface ReleaseRequestDetail {
     candidateManifestId: string | null;
     rebuildManifestId: string | null;
     rebuildStatus: 'passed' | 'passed_with_warnings' | 'failed' | null;
-    rebuildReport: { messages: RebuildMessage[] } | null;
+    rebuildReport: {
+      messages: RebuildMessage[];
+      /** Who reported it, when, and from where; missing on older reports. */
+      reportedBy?: { userId: string; handle: string | null };
+      reportedAt?: string;
+      via?: 'session' | 'device';
+      deviceName?: string;
+    } | null;
     releasedReleaseId: string | null;
     createdAt: string;
     updatedAt: string;
@@ -306,6 +315,8 @@ export interface ProjectEvent {
   id: string;
   kind: string;
   actorId: string | null;
+  /** The actor's current handle, even if they're no longer a member. */
+  actorHandle?: string | null;
   subjectId: string | null;
   payload: Record<string, unknown> | null;
   createdAt: string;

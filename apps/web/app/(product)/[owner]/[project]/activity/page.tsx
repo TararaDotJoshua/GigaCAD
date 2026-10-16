@@ -15,7 +15,8 @@ export default async function ActivityPage({ params }: { params: Promise<Project
   const { owner, project: slug } = await params;
   const project = await getProject(owner, slug);
   const [events, members, branches] = await Promise.all([getEvents(project.id, 300), getMembers(project.id), getBranches(project.id)]);
-  const handles = new Map(members.map((member) => [member.userId, member.handle]));
+  // Events carry their actor's handle, so people who have left are still named.
+  const handles = new Map([...events.flatMap((event) => (event.actorId && event.actorHandle ? [[event.actorId, event.actorHandle] as const] : [])), ...members.map((member) => [member.userId, member.handle] as const)]);
   const branchNames = new Map(branches.map((branch) => [branch.id, branch.name]));
   const names = {
     handle: (id: string | null) => (id && handles.has(id) ? `@${handles.get(id)}` : 'Someone'),

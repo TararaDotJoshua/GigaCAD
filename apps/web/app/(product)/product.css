@@ -136,6 +136,10 @@
   transition: background-color 150ms, color 150ms;
 }
 
+.shell .app-nav-owner {
+  color: var(--paper-muted);
+}
+
 .shell .app-nav a:hover {
   background: rgb(245 245 247 / 0.06);
   color: var(--paper);
@@ -833,6 +837,7 @@
 
 .shell .empty-title {
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .shell .empty-body {
@@ -1497,6 +1502,7 @@
 .shell .explore-search {
   flex: 1 1 320px;
   max-width: 520px;
+  margin-top: 0;
   background: var(--mist);
   color: var(--ink-muted);
 }

@@ -295,7 +295,7 @@ export async function forkProject(sourceId: string, _state: ActionState, form: F
   } catch (error) {
     return { error: messageFor(error) };
   }
-  redirect(projectPath(project.ownerHandle, project.slug));
+  redirect(`${projectPath(project.ownerHandle, project.slug)}?forked=1`);
 }
 
 export async function createBranch(projectId: string, owner: string, slug: string, _state: ActionState, form: FormData): Promise<ActionState> {

@@ -56,8 +56,8 @@ export const getMe = cache(() => get<Profile>('/v1/me'));
 /** The signed-in user, or null for a signed-out visitor to a public page. */
 export const getViewer = cache(async () => ((await getAccessToken()) ? getMe() : null));
 export const getMyProjectsIfSignedIn = cache(async () => ((await getAccessToken()) ? getMyProjects() : []));
-export const getExplore = cache((q: string, sort: 'stars' | 'recent') =>
-  get<ProjectCard[]>(`/v1/explore?${new URLSearchParams({ sort, ...(q ? { q } : {}) })}`),
+export const getExplore = cache((q: string, sort: 'stars' | 'recent', offset = 0, limit = 30) =>
+  get<ProjectCard[]>(`/v1/explore?${new URLSearchParams({ sort, ...(q ? { q } : {}), offset: String(offset), limit: String(limit) })}`),
 );
 export const getUserPage = cache((handle: string) => orNotFound(get<UserPage>(`/v1/users/${encodeURIComponent(handle)}`)));
 export const getUserStars = cache((handle: string) => orNotFound(get<ProjectCard[]>(`/v1/users/${encodeURIComponent(handle)}/stars`)));

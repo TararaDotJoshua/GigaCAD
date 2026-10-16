@@ -41,7 +41,14 @@ interface ReleaseRequestRow {
   readonly candidateManifestId: string | null;
   readonly rebuildManifestId: string | null;
   readonly rebuildStatus: RebuildStatus | null;
-  readonly rebuildReport: { messages: RebuildMessage[] } | null;
+  readonly rebuildReport: {
+    messages: RebuildMessage[];
+    /** Missing on reports from before 2026-10-16. */
+    reportedBy?: { userId: string; handle: string | null };
+    reportedAt?: string;
+    via?: 'session' | 'device';
+    deviceName?: string;
+  } | null;
   readonly releasedReleaseId: string | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
@@ -381,21 +388,37 @@ export async function updateCandidateFiles(
   });
 }
 
+/** Where a rebuild report came from, shown with it so approvers can tell the add-in from a hand-typed report. */
+export interface RebuildSource {
+  readonly via: 'session' | 'device';
+  /** The name a desktop, add-in, or CLI sign-in gave itself. */
+  readonly deviceName?: string | undefined;
+}
+
 export async function reportRebuild(
   sql: Sql,
   id: string,
   userId: string,
   input: { candidateManifestId: string; status: RebuildStatus; messages: readonly RebuildMessage[] },
+  source: RebuildSource = { via: 'session' },
 ): Promise<ReleaseRequestDetail> {
   return withDriver(sql, id, userId, async (tx, request) => {
     if (request.status !== 'candidate') throw conflict('no_candidate', 'Generate a candidate first');
     if (request.candidateManifestId !== input.candidateManifestId) {
       throw conflict('stale_candidate', 'This report is for an older candidate', { candidateManifestId: request.candidateManifestId });
     }
+    const [reporter] = await tx<{ handle: string }[]>`select handle from profiles where id = ${userId}`;
+    const report = {
+      messages: input.messages,
+      reportedBy: { userId, handle: reporter?.handle ?? null },
+      reportedAt: new Date().toISOString(),
+      via: source.via,
+      ...(source.deviceName ? { deviceName: source.deviceName } : {}),
+    };
     await tx`
       update release_requests set
         rebuild_manifest_id = ${input.candidateManifestId}, rebuild_status = ${input.status},
-        rebuild_report = ${tx.json({ messages: input.messages } as unknown as postgres.JSONValue)}, updated_at = now()
+        rebuild_report = ${tx.json(report as unknown as postgres.JSONValue)}, updated_at = now()
       where id = ${id}
     `;
     await recordEvent(tx, {

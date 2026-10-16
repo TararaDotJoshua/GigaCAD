@@ -89,6 +89,7 @@ The service builds from `Dockerfile.api` at the repo root. It installs only the 
    | `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | R2 token from step 2 |
    | `S3_FORCE_PATH_STYLE` | `true` |
    | `WEB_ORIGIN` | `https://app.gigacad.site`. Device sign-in links and CORS use it |
+   | `TRUST_PROXY_HOPS` | How many proxies sit in front of the API: `1` for Railway's edge, `2` if Cloudflare also proxies `api.gigacad.site`. Device sign-in rate limits key on the client address, so with `0` every client shares one limit |
 
    Railway sets `PORT` itself. The image already sets `HOST=0.0.0.0` and `NODE_ENV=production`.
 4. Add the custom domain `api.gigacad.site` in Railway. In Cloudflare, create the CNAME Railway shows, set to **DNS only** (grey cloud) so Railway can issue the certificate.

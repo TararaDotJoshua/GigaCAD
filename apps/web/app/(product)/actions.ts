@@ -157,7 +157,8 @@ export async function updateProject(projectId: string, _state: ActionState, form
         json('PATCH', {
           name: text(form, 'name'),
           description: text(form, 'description'),
-          visibility: text(form, 'visibility') === 'public' ? 'public' : 'private',
+          // Only the owner gets the field; a disabled select isn't submitted at all.
+          ...(form.has('visibility') ? { visibility: text(form, 'visibility') === 'public' ? 'public' : 'private' } : {}),
           license: text(form, 'license') || null,
         }),
       ),
@@ -165,10 +166,34 @@ export async function updateProject(projectId: string, _state: ActionState, form
   );
 }
 
+/** Adds someone new. It never changes an existing member's role; the table does that. */
 export async function setMember(projectId: string, _state: ActionState, form: FormData): Promise<ActionState> {
   const handle = text(form, 'handle').replace(/^@/, '').toLowerCase();
   const role = text(form, 'role') as ProjectRole;
-  return mutate((token) => apiRequest(token, `/v1/projects/${id(projectId)}/members`, json('PUT', { handle, role })), `Added @${handle}.`);
+  if (handle.includes('@')) return { error: 'Add people by their handle, not their email. They need a GigaCAD account with a handle first.' };
+  const token = await requireAccessToken();
+  try {
+    await apiRequest(token, `/v1/projects/${id(projectId)}/members`, json('POST', { handle, role }));
+  } catch (error) {
+    if (error instanceof ApiError && error.code === 'already_member') {
+      return { error: `@${handle} is already a ${String((error.details as { role?: string } | undefined)?.role ?? 'member')}. Change their role in the table above.` };
+    }
+    if (error instanceof ApiError && error.code === 'not_found') return { error: `No one has the handle @${handle}. They need a GigaCAD account with a handle first.` };
+    return { error: messageFor(error) };
+  }
+  refresh();
+  return { message: `Added @${handle} as a ${role}.` };
+}
+
+/** Removes the caller from a project shared with them. */
+export async function leaveProject(projectId: string, handle: string): Promise<ActionState> {
+  const token = await requireAccessToken();
+  try {
+    await apiRequest(token, `/v1/projects/${id(projectId)}/members/${encodeURIComponent(handle)}`, json('DELETE'));
+  } catch (error) {
+    return { error: messageFor(error) };
+  }
+  redirect(dashboardPath());
 }
 
 /** Changes a member's role from the members table. */
@@ -194,8 +219,10 @@ export async function removeMember(projectId: string, handle: string): Promise<A
 }
 
 export async function setApprovalRules(projectId: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  // An emptied field must not quietly become 0, which turns review off.
+  if (!/^\d+$/.test(text(form, 'requiredCount'))) return { error: 'Enter how many approvals a release needs.' };
   const rules: ApprovalRules = {
-    requiredCount: Number(text(form, 'requiredCount')) || 0,
+    requiredCount: Number(text(form, 'requiredCount')),
     approverRoles: form.getAll('approverRoles').map(String) as ProjectRole[],
     approverUserIds: form.getAll('approverUserIds').map(String),
     allowSelfApproval: form.get('allowSelfApproval') === 'on',

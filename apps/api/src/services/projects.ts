@@ -1,6 +1,6 @@
 import type { ApprovalRules, ProjectRole } from '@gigacad/core';
 import type { Db, Sql } from '../db.js';
-import { badRequest, forbidden, notFound, unprocessable } from '../errors.js';
+import { badRequest, conflict, forbidden, notFound, unprocessable } from '../errors.js';
 import type { Mailer } from '../mail.js';
 import { projectAccess, requireProjectRole, type ProjectRow } from './access.js';
 import { recordEvent } from './events.js';
@@ -98,15 +98,20 @@ export async function updateProject(
   changes: { name?: string | undefined; description?: string | undefined; visibility?: 'public' | 'private' | undefined; license?: string | null | undefined },
 ): Promise<ProjectSummary> {
   return sql.begin(async (tx) => {
-    const { role } = await requireProjectRole(tx, projectId, userId, 'maintainer', { lock: true });
-    const defined = Object.fromEntries(Object.entries(changes).filter(([, value]) => value !== undefined));
-    if (changes.visibility === 'public') {
+    const { project, role } = await requireProjectRole(tx, projectId, userId, 'maintainer', { lock: true });
+    // Only the fields that really change are written and logged, so a no-op save leaves no activity line.
+    const changed = Object.fromEntries(
+      Object.entries(changes).filter(([key, value]) => value !== undefined && value !== project[key as keyof typeof changes]),
+    );
+    // Who can see the project is the owner's call: a maintainer could otherwise publish someone else's private work.
+    if (changed.visibility !== undefined && role !== 'owner') throw forbidden('Only the owner can change who can see the project');
+    if (changed.visibility === 'public') {
       const [row] = await tx<{ mustStayPrivate: boolean }[]>`select must_stay_private from projects where id = ${projectId}`;
       if (row?.mustStayPrivate) throw forbidden('A fork of a private project must stay private');
     }
-    if (Object.keys(defined).length > 0) {
-      await tx`update projects set ${tx(defined)} where id = ${projectId}`;
-      await recordEvent(tx, { projectId, actorId: userId, kind: 'project_updated', subjectId: projectId, payload: defined });
+    if (Object.keys(changed).length > 0) {
+      await tx`update projects set ${tx(changed)} where id = ${projectId}`;
+      await recordEvent(tx, { projectId, actorId: userId, kind: 'project_updated', subjectId: projectId, payload: changed });
     }
     return summarize(tx, projectId, role, userId);
   });
@@ -190,14 +195,30 @@ export interface NewMember {
   readonly slug: string;
 }
 
+export interface MemberChange {
+  /** The person when they weren't a member before, so they can be told. */
+  readonly added: NewMember | null;
+  /** The caller removed themselves. */
+  readonly left: boolean;
+}
+
 /**
  * Owners manage everyone; maintainers manage contributors and viewers. The owner's own role
- * is fixed. Returns the person when they weren't a member before, so they can be told.
+ * is fixed, and anyone else may leave. With `onlyNew`, an existing member is a 409 rather
+ * than a silent role change, so "Add member" never demotes someone.
  */
-export async function setMember(sql: Sql, projectId: string, userId: string, handle: string, role: ProjectRole | null): Promise<NewMember | null> {
+export async function setMember(
+  sql: Sql,
+  projectId: string,
+  userId: string,
+  handle: string,
+  role: ProjectRole | null,
+  options: { onlyNew?: boolean } = {},
+): Promise<MemberChange> {
   return sql.begin(async (tx) => {
-    const { project, role: callerRole } = await requireProjectRole(tx, projectId, userId, 'maintainer', { lock: true });
     const [target] = await tx<{ id: string }[]>`select id from profiles where handle = ${handle}`;
+    const leaving = role === null && target?.id === userId;
+    const { project, role: callerRole } = await requireProjectRole(tx, projectId, userId, leaving ? 'viewer' : 'maintainer', { lock: true });
     if (!target) throw notFound('User');
     if (target.id === project.ownerId) throw badRequest('owner_role_fixed', "The project owner's role can't be changed");
     if (role === 'owner') throw badRequest('single_owner', 'A project has exactly one owner');
@@ -205,19 +226,30 @@ export async function setMember(sql: Sql, projectId: string, userId: string, han
     const [current] = await tx<{ role: ProjectRole }[]>`
       select role from project_members where project_id = ${projectId} and user_id = ${target.id}
     `;
+    if (current && options.onlyNew) throw conflict('already_member', `@${handle} is already a ${current.role}`, { role: current.role });
+    if (role === null && !current) throw notFound('Member');
     const touchesMaintainer = role === 'maintainer' || current?.role === 'maintainer';
-    if (touchesMaintainer && callerRole !== 'owner') throw forbidden('Only the owner can add or remove maintainers');
+    if (!leaving && touchesMaintainer && callerRole !== 'owner') throw forbidden('Only the owner can add or remove maintainers');
+    if (current?.role === role) return { added: null, left: false };
 
     if (role === null) {
       await tx`delete from project_members where project_id = ${projectId} and user_id = ${target.id}`;
+      // A removed member stops being a named approver too, so adding them back later grants nothing by surprise.
+      await tx`update approval_rules set approver_user_ids = array_remove(approver_user_ids, ${target.id}::uuid) where project_id = ${projectId}`;
     } else {
       await tx`
         insert into project_members (project_id, user_id, role) values (${projectId}, ${target.id}, ${role})
         on conflict (project_id, user_id) do update set role = excluded.role
       `;
     }
-    await recordEvent(tx, { projectId, actorId: userId, kind: 'member_changed', subjectId: target.id, payload: { handle, role } });
-    if (role === null || current) return null;
+    await recordEvent(tx, {
+      projectId,
+      actorId: userId,
+      kind: 'member_changed',
+      subjectId: target.id,
+      payload: { handle, role, ...(current ? { previousRole: current.role } : {}), ...(leaving ? { left: true } : {}) },
+    });
+    if (role === null || current) return { added: null, left: leaving };
     const [added] = await tx<Omit<NewMember, 'role'>[]>`
       select u.email, actor.handle as added_by, p.name as project_name, o.handle as owner_handle, p.slug
       from projects p
@@ -226,7 +258,7 @@ export async function setMember(sql: Sql, projectId: string, userId: string, han
       left join auth.users u on u.id = ${target.id}
       where p.id = ${projectId}
     `;
-    return added ? { ...added, role } : null;
+    return { added: added ? { ...added, role } : null, left: false };
   });
 }
 
@@ -264,7 +296,8 @@ export async function getApprovalRules(sql: Sql, projectId: string, userId: stri
 
 export async function setApprovalRules(sql: Sql, projectId: string, userId: string, rules: ApprovalRules): Promise<ApprovalRules> {
   return sql.begin(async (tx) => {
-    await requireProjectRole(tx, projectId, userId, 'maintainer', { lock: true });
+    // Owner only: a maintainer could otherwise loosen the rules to release their own request without review.
+    await requireProjectRole(tx, projectId, userId, 'owner', { lock: true });
     if (rules.approverUserIds.length > 0) {
       const members = await tx<{ userId: string }[]>`
         select user_id from project_members

@@ -42,9 +42,14 @@ async function project(visibility: 'public' | 'private' = 'private') {
 }
 
 const thumbnail = async (content: string) =>
-  (await harness.sql<{ status: string; error: string | null; modelFormat: string | null }[]>`
-    select status, error, model_format from thumbnails where blob_sha256 = ${sha256(content)}
+  (await harness.sql<{ status: string; error: string | null }[]>`
+    select status, error from thumbnails where blob_sha256 = ${sha256(content)}
   `)[0];
+/** The image a project shows for a file, by the hash it was drawn from. */
+const shown = async (as: Client, projectId: string, content: string) => {
+  const links = await as.post(`/v1/projects/${projectId}/thumbnails`, { sha256s: [sha256(content)] });
+  return links.body.thumbnails[sha256(content)] as string | undefined;
+};
 const render = () => generateThumbnails({ sql: harness.sql, storage: harness.storage, renderer: inlineRenderer }, { budgetMs: 30_000 });
 
 describe('SolidWorks exports', () => {
@@ -59,11 +64,14 @@ describe('SolidWorks exports', () => {
     const added = await api.put(`/v1/projects/${projectId}/exports`, { source: sha256(part), format: 'stl', blob: stlHash });
     expect(added.status).toBe(200);
     expect(added.body).toEqual({ format: 'stl', sha256: stlHash, size: Buffer.byteLength(stl) });
-    expect(await thumbnail(part)).toMatchObject({ status: 'pending', modelFormat: 'stl' });
+    // The export is drawn as its own file; the part's own thumbnail row is left alone.
+    expect(await thumbnail(stl)).toMatchObject({ status: 'pending' });
+    expect(await thumbnail(part)).toMatchObject({ status: 'failed' });
 
     await render();
-    expect(await thumbnail(part)).toMatchObject({ status: 'ready', error: null });
-    expect(harness.storage.objects.get(thumbnailKey(sha256(part)))?.subarray(1, 4).toString()).toBe('PNG');
+    expect(await thumbnail(stl)).toMatchObject({ status: 'ready', error: null });
+    expect(harness.storage.objects.get(thumbnailKey(stlHash))?.subarray(1, 4).toString()).toBe('PNG');
+    expect(await shown(asViewer, projectId, part)).toContain(thumbnailKey(stlHash));
 
     const lookup = await asViewer.post(`/v1/projects/${projectId}/exports/lookup`, { sha256s: [sha256(part)] });
     expect(lookup.body).toEqual({ exports: { [sha256(part)]: [{ format: 'stl', sha256: stlHash, size: Buffer.byteLength(stl) }] } });
@@ -73,7 +81,8 @@ describe('SolidWorks exports', () => {
     // A STEP added later doesn't take over from the STL for the thumbnail.
     const [stepHash] = (await upload(harness, api, projectId, [`ISO-10303-21; ${randomUUID()}`])) as [string];
     expect((await api.put(`/v1/projects/${projectId}/exports`, { source: sha256(part), format: 'step', blob: stepHash })).status).toBe(200);
-    expect(await thumbnail(part)).toMatchObject({ status: 'ready', modelFormat: 'stl' });
+    await render();
+    expect(await shown(api, projectId, part)).toContain(thumbnailKey(stlHash));
     const both = await api.post(`/v1/projects/${projectId}/exports/lookup`, { sha256s: [sha256(part)] });
     expect(both.body.exports[sha256(part)].map((entry: { format: string }) => entry.format)).toEqual(['step', 'stl']);
 
@@ -111,5 +120,30 @@ describe('SolidWorks exports', () => {
     expect(fork.status).toBe(201);
     const lookup = await asViewer.post(`/v1/projects/${fork.body.id}/exports/lookup`, { sha256s: [sha256(part)] });
     expect(lookup.body.exports[sha256(part)]).toEqual([expect.objectContaining({ format: 'stl', sha256: stlHash })]);
+  });
+
+  it('only change the thumbnail in their own project, even when another project holds the same file', async () => {
+    const { projectId, part } = await project('public');
+    const [ownStl, otherStl] = [tetrahedron(), tetrahedron()];
+    const [ownHash] = (await upload(harness, api, projectId, [ownStl])) as [string];
+    await api.put(`/v1/projects/${projectId}/exports`, { source: sha256(part), format: 'stl', blob: ownHash });
+    await render();
+    expect(await shown(api, projectId, part)).toContain(thumbnailKey(ownHash));
+
+    // An outsider puts the same part bytes in a project of their own and gives it another STL.
+    const outsider = await createUser(harness, 'copier');
+    const asOutsider = client(harness, outsider);
+    const theirs = (await asOutsider.post('/v1/projects', { slug: `copy-${randomUUID().slice(0, 8)}`, name: 'Copy' })).body.id as string;
+    const branch = await asOutsider.post(`/v1/projects/${theirs}/branches`, { name: 'work' });
+    await commitVersion(harness, asOutsider, theirs, branch.body.id, { 'Bracket.SLDPRT': part });
+    const [otherHash] = (await upload(harness, asOutsider, theirs, [otherStl])) as [string];
+    expect((await asOutsider.put(`/v1/projects/${theirs}/exports`, { source: sha256(part), format: 'stl', blob: otherHash })).status).toBe(200);
+    await render();
+
+    expect(await shown(asOutsider, theirs, part)).toContain(thumbnailKey(otherHash));
+    expect(await shown(api, projectId, part)).toContain(thumbnailKey(ownHash));
+    expect(await shown(client(harness, null), projectId, part)).toContain(thumbnailKey(ownHash));
+    const [cover] = await harness.sql<{ sha: string | null }[]>`select project_thumbnail(${projectId}) as sha`;
+    expect(cover?.sha).toBe(ownHash);
   });
 });

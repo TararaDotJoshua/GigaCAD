@@ -9,6 +9,7 @@ import {
   type Branch,
   type BranchDetail,
   type CommitDetail,
+  type DeletedProject,
   type DirectoryFile,
   type DirectoryItem,
   type DirectoryListing,
@@ -131,6 +132,7 @@ export const getReleaseRequestByNumber = cache(async (projectId: string, number:
   return getReleaseRequest(summary.id);
 });
 
+export const getDeletedProjects = cache(() => get<DeletedProject[]>('/v1/me/deleted-projects'));
 export const getMembers = cache((projectId: string) => get<Member[]>(`/v1/projects/${projectId}/members`));
 export const getApprovalRules = cache((projectId: string) => get<ApprovalRules>(`/v1/projects/${projectId}/approval-rules`));
 export const getEvents = cache((projectId: string, limit = 20) => get<ProjectEvent[]>(`/v1/projects/${projectId}/events?order=desc&limit=${limit}`));

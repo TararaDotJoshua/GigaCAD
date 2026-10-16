@@ -144,6 +144,7 @@ export function describeEvent(
     case 'release_created':
       return `${who} released v${String(payload.number)}`;
     case 'member_changed':
+      if (payload.left) return `${who} left the project`;
       return payload.role ? `${who} made @${String(payload.handle)} a ${String(payload.role)}` : `${who} removed @${String(payload.handle)}`;
     case 'approval_rules_changed':
       return `${who} changed the approval rules`;

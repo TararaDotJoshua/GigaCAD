@@ -154,7 +154,7 @@ export function PickEditor({
                 <span className="pick-state">{pickLabel(row, pick, numbers, pathOf)}</span>
               ) : (
                 <div className="row-actions">
-                  <div className="segmented" aria-label={`Pick for ${row.path}`}>
+                  <div className="segmented" role="group" aria-label={`Pick for ${row.path}`}>
                     <button type="button" className={`segment${taking ? ' is-selected' : ''}`} aria-pressed={taking} onClick={() => set(row.itemId, { kind: 'action', action: 'take_branch' })}>
                       {choices.take}
                     </button>

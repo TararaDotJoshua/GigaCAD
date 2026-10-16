@@ -338,7 +338,7 @@ export default async function RequestPage({ params }: { params: Promise<RequestP
               </section>
             )}
           </div>
-          <aside className="request-rail">
+          <aside className="request-rail" aria-label="Request status">
             {rebuildFirst && rebuildCard}
             {releaseCard}
             <section className="rail-card">

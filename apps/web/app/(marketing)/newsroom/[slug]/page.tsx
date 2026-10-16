@@ -66,6 +66,23 @@ const components: Components = {
       <table {...props} />
     </div>
   ),
+  // An image on its own line becomes a figure, captioned with its alt text.
+  p: ({ node, children, ...props }) => {
+    const only = node?.children.length === 1 ? node.children[0] : undefined;
+    if (only?.type === "element" && only.tagName === "img") {
+      const alt = String(only.properties.alt ?? "");
+      return (
+        <figure className="article-figure">
+          {children}
+          {alt && <figcaption>{alt}</figcaption>}
+        </figure>
+      );
+    }
+    return <p {...props}>{children}</p>;
+  },
+  img: ({ node: _node, alt, ...props }) => (
+    <img alt={alt ?? ""} loading="lazy" decoding="async" {...props} />
+  ),
 };
 
 export default async function ArticlePage({ params }: Props) {

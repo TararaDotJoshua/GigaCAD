@@ -8,7 +8,10 @@ import { projectPath } from '../../../../../lib/paths';
 import { getApprovalRules, getMembers, getProject } from '../../../../../lib/product';
 import type { ProjectParams } from '../layout';
 
-export const metadata = { title: 'Project settings' };
+export async function generateMetadata({ params }: { params: Promise<ProjectParams> }) {
+  const { owner, project } = await params;
+  return { title: `Project settings · ${owner}/${project}` };
+}
 
 export default async function ProjectSettings({ params }: { params: Promise<ProjectParams> }) {
   const { owner, project: slug } = await params;
@@ -87,7 +90,7 @@ export default async function ProjectSettings({ params }: { params: Promise<Proj
         )}
       </section>
 
-      <section className="section">
+      <section className="section" id="approval-rules">
         <h2>Approval rules</h2>
         <ActionForm action={setApprovalRules.bind(null, project.id)} submitLabel="Save approval rules">
           <label className="field">
@@ -121,9 +124,12 @@ export default async function ProjectSettings({ params }: { params: Promise<Proj
             Allow requester to approve
           </label>
           <label className="choice">
-            <input type="checkbox" name="requireCleanRebuild" defaultChecked={rules.requireCleanRebuild} disabled={!canManage} />
+            <input type="checkbox" name="requireCleanRebuild" defaultChecked={rules.requireCleanRebuild} disabled={!canManage} aria-describedby="rebuild-rule-hint" />
             Require a clean SolidWorks rebuild
           </label>
+          <p className="field-hint" id="rebuild-rule-hint">
+            Releases wait for a rebuild report without errors for the exact candidate. Reports come from the GigaCAD add-in for SolidWorks (coming soon) or from your own rebuild with <code className="mono">giga rr rebuild-report</code>, so leave this off until you have one of those.
+          </p>
         </ActionForm>
       </section>
 

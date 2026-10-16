@@ -1,12 +1,13 @@
 import { diffManifests } from '@gigacad/core';
 import Link from 'next/link';
 import { ChangeList, changeSummary } from '../../../../../../components/product/ChangeList';
+import { MarkdownText } from '../../../../../../components/product/MarkdownText';
 import { PageHead } from '../../../../../../components/product/PageHead';
 import { ProjectDirectory } from '../../../../../../components/product/ProjectDirectory';
 import { RelativeTime } from '../../../../../../components/product/RelativeTime';
 import { DownloadIcon, LockIcon } from '../../../../../../components/icons';
 import { projectPath, releaseDownloadPath, releasePath, releaseRequestPath } from '../../../../../../lib/paths';
-import { getProject, getRelease, getViewer, parseNumber } from '../../../../../../lib/product';
+import { getProject, getRelease, getReleases, getViewer, parseNumber } from '../../../../../../lib/product';
 import type { ProjectParams } from '../../layout';
 
 type ReleaseParams = ProjectParams & { number: string };
@@ -25,8 +26,9 @@ export async function generateMetadata({ params }: { params: Promise<ReleasePara
 export default async function ReleasePage({ params }: { params: Promise<ReleaseParams> }) {
   const { owner, project: slug, number } = await params;
   const project = await getProject(owner, slug);
-  const [{ release, files }, viewer] = await Promise.all([getRelease(project.id, parseNumber(number)), getViewer()]);
+  const [{ release, files }, viewer, releases] = await Promise.all([getRelease(project.id, parseNumber(number)), getViewer(), getReleases(project.id)]);
   const previous = release.number > 1 ? await getRelease(project.id, release.number - 1) : null;
+  const newer = releases.some((other) => other.number === release.number + 1) ? release.number + 1 : null;
   const changes = diffManifests(previous?.files ?? [], files);
   return (
     <div className="page">
@@ -35,7 +37,7 @@ export default async function ReleasePage({ params }: { params: Promise<ReleaseP
         title={
           <>
             <span className="mono">v{release.number}</span>
-            {release.title && <span className="release-title">{release.title}</span>}
+            {release.title && <span className="release-title">: {release.title}</span>}
           </>
         }
         meta={
@@ -57,7 +59,7 @@ export default async function ReleasePage({ params }: { params: Promise<ReleaseP
           </a>
         }
       />
-      {release.notes && <p className="notes release-notes">{release.notes}</p>}
+      {release.notes && <MarkdownText className="notes release-notes">{release.notes}</MarkdownText>}
       <div className="stack">
         <section className="section">
           <h2>{previous ? `Changes from v${previous.release.number}` : 'First release'}</h2>
@@ -69,9 +71,10 @@ export default async function ReleasePage({ params }: { params: Promise<ReleaseP
           ) : (
             <p className="muted">Everything below is new in v1.</p>
           )}
-          {previous && (
-            <p className="toolbar-note">
-              <Link href={releasePath(owner, slug, previous.release.number)}>← v{previous.release.number}</Link>
+          {(previous || newer) && (
+            <p className="toolbar-note release-nav">
+              {previous && <Link href={releasePath(owner, slug, previous.release.number)}>← v{previous.release.number}</Link>}
+              {newer && <Link href={releasePath(owner, slug, newer)}>v{newer} →</Link>}
             </p>
           )}
         </section>

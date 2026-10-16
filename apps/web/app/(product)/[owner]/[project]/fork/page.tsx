@@ -3,11 +3,15 @@ import { forkProject } from '../../../actions';
 import { ActionForm } from '../../../../../components/product/ActionForm';
 import { EmptyState } from '../../../../../components/product/EmptyState';
 import { PageHead } from '../../../../../components/product/PageHead';
+import { releaseName } from '../../../../../lib/describe';
 import { freeSlug, projectPath } from '../../../../../lib/paths';
 import { getMyProjects, getProject, getReleases, getViewer } from '../../../../../lib/product';
 import type { ProjectParams } from '../layout';
 
-export const metadata = { title: 'Fork' };
+export async function generateMetadata({ params }: { params: Promise<ProjectParams> }) {
+  const { owner, project } = await params;
+  return { title: `Fork · ${owner}/${project}` };
+}
 
 export default async function ForkPage({ params }: { params: Promise<ProjectParams> }) {
   const { owner, project: slug } = await params;
@@ -35,7 +39,7 @@ export default async function ForkPage({ params }: { params: Promise<ProjectPara
               <select name="releaseNumber" defaultValue={releases[0]!.number}>
                 {releases.map((release) => (
                   <option key={release.id} value={release.number}>
-                    v{release.number}
+                    {releaseName(release)}
                   </option>
                 ))}
               </select>

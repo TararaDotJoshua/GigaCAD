@@ -303,17 +303,13 @@ export async function openReleaseRequest(branchId: string, owner: string, slug: 
   } catch (error) {
     return { error: messageFor(error) };
   }
-  // Build the first candidate from the default picks right away, so a request that needs
-  // no changes to its picks is one step from release. A pick error just leaves it unbuilt.
-  if (detail.preview.ok) {
-    await apiRequest(token, `/v1/release-requests/${id(detail.releaseRequest.id)}/candidate`, json('POST', {})).catch(() => undefined);
-  }
+  // The API builds the first candidate from the default picks as it opens the request.
   redirect(releaseRequestPath(owner, slug, detail.releaseRequest.number));
 }
 
 // Release requests
 
-/** Saves the picks and rebuilds the candidate from them, so saving is the only step. */
+/** Saves the picks and regenerates the candidate from them, so saving is the only step. */
 export async function savePicks(requestId: string, picks: Picks): Promise<ActionState> {
   const token = await requireAccessToken();
   let detail: ReleaseRequestDetail;
@@ -322,9 +318,9 @@ export async function savePicks(requestId: string, picks: Picks): Promise<Action
   } catch (error) {
     return { error: messageFor(error) };
   }
-  if (!detail.preview.ok) {
+  if (!detail.preview.ok || !detail.changesMain) {
     refresh();
-    return { message: 'Saved. Fix the pick errors to build the candidate.' };
+    return { message: detail.preview.ok ? 'Saved. These picks leave main as it is, so there’s nothing to release.' : 'Saved. Fix the pick errors to build the candidate.' };
   }
   try {
     await apiRequest(token, `/v1/release-requests/${id(requestId)}/candidate`, json('POST', {}));
@@ -333,15 +329,32 @@ export async function savePicks(requestId: string, picks: Picks): Promise<Action
     return { error: `Saved, but the candidate didn’t build: ${messageFor(error)}` };
   }
   refresh();
-  return { message: 'Saved and rebuilt the candidate.' };
+  return { message: 'Saved and regenerated the candidate.' };
 }
 
 export async function generateCandidate(requestId: string): Promise<ActionState> {
-  return mutate((token) => apiRequest(token, `/v1/release-requests/${id(requestId)}/candidate`, json('POST', {})), 'Generated the candidate.');
+  return mutate((token) => apiRequest(token, `/v1/release-requests/${id(requestId)}/candidate`, json('POST', {})), 'Built the candidate.');
 }
 
-export async function approveCandidate(requestId: string): Promise<ActionState> {
-  return mutate((token) => apiRequest(token, `/v1/release-requests/${id(requestId)}/approvals`, json('POST', {})), 'Approved.');
+/** A refusal because the candidate changed under the page: show the new one so it can be reviewed. */
+function refreshIfStale(error: unknown): void {
+  if (error instanceof ApiError && (error.code === 'stale_candidate' || error.code === 'main_moved' || error.code === 'release_request_finished')) refresh();
+}
+
+/**
+ * Approves the candidate this page showed (`candidateManifestId`). `releaser` names who
+ * can release it when the approver can't, so they know what happens next.
+ */
+export async function approveCandidate(requestId: string, candidateManifestId: string, releaser: string | null): Promise<ActionState> {
+  const token = await requireAccessToken();
+  try {
+    await apiRequest(token, `/v1/release-requests/${id(requestId)}/approvals`, json('POST', { candidateManifestId: id(candidateManifestId) }));
+  } catch (error) {
+    refreshIfStale(error);
+    return { error: messageFor(error) };
+  }
+  refresh();
+  return { message: releaser ? `Approved. ${releaser} can release it.` : 'Approved.' };
 }
 
 export async function withdrawApproval(requestId: string): Promise<ActionState> {
@@ -352,19 +365,36 @@ export async function closeReleaseRequest(requestId: string): Promise<ActionStat
   return mutate((token) => apiRequest(token, `/v1/release-requests/${id(requestId)}/close`, json('POST', {})), 'Closed. The branch is open again.');
 }
 
-export async function releaseCandidate(requestId: string, owner: string, slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
+/**
+ * Releases the candidate this page showed. With `approve`, approves it first: for someone
+ * whose own approval is the last one needed and who chose to do both. If the approval
+ * lands but the release doesn't, the page says so and shows the approval.
+ */
+export async function releaseCandidate(
+  requestId: string,
+  owner: string,
+  slug: string,
+  candidateManifestId: string,
+  input: { approve: boolean; notes: string },
+): Promise<ActionState> {
   const token = await requireAccessToken();
+  const reviewed = { candidateManifestId: id(candidateManifestId) };
+  let approved = false;
   let number: number;
   try {
-    // "Approve and release" for someone whose own approval is the last one needed.
-    if (text(form, 'approve') === 'yes') await apiRequest(token, `/v1/release-requests/${id(requestId)}/approvals`, json('POST', {}));
-    const result = await apiRequest<{ release: { number: number } }>(
-      token,
-      `/v1/release-requests/${id(requestId)}/release`,
-      json('POST', text(form, 'notes') ? { notes: text(form, 'notes') } : {}),
-    );
+    if (input.approve) {
+      await apiRequest(token, `/v1/release-requests/${id(requestId)}/approvals`, json('POST', reviewed));
+      approved = true;
+    }
+    const notes = input.notes.trim();
+    const result = await apiRequest<{ release: { number: number } }>(token, `/v1/release-requests/${id(requestId)}/release`, json('POST', notes ? { ...reviewed, notes } : reviewed));
     number = result.release.number;
   } catch (error) {
+    if (approved) {
+      refresh();
+      return { error: `Approved, but not released. ${messageFor(error)}` };
+    }
+    refreshIfStale(error);
     return { error: messageFor(error) };
   }
   redirect(releasePath(owner, slug, number));

@@ -1203,7 +1203,10 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 10px;
+  /* Wrapped under a long file name, the controls stay on the right like every other row's. */
+  margin-left: auto;
 }
 
 .shell .segment {
@@ -3018,9 +3021,119 @@
   font-size: var(--t-small);
 }
 
+.shell .next-step > p {
+  flex: 1 1 32ch;
+}
+
+/* Why a request control is off, said next to it. */
+.shell .form-hint {
+  color: var(--ink-muted);
+  font-size: var(--t-small);
+}
+
+/* The result of the last action, which outlives the button that ran it. */
+.shell .next-step-notice {
+  font-weight: 500;
+}
+
+.shell .request-note {
+  margin: -12px 0 20px;
+}
+
+.shell section > .request-note {
+  margin: 0 0 12px;
+}
+
+/* A pick that can't be changed here: read-only views, and files another file replaces. */
+.shell .pick-state {
+  margin-left: auto;
+  color: var(--ink-muted);
+  font-size: var(--t-small);
+}
+
+/* Rebuild report: errors first in the error color, notes muted, paths kept in reading order. */
+.shell .rebuild-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.shell .rebuild-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding-left: 18px;
+  list-style: disc;
+  font-size: var(--t-small);
+  overflow-wrap: anywhere;
+}
+
+.shell .rebuild-list .is-error {
+  color: #b4262b;
+}
+
+.shell .rebuild-list .is-warning {
+  color: #8a6212;
+}
+
+.shell .rebuild-list .is-info {
+  color: var(--ink-muted);
+}
+
+.shell .rebuild-message {
+  white-space: pre-line;
+}
+
+.shell .rebuild-more,
+.shell .candidate-files {
+  margin-top: 10px;
+  font-size: var(--t-small);
+}
+
+.shell .rebuild-more > summary,
+.shell .candidate-files > summary {
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+
+.shell .file-list {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.shell .file-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+
+.shell .release-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* Typed Markdown keeps its own line breaks; the plain-text styles' pre-wrap would double them. */
+.shell .markdown-text {
+  white-space: normal;
+}
+
+/* A model's size, under its 3D preview. */
+.shell .model-size {
+  position: absolute;
+  bottom: 10px;
+  left: 16px;
+  color: var(--ink-muted);
+  font-size: var(--t-micro);
+  font-variant-numeric: tabular-nums;
+}
+
 
 .shell .release-title {
-  margin-left: 12px;
   font-family: var(--font-sans);
 }
 

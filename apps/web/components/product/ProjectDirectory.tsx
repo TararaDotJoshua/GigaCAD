@@ -330,6 +330,20 @@ function EmptyFolder({ searching, view, listing }: { searching: boolean; view: s
   );
 }
 
+/**
+ * Each file's STEP and STL exports. A file in a release gets the ones that release was made
+ * with, which never change; everywhere else, the current ones.
+ */
+async function fileExportsFor(projectId: string, files: readonly DirectoryFile[]) {
+  const releases = [...new Set(files.flatMap((file) => (file.location.area === 'release' && file.location.releaseNumber ? [file.location.releaseNumber] : [])))];
+  const [current, ...released] = await Promise.all([
+    getFileExports(projectId, files.filter((file) => file.location.area !== 'release').map((file) => file.blob)),
+    ...releases.map((number) => getFileExports(projectId, files.filter((file) => file.location.releaseNumber === number).map((file) => file.blob), number)),
+  ]);
+  const byRelease = new Map(releases.map((number, index) => [number, released[index]!]));
+  return (file: DirectoryFile) => (file.location.area === 'release' && file.location.releaseNumber ? byRelease.get(file.location.releaseNumber) : current)?.[file.blob] ?? [];
+}
+
 async function DirectoryTable({
   project,
   entries,
@@ -356,9 +370,9 @@ async function DirectoryTable({
   const files = entries.filter((entry): entry is DirectoryFile => entry.kind === 'file');
   // Contributors get a right-click menu on root files and folders.
   const editable = canTag && entries.some((entry) => entry.entryId);
-  const [thumbnails, exports, folders] = await Promise.all([
+  const [thumbnails, exportsFor, folders] = await Promise.all([
     getThumbnails(project.id, files.filter((file) => previewFormat(file.name) || isSolidWorks(file.name)).map((file) => file.blob)),
-    getFileExports(project.id, files.filter((file) => isSolidWorks(file.name)).map((file) => file.blob)),
+    fileExportsFor(project.id, files.filter((file) => isSolidWorks(file.name))),
     editable ? getRootFolders(project.id) : [],
   ]);
   const menuData = (entry: DirectoryItem): Record<string, string> =>
@@ -452,7 +466,7 @@ async function DirectoryTable({
                 signedIn={signedIn}
                 showLocation={showLocation}
                 thumbnailUrl={thumbnails[entry.blob]}
-                fileExports={exports[entry.blob] ?? []}
+                fileExports={exportsFor(entry)}
                 tagLink={tagLink}
                 menuData={menuData(entry)}
               />

@@ -56,6 +56,14 @@ async function commitVersion(token: string, projectId: string, branchId: string,
   return commit as { commit: { id: string }; files: { itemId: string; path: string }[] };
 }
 
+/** Approves and releases a request's current candidate, which opening the request built. */
+async function approveAndRelease(token: string, requestId: string) {
+  const detail = await api(token, 'GET', `/v1/release-requests/${requestId}`);
+  const reviewed = { candidateManifestId: detail.candidate.manifestId };
+  await api(token, 'POST', `/v1/release-requests/${requestId}/approvals`, reviewed);
+  return api(token, 'POST', `/v1/release-requests/${requestId}/release`, reviewed);
+}
+
 interface World {
   email: string;
   password: string;
@@ -95,9 +103,7 @@ test.beforeAll(async () => {
     'parts/P4.SLDPRT': 'p4 v1',
   });
   const first = await api(token, 'POST', `/v1/branches/${initial.id}/release-requests`, { title: 'First release' });
-  await api(token, 'POST', `/v1/release-requests/${first.releaseRequest.id}/candidate`);
-  await api(token, 'POST', `/v1/release-requests/${first.releaseRequest.id}/approvals`);
-  await api(token, 'POST', `/v1/release-requests/${first.releaseRequest.id}/release`);
+  await approveAndRelease(token, first.releaseRequest.id);
 
   // A branch from v1 edits P1 and P2, drops P4, and adds P3 to replace it.
   const branchName = 'swap-p4';
@@ -147,24 +153,41 @@ async function logInAs(page: Page, person: { email: string; password: string }) 
 
 const projectUrl = (...rest: (string | number)[]) => ['', world.handle, world.slug, ...rest].join('/');
 
-test('picks files, generates the candidate, approves, and releases', async ({ page }) => {
+test('picks files, regenerates the candidate, approves, and releases', async ({ page }) => {
   await logIn(page);
   await page.goto(projectUrl('release-requests', world.requestNumber));
 
+  // Opening the request built the candidate from the default picks.
+  const release = page.getByRole('button', { name: 'Approve and release v2' });
+  await expect(release).toBeEnabled();
   const pickFor = (path: string) => page.locator(`[aria-label="Pick for ${path}"]`);
   await pickFor('parts/P1.SLDPRT').getByRole('button', { name: 'Keep main' }).click();
   await pickFor('parts/P2.SLDPRT').getByRole('button', { name: 'Take branch' }).click();
   await page.getByLabel('Replace main item with parts/P3.SLDPRT').selectOption({ label: 'parts/P4.SLDPRT' });
   await expect(page.getByText('v2 will change')).toContainText('(unsaved)');
-  // Saving the picks builds the candidate too.
+  // P4 now follows its replacement, so its own pick can't contradict it.
+  await expect(page.locator('.pick-row', { hasText: 'parts/P4.SLDPRT' }).getByText('Replaced by parts/P3.SLDPRT')).toBeVisible();
+  // While picks are unsaved, the candidate isn't what the screen shows: nothing can be approved or released.
+  await expect(page.getByText('You have unsaved picks.')).toBeVisible();
+  await expect(release).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Approve candidate' })).toBeDisabled();
+  // Saving the picks regenerates the candidate too.
   await page.getByRole('button', { name: 'Save picks' }).click();
-  await expect(page.getByText('Unsaved picks')).toBeHidden();
-  await expect(page.getByText('Saved and rebuilt the candidate.')).toBeVisible();
+  await expect(page.getByText('Unsaved picks · candidate out of date')).toBeHidden();
+  await expect(page.getByText('Saved and regenerated the candidate.')).toBeVisible();
 
-  // A solo owner's approval is the last one needed, so approving and releasing is one step.
+  // A solo owner's approval is the last one needed: they can approve alone, or approve and release in one confirmed step.
   await expect(page.getByText(/Your approval is the last one needed/)).toBeVisible();
-  await page.getByRole('button', { name: 'Approve and release v2' }).click();
+  await expect(page.getByRole('button', { name: 'Approve candidate' })).toBeEnabled();
+  await page.getByLabel(/^Notes/).fill('Swapped **P4** for P3.');
+  await release.click();
+  const confirm = page.getByRole('group', { name: 'Confirm Approve and release v2' });
+  await expect(confirm).toContainText('Approve this candidate and release it as v2? It permanently locks these 4 files.');
+  await confirm.getByRole('button', { name: 'Approve and release v2' }).click();
   await page.waitForURL(`**${projectUrl('releases', 2)}`);
+  // Notes are Markdown, and the release is named after its request.
+  await expect(page.locator('.release-notes strong')).toHaveText('P4');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('v2: Swap P4 for P3');
 
   // Main's P1, the branch's P2, and P3 in P4's place, keeping P4's item ID.
   const v1 = await api(world.token, 'GET', `/v1/projects/${world.projectId}/releases/1`);
@@ -176,6 +199,59 @@ test('picks files, generates the candidate, approves, and releases', async ({ pa
     { itemId: itemId('parts/P4.SLDPRT'), path: 'parts/P3.SLDPRT', blob: sha256('p3 from branch') },
     { itemId: itemId('Robot.SLDASM'), path: 'Robot.SLDASM', blob: sha256('asm v1') },
   ]);
+});
+
+test('lets a named viewer approve only the candidate on screen, and shows files a rebuild changed', async ({ page }) => {
+  const reviewer = await createPerson('rev');
+  await api(world.token, 'PUT', `/v1/projects/${world.projectId}/members`, { handle: reviewer.handle, role: 'viewer' });
+  const members = await api(world.token, 'GET', `/v1/projects/${world.projectId}/members`);
+  const reviewerId = members.find((member: { handle: string }) => member.handle === reviewer.handle).userId;
+  const rules = await api(world.token, 'GET', `/v1/projects/${world.projectId}/approval-rules`);
+  await api(world.token, 'PUT', `/v1/projects/${world.projectId}/approval-rules`, { ...rules, approverUserIds: [reviewerId], approverRoles: [], allowSelfApproval: false });
+
+  const branch = await api(world.token, 'POST', `/v1/projects/${world.projectId}/branches`, { name: `review-${randomUUID().slice(0, 6)}`, fromRelease: 2 });
+  await commitVersion(world.token, world.projectId, branch.id, {
+    'Robot.SLDASM': 'asm v1',
+    'parts/P1.SLDPRT': 'p1 v1',
+    'parts/P2.SLDPRT': 'p2 reviewed',
+    'parts/P3.SLDPRT': 'p3 from branch',
+  });
+  const opened = await api(world.token, 'POST', `/v1/branches/${branch.id}/release-requests`, { title: 'Review me', body: '## Why\n\n- [x] Fit check' });
+  const requestId = opened.releaseRequest.id as string;
+
+  // Without live updates, the page keeps showing the candidate it loaded.
+  await page.routeWebSocket(/realtime/, () => undefined);
+  await logInAs(page, reviewer);
+  await page.goto(projectUrl('release-requests', opened.releaseRequest.number));
+  await expect(page.locator('.notes h2')).toHaveText('Why');
+  await expect(page.getByText(`Only @${world.handle} or a maintainer can change the picks.`)).toBeVisible();
+  await expect(page.getByText('Review the picks and approve the candidate.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Release', exact: true })).toHaveCount(0);
+  const approve = page.getByRole('button', { name: 'Approve candidate' });
+
+  // The requester regenerates while the reviewer is looking: approving what's on screen is refused, and the page reloads.
+  await api(world.token, 'POST', `/v1/release-requests/${requestId}/candidate`);
+  await approve.click();
+  await expect(page.getByText('The candidate changed since this page loaded. Look it over again, then try again.')).toBeVisible();
+  await approve.click();
+  await expect(page.getByText(`Approved. @${world.handle} or a maintainer can release it.`)).toBeVisible();
+  await expect(page.locator('.approvers li', { hasText: `@${reviewer.handle}` }).getByText('Approved')).toBeVisible();
+
+  // A SolidWorks rebuild saves a new assembly into the candidate; the request lists it apart from the picks.
+  const detail = await api(world.token, 'GET', `/v1/release-requests/${requestId}`);
+  const asm = detail.candidate.files.find((file: { path: string }) => file.path === 'Robot.SLDASM');
+  const [rebuilt] = await uploadContents(world.token, world.projectId, [`asm rebuilt ${randomUUID()}`]);
+  await api(world.token, 'PUT', `/v1/release-requests/${requestId}/candidate/files`, { baseManifestId: detail.candidate.manifestId, files: [{ itemId: asm.itemId, blob: rebuilt!.sha256 }] });
+  await page.reload();
+  const changed = page.locator('section', { has: page.getByRole('heading', { name: 'Changed after the candidate was built' }) });
+  await expect(changed.getByText('Robot.SLDASM')).toBeVisible();
+  await expect(page.getByText(/v3 will change .*, plus 1 file rebuilt in SolidWorks/)).toBeVisible();
+  await expect(page.locator('.approvers li', { hasText: `@${reviewer.handle}` }).getByText('Older candidate')).toBeVisible();
+  await expect(page.getByText(`The candidate changed after the older approvals: @${world.handle} saved rebuilt files into it`)).toBeVisible();
+
+  await api(world.token, 'POST', `/v1/release-requests/${requestId}/close`);
+  await api(world.token, 'PUT', `/v1/projects/${world.projectId}/approval-rules`, rules);
+  await api(world.token, 'DELETE', `/v1/projects/${world.projectId}/members/${reviewer.handle}`);
 });
 
 test("shows contributions on the user's page, private ones only to them", async ({ page, browser }) => {
@@ -228,7 +304,7 @@ test('shares a public project: browse it signed out, star it, and fork it', asyn
   const branch = await api(world.token, 'POST', `/v1/projects/${project.id}/branches`, { name: 'initial' });
   await commitVersion(world.token, project.id, branch.id, { 'Gearbox.SLDASM': `gearbox ${slug}` });
   const request = await api(world.token, 'POST', `/v1/branches/${branch.id}/release-requests`, { title: 'v1' });
-  for (const step of ['candidate', 'approvals', 'release']) await api(world.token, 'POST', `/v1/release-requests/${request.releaseRequest.id}/${step}`);
+  await approveAndRelease(world.token, request.releaseRequest.id);
 
   // Anyone can find and open it.
   const visitor = await (await browser.newContext()).newPage();

@@ -135,7 +135,7 @@ describe('finished requests', () => {
 
     const closed = (await asCam.get(`/v1/release-requests/${id}`)).body;
     expect(closed.history.closed).toMatchObject({ actorHandle: cam.handle });
-    expect(closed.branch).toEqual({ status: 'frozen', activeRequestNumber: reopened.body.releaseRequest.number });
+    expect(closed.branch).toEqual({ status: 'frozen', activeRequestNumber: reopened.body.releaseRequest.number, baseReleaseNumber: 1 });
   });
 });
 

@@ -95,7 +95,12 @@ export interface ReleaseRequestDetail {
     readonly rebuildReportedByHandle: string | null;
   };
   /** The branch as it is now, which can differ from what the request left it as once it is finished. */
-  readonly branch: { readonly status: 'open' | 'frozen' | 'released' | 'archived'; readonly activeRequestNumber: number | null };
+  readonly branch: {
+    readonly status: 'open' | 'frozen' | 'released' | 'archived';
+    readonly activeRequestNumber: number | null;
+    /** The release the branch started from. */
+    readonly baseReleaseNumber: number | null;
+  };
   readonly latestRelease: { readonly id: string; readonly number: number } | null;
   /** The main release the candidate was generated against. */
   readonly targetRelease: { readonly id: string; readonly number: number } | null;
@@ -265,9 +270,12 @@ export async function getReleaseRequest(sql: Sql, id: string, userId: string | n
 }
 
 async function detail(db: Db, request: ReleaseRequestRow): Promise<ReleaseRequestDetail> {
-  const [names] = await db<{ requesterHandle: string | null; branchName: string; branchStatus: ReleaseRequestDetail['branch']['status']; reporterHandle: string | null }[]>`
-    select p.handle as requester_handle, b.name as branch_name, b.status as branch_status, rp.handle as reporter_handle
-    from branches b left join profiles p on p.id = ${request.requesterId} left join profiles rp on rp.id = ${request.rebuildReportedBy}
+  const [names] = await db<{ requesterHandle: string | null; branchName: string; branchStatus: ReleaseRequestDetail['branch']['status']; baseNumber: number | null; reporterHandle: string | null }[]>`
+    select p.handle as requester_handle, b.name as branch_name, b.status as branch_status, base.number as base_number, rp.handle as reporter_handle
+    from branches b
+    left join releases base on base.id = b.base_release_id
+    left join profiles p on p.id = ${request.requesterId}
+    left join profiles rp on rp.id = ${request.rebuildReportedBy}
     where b.id = ${request.branchId}
   `;
   const latest = await latestRelease(db, request.projectId);
@@ -313,7 +321,7 @@ async function detail(db: Db, request: ReleaseRequestRow): Promise<ReleaseReques
       rebuildReport: summarizeReport(rebuildReport),
       rebuildReportedByHandle: names?.reporterHandle ?? null,
     },
-    branch: { status: names?.branchStatus ?? 'archived', activeRequestNumber: activeRequest?.number ?? null },
+    branch: { status: names?.branchStatus ?? 'archived', activeRequestNumber: activeRequest?.number ?? null, baseReleaseNumber: names?.baseNumber ?? null },
     latestRelease: latest ? { id: latest.id, number: latest.number } : null,
     targetRelease: target ? { id: target.id, number: target.number } : null,
     releasedRelease: released,

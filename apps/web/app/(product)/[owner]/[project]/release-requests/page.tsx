@@ -3,17 +3,20 @@ import { EmptyState } from '../../../../../components/product/EmptyState';
 import { PageHead } from '../../../../../components/product/PageHead';
 import { RelativeTime } from '../../../../../components/product/RelativeTime';
 import { StatusBadge } from '../../../../../components/product/StatusBadge';
-import { REQUEST_STATUS_LABEL, requestTone } from '../../../../../lib/describe';
+import { requestBadge } from '../../../../../lib/describe';
 import { projectPath, releaseRequestPath } from '../../../../../lib/paths';
-import { getProject, getReleaseRequests } from '../../../../../lib/product';
+import { getApprovalRules, getProject, getReleaseRequests } from '../../../../../lib/product';
 import type { ProjectParams } from '../layout';
 
-export const metadata = { title: 'Release requests' };
+export async function generateMetadata({ params }: { params: Promise<ProjectParams> }) {
+  const { owner, project } = await params;
+  return { title: `Release requests · ${owner}/${project}` };
+}
 
 export default async function ReleaseRequests({ params, searchParams }: { params: Promise<ProjectParams>; searchParams: Promise<{ view?: string }> }) {
   const { owner, project: slug } = await params;
   const project = await getProject(owner, slug);
-  const [requests, { view }] = await Promise.all([getReleaseRequests(project.id), searchParams]);
+  const [requests, rules, { view }] = await Promise.all([getReleaseRequests(project.id), getApprovalRules(project.id), searchParams]);
   const active = requests.filter((request) => request.status === 'open' || request.status === 'candidate');
   const all = view === 'all';
   const shown = all ? requests : active;
@@ -46,7 +49,9 @@ export default async function ReleaseRequests({ params, searchParams }: { params
               </tr>
             </thead>
             <tbody>
-              {shown.map((request) => (
+              {shown.map((request) => {
+                const badge = requestBadge(request, rules.requireCleanRebuild);
+                return (
                 <tr key={request.id}>
                   <td>
                     <Link href={releaseRequestPath(owner, slug, request.number)}>
@@ -56,13 +61,14 @@ export default async function ReleaseRequests({ params, searchParams }: { params
                   <td className="mono">{request.branchName}</td>
                   <td>@{request.requesterHandle || 'unknown'}</td>
                   <td>
-                    <StatusBadge tone={requestTone(request.status)}>{REQUEST_STATUS_LABEL[request.status]}</StatusBadge>
+                    <StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>
                   </td>
                   <td>
                     <RelativeTime value={request.updatedAt} />
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

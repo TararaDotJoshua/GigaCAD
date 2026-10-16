@@ -1,14 +1,23 @@
 import Link from 'next/link';
 import { approveCandidate, closeReleaseRequest, generateCandidate, releaseCandidate, withdrawApproval } from '../../../../actions';
 import { ActionButton } from '../../../../../../components/product/ActionButton';
-import { ActionForm } from '../../../../../../components/product/ActionForm';
+import { DownloadButton } from '../../../../../../components/product/DownloadButton';
+import { MarkdownText } from '../../../../../../components/product/MarkdownText';
 import { PageHead } from '../../../../../../components/product/PageHead';
 import { PickEditor } from '../../../../../../components/product/PickEditor';
+import { PreviewButton } from '../../../../../../components/product/PreviewButton';
 import { RelativeTime } from '../../../../../../components/product/RelativeTime';
+import { ReleaseForm } from '../../../../../../components/product/ReleaseForm';
+import { NextStep, RequestActionButton, RequestDraftProvider } from '../../../../../../components/product/RequestDraft';
 import { StatusBadge } from '../../../../../../components/product/StatusBadge';
-import { REQUEST_STATUS_LABEL, blockerText, eligibleApprovers, requestTone } from '../../../../../../lib/describe';
-import { branchPath, projectPath, releasePath } from '../../../../../../lib/paths';
-import { getApprovalRules, getMembers, getViewer, getProject, getRelease, getReleaseRequestByNumber, parseNumber } from '../../../../../../lib/product';
+import type { ReleaseBlocker } from '@gigacad/core';
+import type { ReleaseRequestDetail } from '../../../../../../lib/api';
+import { REBUILD_STATUS_LABEL, blockerText, eligibleApprovers, errorText, requestBadge, ruleSummary, warningText } from '../../../../../../lib/describe';
+import { sites } from '../../../../../../lib/hosts';
+import { branchPath, projectPath, releasePath, releaseRequestPath } from '../../../../../../lib/paths';
+import { previewFormat } from '../../../../../../lib/preview';
+import { getMembers, getViewer, getProject, getRelease, getReleaseRequestByNumber, parseNumber } from '../../../../../../lib/product';
+import { nextStep } from '../../../../../../lib/request-next';
 import type { ProjectParams } from '../../layout';
 
 type RequestParams = ProjectParams & { number: string };
@@ -23,51 +32,185 @@ export async function generateMetadata({ params }: { params: Promise<RequestPara
   return { title: `${request ? `#${request.number} ${request.title}` : `#${number}`} · ${owner}/${slug}` };
 }
 
+/** How many rebuild messages show before the rest fold away. */
+const REPORT_SHOWN = 10;
+const plural = (count: number, word: string) => `${count.toLocaleString('en-US')} ${word}${count === 1 ? '' : 's'}`;
+
 export default async function RequestPage({ params }: { params: Promise<RequestParams> }) {
   const { owner, project: slug, number } = await params;
   const project = await getProject(owner, slug);
   const detail = await getReleaseRequestByNumber(project.id, parseNumber(number));
-  const { releaseRequest: request, preview, candidate, approvals, latestRelease, targetRelease, releasedRelease } = detail;
+  const { releaseRequest: request, preview, candidate, approvals, latestRelease, targetRelease, releasedRelease, history } = detail;
   const finished = request.status === 'released' || request.status === 'closed';
   // Finished requests read against the main they targeted; active ones against the latest.
   const mainRelease = finished ? targetRelease : latestRelease;
-  const [me, members, rules, main] = await Promise.all([getViewer(), getMembers(project.id), getApprovalRules(project.id), mainRelease ? getRelease(project.id, mainRelease.number) : Promise.resolve(null)]);
-  const canWrite = project.role === 'owner' || project.role === 'maintainer' || project.role === 'contributor';
-  const eligible = eligibleApprovers(members, rules, request.requesterId);
+  const [me, members, main] = await Promise.all([getViewer(), getMembers(project.id), mainRelease ? getRelease(project.id, mainRelease.number) : Promise.resolve(null)]);
+  const rules = approvals.rules;
+  const requester = request.requesterHandle ? `@${request.requesterHandle}` : 'the requester';
+  const canManage = project.role === 'owner' || project.role === 'maintainer';
+  const canWrite = canManage || project.role === 'contributor';
+  const isRequester = Boolean(me && me.id === request.requesterId);
+  // The requester and maintainers drive a request; everyone else reviews it.
+  const canDrive = !finished && ((isRequester && canWrite) || canManage);
+  const eligible = finished ? [] : eligibleApprovers(members, rules, request.requesterId);
   const mayApprove = eligible.some((member) => member.userId === me?.id);
+  const counted = new Set(approvals.evaluation?.countedUserIds ?? []);
+  const approved = Boolean(me && counted.has(me.id));
   const mine = approvals.given.find((approval) => approval.userId === me?.id && approval.candidateManifestId === request.candidateManifestId);
   const releaseNumber = latestRelease ? latestRelease.number + 1 : 1;
   const blockers = approvals.evaluation?.blockers ?? [];
   const approvalBlocker = blockers.find((blocker) => blocker.kind === 'needs_approvals');
   const otherBlockers = blockers.filter((blocker) => blocker.kind !== 'needs_approvals');
-  const ready = Boolean(candidate?.upToDate && approvals.evaluation?.canRelease);
-  // Your approval is the only thing missing: approve and release in one step.
+  const current = Boolean(candidate?.upToDate);
+  const ready = current && Boolean(approvals.evaluation?.canRelease);
+  // A driver whose own approval is the last thing missing may approve and release in one confirmed step.
   const approveAndRelease = Boolean(
-    candidate?.upToDate && mayApprove && !mine && approvalBlocker && approvalBlocker.need - approvalBlocker.have === 1 && otherBlockers.length === 0,
+    current && canDrive && mayApprove && !mine && approvalBlocker && approvalBlocker.kind === 'needs_approvals' && approvalBlocker.need - approvalBlocker.have === 1 && otherBlockers.length === 0,
   );
-  const showRebuild = rules.requireCleanRebuild || request.rebuildStatus !== null;
+  const report = request.rebuildReport;
+  const reportCurrent = Boolean(candidate && request.rebuildStatus && request.rebuildManifestId === candidate.manifestId);
+  const rebuild = reportCurrent && request.rebuildStatus ? { status: request.rebuildStatus, errors: report?.counts.error ?? 0, warnings: report?.counts.warning ?? 0 } : null;
+  const rebuildCaution =
+    rebuild?.status === 'failed' ? `The last SolidWorks rebuild failed (${plural(rebuild.errors, 'error')}).` : rebuild?.status === 'passed_with_warnings' ? `The last SolidWorks rebuild passed with ${plural(rebuild.warnings, 'warning')}.` : null;
+  const showRebuild = request.rebuildStatus !== null || (!finished && rules.requireCleanRebuild);
+  const handles = new Map(members.map((member) => [member.userId, member.handle]));
+  const waitingOn = eligible.filter((member) => !counted.has(member.userId)).map((member) => member.handle);
+  const badge = requestBadge({ status: request.status, upToDate: candidate?.upToDate ?? true, rebuildStatus: reportCurrent ? request.rebuildStatus : null }, rules.requireCleanRebuild);
+  const pathOf = (itemId: string) => main?.files.find((file) => file.itemId === itemId)?.path ?? preview.rows.find((row) => row.itemId === itemId)?.path;
+  const rebuiltElsewhere = candidate ? candidate.rebuilt.filter((file) => !preview.rows.some((row) => row.itemId === file.itemId)).length : 0;
+  const currentApprovals = approvals.given.filter((approval) => approval.candidateManifestId === request.candidateManifestId);
+  const resets = [
+    currentApprovals.length ? `${plural(currentApprovals.length, 'approval')} (${currentApprovals.map((approval) => `@${approval.handle}`).join(', ')})` : null,
+    reportCurrent ? 'the rebuild report' : null,
+  ].filter(Boolean);
+  const resetWarning = resets.length ? resets.join(' and ') : null;
+  const { siteUrl } = sites();
+  const settingsRules = `${projectPath(owner, slug, 'settings')}#approval-rules`;
 
-  const next = finished
-    ? request.status === 'released'
-      ? null
-      : 'This request was closed. Its branch is open for work again.'
-    : !preview.ok
-      ? 'Fix the pick errors below, then save your picks.'
-      : !candidate
-        ? canWrite
-          ? 'Save your picks to build the candidate.'
-          : 'Waiting for the requester to build a candidate.'
-        : !candidate.upToDate
-          ? `Main has a newer release. ${canWrite ? 'Rebuild the candidate to include it.' : 'The candidate needs rebuilding.'}`
-          : ready
-            ? `Ready to release v${releaseNumber}.`
-            : approveAndRelease
-              ? `Your approval is the last one needed. Approve and release v${releaseNumber} when the picks look right.`
-              : otherBlockers.length
-                ? blockerText(otherBlockers[0]!)
-                : approvalBlocker
-                  ? `Waiting for ${approvalBlocker.need - approvalBlocker.have} more ${approvalBlocker.need - approvalBlocker.have === 1 ? 'approval' : 'approvals'}${mayApprove && !mine ? ', including yours' : ''}.`
-                  : null;
+  const step = finished
+    ? null
+    : nextStep({
+        requesterHandle: request.requesterHandle,
+        branchName: request.branchName,
+        canDrive,
+        isRequester,
+        canManage,
+        mayApprove,
+        approved,
+        picksOk: preview.ok,
+        changesMain: detail.changesMain,
+        hasCandidate: Boolean(candidate),
+        upToDate: current,
+        canRelease: Boolean(approvals.evaluation?.canRelease),
+        blockers,
+        releaseNumber,
+        latestNumber: latestRelease?.number ?? null,
+        rules,
+        handles,
+        waitingOn,
+        rebuild,
+      });
+  const buildButton = (
+    <RequestActionButton action={generateCandidate.bind(null, request.id)} className="btn btn-primary" pendingLabel="Building…">
+      Build candidate
+    </RequestActionButton>
+  );
+  const regenerateButton = (
+    <RequestActionButton
+      action={generateCandidate.bind(null, request.id)}
+      disabled={!preview.ok}
+      className="btn btn-primary"
+      pendingLabel="Regenerating…"
+      confirm={resetWarning ? `Regenerating the candidate clears ${resetWarning}.` : undefined}
+    >
+      Regenerate candidate
+    </RequestActionButton>
+  );
+
+  const rebuildCard = showRebuild && (
+    <section className="rail-card" key="rebuild">
+      <h2>Rebuild</h2>
+      {request.rebuildStatus && report ? (
+        <>
+          <p className="rebuild-status">
+            <StatusBadge tone={!reportCurrent ? 'quiet' : request.rebuildStatus === 'failed' ? 'danger' : request.rebuildStatus === 'passed_with_warnings' ? 'caution' : 'signal'}>
+              {REBUILD_STATUS_LABEL[request.rebuildStatus]}
+            </StatusBadge>
+            <span className="muted">
+              {request.rebuildReportedAt && <RelativeTime value={request.rebuildReportedAt} />}
+              {request.rebuildReportedByHandle && ` by @${request.rebuildReportedByHandle}`}
+              {!reportCurrent && ' · for an older candidate'}
+            </span>
+          </p>
+          {report.total > 0 && (
+            <p className="muted rebuild-counts">
+              {[report.counts.error && plural(report.counts.error, 'error'), report.counts.warning && plural(report.counts.warning, 'warning'), report.counts.info && plural(report.counts.info, 'note')].filter(Boolean).join(', ')}
+            </p>
+          )}
+          {report.messages.length > 0 && <RebuildMessages projectId={project.id} messages={report.messages.slice(0, REPORT_SHOWN)} files={candidate?.files ?? []} />}
+          {report.messages.length > REPORT_SHOWN && (
+            <details className="rebuild-more">
+              <summary>
+                {report.total > report.messages.length ? `${report.messages.length - REPORT_SHOWN} more of ${report.total.toLocaleString('en-US')} messages` : `${report.messages.length - REPORT_SHOWN} more messages`}
+              </summary>
+              <RebuildMessages projectId={project.id} messages={report.messages.slice(REPORT_SHOWN)} files={candidate?.files ?? []} />
+              {report.total > report.messages.length && (
+                <p className="muted">
+                  The rest are in <code className="mono">giga rr show {request.number}</code> and the API’s rebuild report.
+                </p>
+              )}
+            </details>
+          )}
+        </>
+      ) : (
+        <>
+          <p className="muted">
+            {candidate
+              ? 'This project needs a clean SolidWorks rebuild before release. Open the candidate in SolidWorks with the GigaCAD add-in and rebuild it'
+              : 'This project needs a clean SolidWorks rebuild before release. After the candidate is built, open it in SolidWorks with the GigaCAD add-in and rebuild it'}
+            , or attach a report from your own rebuild with <code className="mono">giga rr rebuild-report</code>. <a href={`${siteUrl}/docs/cli`}>How to attach a report</a>
+          </p>
+          {history.lastCandidateChange && candidate && <p className="muted">The previous rebuild, if any, was for an older candidate.</p>}
+          {canManage && (
+            <p className="muted">
+              <Link href={settingsRules}>Turn off the rebuild rule</Link> if this project doesn’t use the add-in yet.
+            </p>
+          )}
+        </>
+      )}
+    </section>
+  );
+
+  const releaseCard = canDrive && (
+    <section className="rail-card" key="release">
+      <h2>Release</h2>
+      {!preview.ok ? (
+        <p className="muted">Fix the pick errors to build a candidate.</p>
+      ) : !detail.changesMain ? (
+        <p className="muted">Nothing to release: these picks leave main as it is.</p>
+      ) : !candidate ? (
+        buildButton
+      ) : !candidate.upToDate ? (
+        <>
+          <p className="muted">Main moved on since this candidate was built.</p>
+          {regenerateButton}
+        </>
+      ) : (
+        <>
+          <ReleaseForm
+            action={releaseCandidate.bind(null, request.id, owner, slug, candidate.manifestId)}
+            releaseNumber={releaseNumber}
+            fileCount={candidate.files.length}
+            approve={approveAndRelease}
+            blocked={ready || approveAndRelease ? null : releaseStatus(blockers)}
+            caution={rebuildCaution}
+          />
+        </>
+      )}
+      {candidate && <CandidateFiles projectId={project.id} files={candidate.files} />}
+    </section>
+  );
+  const rebuildFirst = Boolean(rebuild && rebuild.status !== 'passed');
 
   return (
     <div className="page">
@@ -76,7 +219,7 @@ export default async function RequestPage({ params }: { params: Promise<RequestP
         title={request.title}
         meta={
           <>
-            <StatusBadge tone={requestTone(request.status)}>{REQUEST_STATUS_LABEL[request.status]}</StatusBadge>
+            <StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>
             <span>
               <Link href={branchPath(owner, slug, request.branchName)} className="mono">
                 {request.branchName}
@@ -89,154 +232,259 @@ export default async function RequestPage({ params }: { params: Promise<RequestP
           </>
         }
       />
-      {releasedRelease && (
-        <p className="next-step is-done" role="status">
-          Released as <Link href={releasePath(owner, slug, releasedRelease.number)}>v{releasedRelease.number}</Link>. These are the picks it was released with.
-        </p>
-      )}
-      {next && (
-        <p className={ready || approveAndRelease ? 'next-step is-ready' : 'next-step'} role="status">
-          <strong>Next:</strong> {next}
-        </p>
-      )}
-      {request.body && <p className="notes">{request.body}</p>}
-      <div className="request-grid">
-        <div className="stack">
-          <section>
-            <h2>File picks</h2>
-            <PickEditor
-              key={request.id}
-              projectId={project.id}
-              requestId={request.id}
-              rows={preview.rows}
-              picks={request.picks}
-              mainFiles={main?.files ?? []}
-              latestNumber={mainRelease?.number ?? null}
-              nextNumber={finished ? null : releaseNumber}
-              readOnly={finished || !canWrite}
-            />
-          </section>
-          {preview.warnings.length > 0 && (
-            <section className="section">
-              <h2>Warnings</h2>
-              <ul className="warning-list">
-                {preview.warnings.map((warning, index) => (
-                  <li key={index}>
-                    {warning.kind.replace(/_/g, ' ')}: <span className="mono">{warning.path}</span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-          {preview.errors.length > 0 && (
-            <section className="section">
-              <h2>Pick errors</h2>
-              <ul className="error-list">
-                {preview.errors.map((error, index) => (
-                  <li key={index}>
-                    {error.kind.replace(/_/g, ' ')}
-                    {'path' in error ? `: ${error.path}` : ''}
-                    {'reason' in error ? `: ${error.reason}` : ''}
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-        </div>
-        <aside className="request-rail">
-          {!finished && canWrite && (
-            <section className="rail-card">
-              <h2>Release</h2>
-              {candidate && !candidate.upToDate && (
+      <RequestDraftProvider>
+        {releasedRelease && (
+          <p className="next-step is-done" role="status">
+            <span>
+              Released as <Link href={releasePath(owner, slug, releasedRelease.number)}>v{releasedRelease.number}</Link>
+              {releasedRelease.createdByHandle && ` by @${releasedRelease.createdByHandle}`}, <RelativeTime value={releasedRelease.createdAt} />. These are the picks it was released with.
+            </span>
+          </p>
+        )}
+        {request.status === 'closed' && (
+          <p className="next-step" role="status">
+            <span>
+              Closed{history.closed?.actorHandle && ` by @${history.closed.actorHandle}`}
+              {history.closed && (
                 <>
-                  <p className="muted">Main moved on since this candidate was built.</p>
-                  <ActionButton action={generateCandidate.bind(null, request.id)} disabled={!preview.ok} className="btn btn-primary" pendingLabel="Rebuilding…">
-                    Rebuild candidate
-                  </ActionButton>
+                  , <RelativeTime value={history.closed.at} />
                 </>
               )}
-              {!candidate && preview.ok && (
-                <ActionButton action={generateCandidate.bind(null, request.id)} className="btn btn-primary" pendingLabel="Building…">
-                  Build candidate
-                </ActionButton>
-              )}
-              {otherBlockers.length > 0 && (
-                <ul className="warning-list">
-                  {otherBlockers.map((blocker, index) => (
-                    <li key={index}>{blockerText(blocker)}</li>
+              . Nothing was released. {branchState(detail, owner, slug)}
+            </span>
+          </p>
+        )}
+        {step && (
+          <NextStep tone={step.tone} action={step.build ? buildButton : undefined}>
+            {step.text}
+            {step.rules && (
+              <>
+                {' '}
+                <Link href={settingsRules}>Approval rules</Link>
+              </>
+            )}
+          </NextStep>
+        )}
+        {history.snapshot && (
+          <p className="muted request-note">
+            Opening this request saved {plural(history.snapshot.autosaves, 'unsaved autosave')}
+            {history.snapshot.authorHandle && ` from @${history.snapshot.authorHandle}`} as a version, so they’re included.
+          </p>
+        )}
+        {request.body && <MarkdownText className="notes">{request.body}</MarkdownText>}
+        <div className="request-grid">
+          <div className="stack">
+            <section>
+              <h2>File picks</h2>
+              {!finished && !canDrive && <p className="muted request-note">Only {requester} or a maintainer can change the picks.</p>}
+              <PickEditor
+                key={request.id}
+                projectId={project.id}
+                requestId={request.id}
+                rows={preview.rows}
+                picks={request.picks}
+                mainFiles={main?.files ?? []}
+                baseNumber={detail.branch.baseReleaseNumber}
+                latestNumber={mainRelease?.number ?? null}
+                nextNumber={finished ? null : releaseNumber}
+                finished={finished ? (request.status as 'released' | 'closed') : null}
+                readOnly={!canDrive}
+                picksOk={preview.ok}
+                hasCandidate={Boolean(candidate)}
+                resetWarning={resetWarning}
+                rebuiltElsewhere={rebuiltElsewhere}
+                releasedBlobs={request.status === 'released' && candidate ? Object.fromEntries(candidate.files.map((file) => [file.itemId, file.blob])) : undefined}
+              />
+            </section>
+            {candidate && candidate.rebuilt.length > 0 && (
+              <section className="section">
+                <h2>Changed after the candidate was built</h2>
+                <p className="muted">
+                  A SolidWorks rebuild saved these files into the candidate. {request.status === 'released' ? 'They were released like this.' : 'They will be released like this, not as picked.'}
+                </p>
+                <ul className="file-list">
+                  {candidate.rebuilt.map((file) => (
+                    <li key={file.itemId}>
+                      <span className="mono">{file.path}</span>
+                      <span className="pick-files">
+                        {previewFormat(file.path) && (
+                          <PreviewButton projectId={project.id} sha256={file.blob} path={file.path} format={previewFormat(file.path)!} compare={file.builtBlob ? { sha256: file.builtBlob, path: file.path } : undefined} />
+                        )}
+                        <DownloadButton projectId={project.id} sha256={file.blob} path={file.path} />
+                      </span>
+                    </li>
                   ))}
                 </ul>
-              )}
-              {(ready || approveAndRelease) && (
-                <ActionForm action={releaseCandidate.bind(null, request.id, owner, slug)} submitLabel={approveAndRelease ? `Approve and release v${releaseNumber}` : `Release v${releaseNumber}`} pendingLabel="Releasing…">
-                  {approveAndRelease && <input type="hidden" name="approve" value="yes" />}
-                  <p className="muted">Releasing locks these files as v{releaseNumber}, permanently.</p>
-                  <label className="field">
-                    <span>
-                      Notes <em>optional</em>
-                    </span>
-                    <textarea name="notes" rows={3} />
-                  </label>
-                </ActionForm>
-              )}
-              {candidate && <p className="muted">{candidate.files.length} files in the candidate.</p>}
-            </section>
-          )}
-          <section className="rail-card">
-            <h2>
-              Approvals · {approvals.evaluation?.countedUserIds.length ?? 0} of {rules.requiredCount}
-            </h2>
-            {eligible.length ? (
-              <ul className="approvers">
-                {eligible.map((member) => {
-                  const approval = approvals.given.find((given) => given.userId === member.userId);
-                  const current = approval?.candidateManifestId === request.candidateManifestId;
-                  return (
-                    <li key={member.userId}>
-                      <span>@{member.handle}</span>
-                      <span className={current ? 'badge badge-signal' : 'muted'}>{approval ? (current ? 'Approved' : 'Older candidate') : 'Waiting'}</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              <p className="muted">No eligible approvers under the current rules.</p>
+              </section>
             )}
-            {!finished && candidate?.upToDate && mayApprove && !approveAndRelease && (mine ? <ActionButton action={withdrawApproval.bind(null, request.id)}>Withdraw approval</ActionButton> : <ActionButton action={approveCandidate.bind(null, request.id)} className="btn btn-primary">Approve candidate</ActionButton>)}
-          </section>
-          {showRebuild && (
+            {preview.warnings.length > 0 && (
+              <section className="section">
+                <h2>Warnings</h2>
+                <ul className="warning-list">
+                  {preview.warnings.map((warning, index) => (
+                    <li key={index}>{warningText(warning)}</li>
+                  ))}
+                </ul>
+              </section>
+            )}
+            {preview.errors.length > 0 && (
+              <section className="section">
+                <h2>Pick errors</h2>
+                <ul className="error-list">
+                  {preview.errors.map((error, index) => (
+                    <li key={index}>{errorText(error, pathOf)}</li>
+                  ))}
+                </ul>
+              </section>
+            )}
+          </div>
+          <aside className="request-rail">
+            {rebuildFirst && rebuildCard}
+            {releaseCard}
             <section className="rail-card">
-              <h2>Rebuild</h2>
-              {request.rebuildStatus ? (
-                <>
-                  <StatusBadge tone={request.rebuildStatus === 'failed' ? 'danger' : request.rebuildStatus === 'passed_with_warnings' ? 'caution' : 'signal'}>{request.rebuildStatus.replace(/_/g, ' ')}</StatusBadge>
-                  {request.rebuildReport?.messages.length ? (
-                    <ul className="warning-list">
-                      {request.rebuildReport.messages.map((message, index) => (
-                        <li key={index}>
-                          {message.path && <span className="mono">{message.path}: </span>}
-                          {message.message}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </>
-              ) : (
-                <p className="muted">This project needs a clean rebuild before release. Open the candidate in SolidWorks with the GigaCAD add-in and rebuild it.</p>
+              <h2>{rules.requiredCount === 0 ? 'Approvals · Not required' : `Approvals · ${approvals.evaluation?.countedUserIds.length ?? 0} of ${rules.requiredCount}`}</h2>
+              <p className="muted">{ruleSummary(rules, handles)}</p>
+              {finished ? (
+                approvals.given.length ? (
+                  <ul className="approvers">
+                    {approvals.given.map((approval) => (
+                      <li key={approval.userId}>
+                        <span>@{approval.handle}</span>
+                        <span className={counted.has(approval.userId) ? 'badge badge-signal' : 'muted'}>{counted.has(approval.userId) ? 'Approved' : 'Older candidate'}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="muted">No one approved it.</p>
+                )
+              ) : rules.requiredCount > 0 && eligible.length ? (
+                <ul className="approvers">
+                  {eligible.map((member) => {
+                    const approval = approvals.given.find((given) => given.userId === member.userId);
+                    const isCurrent = approval?.candidateManifestId === request.candidateManifestId;
+                    return (
+                      <li key={member.userId}>
+                        <span>@{member.handle}</span>
+                        <span className={isCurrent ? 'badge badge-signal' : 'muted'}>{approval ? (isCurrent ? 'Approved' : 'Older candidate') : 'Waiting'}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : null}
+              {!finished && approvals.given.some((approval) => approval.candidateManifestId !== request.candidateManifestId) && history.lastCandidateChange && (
+                <p className="muted">
+                  The candidate changed after the older approvals: {history.lastCandidateChange.actorHandle ? `@${history.lastCandidateChange.actorHandle}` : 'someone'} {CHANGE_TEXT[history.lastCandidateChange.kind]}{' '}
+                  <RelativeTime value={history.lastCandidateChange.at} />.
+                </p>
+              )}
+              {!finished && me && !mayApprove && project.role && candidate && <p className="muted">{whyNotApprover(isRequester, rules.allowSelfApproval)}</p>}
+              {!finished && current && mayApprove && rules.requiredCount > 0 && (
+                mine ? (
+                  <ActionButton action={withdrawApproval.bind(null, request.id)}>Withdraw approval</ActionButton>
+                ) : (
+                  <RequestActionButton action={approveCandidate.bind(null, request.id, candidate!.manifestId, canDrive ? null : `${requester} or a maintainer`)} className="btn btn-primary">
+                    Approve candidate
+                  </RequestActionButton>
+                )
               )}
             </section>
-          )}
-          {!finished && canWrite && (
-            <section className="rail-card">
-              <h2>Close request</h2>
-              <p className="muted">Closing unfreezes the branch so work can continue. Nothing is released.</p>
-              <ActionButton action={closeReleaseRequest.bind(null, request.id)} className="btn btn-danger btn-small" confirm="Close this request? The branch opens for work again, and the picks and candidate are kept here for reference.">
-                Close request
-              </ActionButton>
-            </section>
-          )}
-        </aside>
-      </div>
+            {!rebuildFirst && rebuildCard}
+            {canDrive && (
+              <section className="rail-card">
+                <h2>Close request</h2>
+                <p className="muted">Closing unfreezes the branch so work can continue. Nothing is released.</p>
+                <ActionButton action={closeReleaseRequest.bind(null, request.id)} className="btn btn-danger btn-small" confirm="Close this request? The branch opens for work again, and the picks and candidate are kept here for reference.">
+                  Close request
+                </ActionButton>
+              </section>
+            )}
+          </aside>
+        </div>
+      </RequestDraftProvider>
     </div>
+  );
+}
+
+const CHANGE_TEXT: Record<NonNullable<ReleaseRequestDetail['history']['lastCandidateChange']>['kind'], string> = {
+  picks_changed: 'saved new picks',
+  candidate_generated: 'regenerated it',
+  candidate_updated: 'saved rebuilt files into it',
+};
+
+/**
+ * What still stands between a current candidate and its release, in one line for the
+ * Release card. Rebuild and rule problems are explained once, in their own places.
+ */
+function releaseStatus(blockers: readonly ReleaseBlocker[]): string {
+  const approvals = blockers.find((blocker) => blocker.kind === 'needs_approvals');
+  const parts = [
+    approvals ? blockerText(approvals) : null,
+    blockers.some((blocker) => blocker.kind.startsWith('rebuild_')) ? 'Needs a clean SolidWorks rebuild; see Rebuild.' : null,
+    blockers.some((blocker) => blocker.kind === 'not_enough_eligible_approvers') ? 'The approval rules can’t be met yet; see above.' : null,
+  ].filter(Boolean);
+  return parts.length ? parts.join(' ') : 'Not ready to release yet.';
+}
+
+function whyNotApprover(isRequester: boolean, allowSelfApproval: boolean): string {
+  if (isRequester && !allowSelfApproval) return 'You opened this request, and self-approval is off, so you can’t approve it.';
+  return 'You can review this candidate, but the approval rules don’t include you.';
+}
+
+/** For a closed request: what its branch is doing now, which may have moved on since. */
+function branchState(detail: ReleaseRequestDetail, owner: string, slug: string) {
+  const name = detail.releaseRequest.branchName;
+  const { status, activeRequestNumber } = detail.branch;
+  if (status === 'open') return `Its branch, ${name}, is open for work.`;
+  if (status === 'frozen' && activeRequestNumber) {
+    return (
+      <>
+        Its branch, {name}, is frozen again for <Link href={releaseRequestPath(owner, slug, activeRequestNumber)}>#{activeRequestNumber}</Link>.
+      </>
+    );
+  }
+  if (status === 'released') return `Its branch, ${name}, was released through another request.`;
+  if (status === 'archived') return `Its branch, ${name}, was archived.`;
+  return '';
+}
+
+/** Rebuild messages, most severe first, each with a way to open the file it's about when the candidate has it. */
+function RebuildMessages({ projectId, messages, files }: { projectId: string; messages: { level: 'info' | 'warning' | 'error'; message: string; path?: string }[]; files: { path: string; blob: string }[] }) {
+  return (
+    <ul className="rebuild-list">
+      {messages.map((message, index) => {
+        const file = message.path ? files.find((entry) => entry.path.toLowerCase() === message.path!.toLowerCase()) : undefined;
+        return (
+          <li key={index} className={`is-${message.level}`}>
+            <span className="sr-only">{message.level === 'error' ? 'Error: ' : message.level === 'warning' ? 'Warning: ' : 'Note: '}</span>
+            {message.path && (
+              <>
+                <bdi className="mono">{message.path}</bdi>:{' '}
+              </>
+            )}
+            <span className="rebuild-message">{message.message}</span>
+            {file && <DownloadButton projectId={projectId} sha256={file.blob} path={file.path} />}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** The candidate's files, folded away, each downloadable. Long lists show the first files only. */
+function CandidateFiles({ projectId, files }: { projectId: string; files: { itemId: string; path: string; blob: string }[] }) {
+  const shown = files.slice(0, 200);
+  return (
+    <details className="candidate-files">
+      <summary>{plural(files.length, 'file')} in the candidate</summary>
+      <ul className="file-list">
+        {shown.map((file) => (
+          <li key={file.itemId}>
+            <span className="mono">{file.path}</span>
+            <DownloadButton projectId={projectId} sha256={file.blob} path={file.path} />
+          </li>
+        ))}
+      </ul>
+      {files.length > shown.length && <p className="muted">And {plural(files.length - shown.length, 'more file')}. Download the release once it’s made for all of them.</p>}
+    </details>
   );
 }

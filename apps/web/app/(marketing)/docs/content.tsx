@@ -569,16 +569,16 @@ giga rr release --notes "Stiffer jaw, new fingertip"`}</Command>
       </p>
       <CommandList
         commands={[
-          ["giga rr open", <>Open a release request. Set <code>--title</code> and <code>--body</code>. The branch freezes until it’s released or closed.</>],
+          ["giga rr open", <>Open a release request and build its candidate from the default picks. Set <code>--title</code> and <code>--body</code>. The branch freezes until it’s released or closed.</>],
           ["giga rr list", <>Active release requests. <code>--all</code> includes released and closed ones.</>],
           ["giga rr show", "Status, candidate, approvals, and what blocks the release."],
           ["giga rr diff", "Every file changed on the branch or on main since the branch started."],
           ["giga rr picks --file <path>", <>Replace the picks with a JSON file, or <code>-</code> for standard input.</>],
-          ["giga rr candidate", "Build the release candidate from the current picks."],
+          ["giga rr candidate", "Regenerate the release candidate from the current picks."],
           ["giga rr rebuild-report --file <path>", "Attach the result of rebuilding the candidate in your CAD program."],
-          ["giga rr approve", "Approve the current candidate."],
+          ["giga rr approve", <>Approve the current candidate. Pass <code>--candidate</code> with the id <code>giga rr show</code> printed to refuse if it has changed since.</>],
           ["giga rr unapprove", "Withdraw your approval."],
-          ["giga rr release", <>Publish the approved candidate as the next release. Add <code>--notes</code>.</>],
+          ["giga rr release", <>Publish the approved candidate as the next release. Add <code>--notes</code>, and <code>--candidate</code> as for approving.</>],
           ["giga rr close", "Close without releasing. The branch unfreezes."],
         ]}
       />

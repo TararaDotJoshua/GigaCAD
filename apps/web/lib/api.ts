@@ -251,7 +251,14 @@ export interface ReleaseRequestSummary {
   branchName: string;
   requesterHandle: string | null;
   updatedAt: string;
+  candidateManifestId: string | null;
+  /** False when main has a newer release than the candidate was built on. */
+  upToDate: boolean;
+  /** The rebuild report's verdict on the current candidate. */
+  rebuildStatus: RebuildStatus | null;
 }
+
+export type RebuildStatus = 'passed' | 'passed_with_warnings' | 'failed';
 
 export interface RebuildMessage {
   level: 'info' | 'warning' | 'error';
@@ -275,17 +282,22 @@ export interface ReleaseRequestDetail {
     targetReleaseId: string | null;
     candidateManifestId: string | null;
     rebuildManifestId: string | null;
-    rebuildStatus: 'passed' | 'passed_with_warnings' | 'failed' | null;
-    rebuildReport: { messages: RebuildMessage[] } | null;
+    rebuildStatus: RebuildStatus | null;
+    /** The most severe messages first, with counts by level; the full list is at /rebuild-report. */
+    rebuildReport: { messages: RebuildMessage[]; total: number; counts: Record<RebuildMessage['level'], number> } | null;
+    rebuildReportedAt: string | null;
+    rebuildReportedByHandle: string | null;
     releasedReleaseId: string | null;
     createdAt: string;
     updatedAt: string;
   };
+  /** The branch as it is now. */
+  branch: { status: BranchStatus; activeRequestNumber: number | null; baseReleaseNumber: number | null };
   latestRelease: { id: string; number: number } | null;
   /** The main the candidate was generated against. Finished requests show their picks against it. */
   targetRelease: { id: string; number: number } | null;
   /** The release this request produced. */
-  releasedRelease: { id: string; number: number } | null;
+  releasedRelease: { id: string; number: number; createdAt: string; createdByHandle: string | null } | null;
   preview: {
     rows: PickRow[];
     replacements: AppliedReplacement[];
@@ -293,10 +305,25 @@ export interface ReleaseRequestDetail {
     errors: CandidateError[];
     ok: boolean;
   };
-  candidate: { manifestId: string; files: ManifestEntry[]; upToDate: boolean } | null;
+  /** False when the picks leave main exactly as it is. */
+  changesMain: boolean;
+  candidate: {
+    manifestId: string;
+    files: ManifestEntry[];
+    upToDate: boolean;
+    /** Files a SolidWorks rebuild saved after the candidate was built. */
+    rebuilt: { itemId: string; path: string; blob: string; builtBlob: string | null }[];
+  } | null;
   approvals: {
     given: { userId: string; handle: string; candidateManifestId: string; createdAt: string }[];
     evaluation: ApprovalEvaluation | null;
+    /** Today's rules while active; the rules it finished under once released or closed. */
+    rules: ApprovalRules;
+  };
+  history: {
+    snapshot: { autosaves: number; authorHandle: string | null } | null;
+    lastCandidateChange: { kind: 'picks_changed' | 'candidate_generated' | 'candidate_updated'; actorHandle: string | null; at: string } | null;
+    closed: { actorHandle: string | null; at: string } | null;
   };
 }
 

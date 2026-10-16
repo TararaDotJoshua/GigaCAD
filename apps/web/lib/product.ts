@@ -73,13 +73,16 @@ export async function getThumbnails(projectId: string, sha256s: readonly string[
     return {};
   }
 }
-/** STEP and STL exports of a project's SolidWorks files, by file hash. Like thumbnails, a failure just leaves them out. */
-export async function getFileExports(projectId: string, sha256s: readonly string[]): Promise<Record<string, FileExport[]>> {
+/**
+ * STEP and STL exports of a project's SolidWorks files, by file hash. With a release number,
+ * the exports that release was made with. Like thumbnails, a failure just leaves them out.
+ */
+export async function getFileExports(projectId: string, sha256s: readonly string[], releaseNumber?: number): Promise<Record<string, FileExport[]>> {
   if (sha256s.length === 0) return {};
   try {
     const result = await apiRequest<{ exports: Record<string, FileExport[]> }>(await getAccessToken(), `/v1/projects/${projectId}/exports/lookup`, {
       method: 'POST',
-      body: JSON.stringify({ sha256s: [...new Set(sha256s)].slice(0, 1000) }),
+      body: JSON.stringify({ sha256s: [...new Set(sha256s)].slice(0, 1000), ...(releaseNumber ? { releaseNumber } : {}) }),
     });
     return result.exports;
   } catch {

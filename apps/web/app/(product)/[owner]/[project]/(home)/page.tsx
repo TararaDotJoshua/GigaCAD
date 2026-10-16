@@ -1,11 +1,13 @@
 import { redirect } from 'next/navigation';
 import type { DirectoryParams } from '../../../../../components/product/ProjectDirectory';
 import { treePath } from '../../../../../lib/paths';
+import { getProject } from '../../../../../lib/product';
 import type { ProjectParams } from '../layout';
 import { ProjectFilesPage } from '../ProjectFilesPage';
 
 export async function generateMetadata({ params }: { params: Promise<ProjectParams> }) {
   const { owner, project } = await params;
+  if (!(await getProject(owner, project).catch(() => null))) return { title: 'Not found' };
   return { title: `${owner}/${project}` };
 }
 

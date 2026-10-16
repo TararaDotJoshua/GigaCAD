@@ -5,7 +5,8 @@ import { RelativeTime } from '../../../../../components/product/RelativeTime';
 import { StatusBadge } from '../../../../../components/product/StatusBadge';
 import { REQUEST_STATUS_LABEL, requestTone } from '../../../../../lib/describe';
 import { projectPath, releaseRequestPath } from '../../../../../lib/paths';
-import { getProject, getReleaseRequests } from '../../../../../lib/product';
+import type { ReleaseRequestDetail } from '../../../../../lib/api';
+import { getApprovalRules, getProject, getReleaseRequest, getReleaseRequests } from '../../../../../lib/product';
 import type { ProjectParams } from '../layout';
 
 export const metadata = { title: 'Release requests' };
@@ -18,6 +19,13 @@ export default async function ReleaseRequests({ params, searchParams }: { params
   const all = view === 'all';
   const shown = all ? requests : active;
   const base = projectPath(owner, slug, 'release-requests');
+  // Where each candidate stands on approvals, so approvers can see what's waiting without opening each one.
+  const candidates = shown.filter((request) => request.status === 'candidate');
+  const [details, rules] = await Promise.all([
+    Promise.all(candidates.map((request) => getReleaseRequest(request.id).catch(() => null))),
+    candidates.length ? getApprovalRules(project.id).catch(() => null) : null,
+  ]);
+  const approvals = new Map(details.flatMap((detail) => (detail ? [[detail.releaseRequest.id, approvalState(detail, rules?.requiredCount ?? 0)] as const] : [])));
   return (
     <div className="page">
       <PageHead
@@ -42,6 +50,7 @@ export default async function ReleaseRequests({ params, searchParams }: { params
                 <th scope="col">Branch</th>
                 <th scope="col">Opened by</th>
                 <th scope="col">Status</th>
+                <th scope="col">Approvals</th>
                 <th scope="col">Updated</th>
               </tr>
             </thead>
@@ -58,6 +67,7 @@ export default async function ReleaseRequests({ params, searchParams }: { params
                   <td>
                     <StatusBadge tone={requestTone(request.status)}>{REQUEST_STATUS_LABEL[request.status]}</StatusBadge>
                   </td>
+                  <td className="muted">{approvals.get(request.id) ?? (request.status === 'open' ? 'No candidate yet' : '—')}</td>
                   <td>
                     <RelativeTime value={request.updatedAt} />
                   </td>
@@ -76,4 +86,15 @@ export default async function ReleaseRequests({ params, searchParams }: { params
       )}
     </div>
   );
+}
+
+/** "1 of 2 approvals", or what else stands between the candidate and a release. */
+function approvalState(detail: ReleaseRequestDetail, required: number): string {
+  const evaluation = detail.approvals.evaluation;
+  if (!detail.candidate?.upToDate) return 'Candidate out of date';
+  if (!evaluation) return '—';
+  if (evaluation.canRelease) return 'Ready to release';
+  if (evaluation.blockers.some((blocker) => blocker.kind === 'needs_approvals')) return `${evaluation.countedUserIds.length} of ${required} approvals`;
+  if (evaluation.blockers.some((blocker) => blocker.kind === 'not_enough_eligible_approvers')) return 'Not enough approvers';
+  return 'Needs a clean rebuild';
 }

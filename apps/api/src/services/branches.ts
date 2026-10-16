@@ -196,20 +196,26 @@ export async function checkIn(sql: Sql, branchId: string, userId: string): Promi
   });
 }
 
-/** Maintainers can break a stale lock. The previous holder is recorded so they can be notified. */
-export async function forceRelease(sql: Sql, branchId: string, userId: string): Promise<BranchView> {
+/**
+ * Maintainers can break a stale lock. The previous holder is recorded, by id and handle, and
+ * passed to `released` so they can be told once the change commits.
+ */
+export async function forceRelease(sql: Sql, branchId: string, userId: string, released?: (holderId: string) => void): Promise<BranchView> {
   return sql.begin(async (tx) => {
     const branch = await lockBranch(tx, branchId);
     await requireProjectRole(tx, branch.projectId, userId, 'maintainer');
     if (branch.checkedOutBy === null) return branchView(tx, branchId);
+    const holder = branch.checkedOutBy;
+    const [profile] = await tx<{ handle: string }[]>`select handle from profiles where id = ${holder}`;
     await clearCheckout(tx, branchId);
     await recordEvent(tx, {
       projectId: branch.projectId,
       actorId: userId,
       kind: 'branch_lock_force_released',
       subjectId: branchId,
-      payload: { previousHolder: branch.checkedOutBy, machine: branch.checkedOutMachine },
+      payload: { previousHolder: holder, previousHolderHandle: profile?.handle ?? null, machine: branch.checkedOutMachine },
     });
+    released?.(holder);
     return branchView(tx, branchId);
   });
 }

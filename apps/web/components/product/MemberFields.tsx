@@ -38,7 +38,19 @@ export function AddMemberFields({ canAddMaintainers }: { canAddMaintainers: bool
     <>
       <label className="field">
         <span>Handle</span>
-        <input name="handle" placeholder="@alex" required autoComplete="off" spellCheck={false} list={listId} value={handle} onChange={(event) => setHandle(event.target.value)} />
+        <input
+          name="handle"
+          placeholder="@alex"
+          required
+          maxLength={40}
+          pattern="@?[A-Za-z0-9](?:[A-Za-z0-9\-]{0,37}[A-Za-z0-9])?"
+          title="A handle: up to 39 letters, digits, or dashes"
+          autoComplete="off"
+          spellCheck={false}
+          list={listId}
+          value={handle}
+          onChange={(event) => setHandle(event.target.value)}
+        />
         <datalist id={listId}>
           {people.map((person) => (
             <option key={person.handle} value={person.handle}>

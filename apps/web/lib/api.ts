@@ -306,6 +306,8 @@ export interface ProjectEvent {
   id: string;
   kind: string;
   actorId: string | null;
+  /** The actor's handle, still there after they leave the project. */
+  actorHandle?: string | null;
   subjectId: string | null;
   payload: Record<string, unknown> | null;
   createdAt: string;

@@ -107,7 +107,8 @@ export const getBranches = cache((projectId: string) => get<Branch[]>(`/v1/proje
 export const getBranchDetail = cache((branchId: string) => orNotFound(get<BranchDetail>(`/v1/branches/${branchId}`)));
 export const getCommits = cache((branchId: string) => get<Commit[]>(`/v1/branches/${branchId}/commits`));
 /** The id comes from the URL, so anything that isn't a UUID is simply not found. */
-export const getCommit = cache((commitId: string) => {
+export const getCommit = cache(async (commitId: string) => {
+  // Async, so a bad id rejects the promise like any other miss instead of throwing on the call.
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(commitId)) notFound();
   return orNotFound(get<CommitDetail>(`/v1/commits/${commitId}`));
 });
@@ -133,7 +134,9 @@ export const getReleaseRequestByNumber = cache(async (projectId: string, number:
 
 export const getMembers = cache((projectId: string) => get<Member[]>(`/v1/projects/${projectId}/members`));
 export const getApprovalRules = cache((projectId: string) => get<ApprovalRules>(`/v1/projects/${projectId}/approval-rules`));
-export const getEvents = cache((projectId: string, limit = 20) => get<ProjectEvent[]>(`/v1/projects/${projectId}/events?order=desc&limit=${limit}`));
+export const getEvents = cache((projectId: string, limit = 20, before?: string) =>
+  get<ProjectEvent[]>(`/v1/projects/${projectId}/events?order=desc&limit=${limit}${before && /^\d+$/.test(before) ? `&before=${before}` : ''}`),
+);
 
 export interface FileQuery {
   sort?: 'name' | 'modified' | 'size';

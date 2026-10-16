@@ -4,7 +4,6 @@ import { dashboardPath } from '../../lib/hosts';
 import { getBilling, getBranches, getMyProjectsIfSignedIn, getReleaseRequests, getViewer } from '../../lib/product';
 import { Announcer } from './Announcer';
 import { SidebarNav, type NavProject } from './SidebarNav';
-import { relative } from './RelativeTime';
 import { STORAGE_BANNER_COOKIE } from '../../lib/storage-banner';
 import { StorageBanner } from './StorageBanner';
 
@@ -35,7 +34,6 @@ export async function Shell({ project, children }: { project?: Project; children
         name: branch.name,
         holder: me && branch.checkedOutBy === me.id ? ('you' as const) : branch.checkedOutByHandle,
         since: branch.checkedOutAt,
-        age: branch.checkedOutAt ? relative(new Date(branch.checkedOutAt), new Date()).replace(/ ago$/, '') : null,
       })),
   };
   const storage = me ? await storageWarning() : null;

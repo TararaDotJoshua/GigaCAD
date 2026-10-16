@@ -24,7 +24,8 @@ export async function generateMetadata({ params }: { params: Promise<EntryParams
     .then((project) => getEntry(project.id, entryId))
     .then((detail) => detail.entry)
     .catch(() => null);
-  return { title: `${entry?.name ?? 'File'} · ${owner}/${slug}` };
+  if (!entry) return { title: 'Not found' };
+  return { title: `${entry.name} · ${owner}/${slug}` };
 }
 
 /** A file or folder at the project root: its revisions and tags, and renaming, moving, and deleting it. */

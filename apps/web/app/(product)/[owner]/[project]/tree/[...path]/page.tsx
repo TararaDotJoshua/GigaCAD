@@ -1,4 +1,5 @@
 import type { DirectoryParams } from '../../../../../../components/product/ProjectDirectory';
+import { getProject } from '../../../../../../lib/product';
 import type { ProjectParams } from '../../layout';
 import { ProjectFilesPage } from '../../ProjectFilesPage';
 
@@ -19,6 +20,8 @@ function folderPath(segments: string[]): string {
 
 export async function generateMetadata({ params }: { params: Promise<TreeParams> }) {
   const { owner, project, path } = await params;
+  // A project that's missing or private to this viewer 404s from the page; its title says only that.
+  if (!(await getProject(owner, project).catch(() => null))) return { title: 'Not found' };
   return { title: `${folderPath(path)} · ${owner}/${project}` };
 }
 

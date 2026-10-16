@@ -911,14 +911,18 @@ export async function setFileTags(sql: Sql, projectId: string, userId: string, i
     const wanted = [...new Set(tagIds)];
     const known = await tx<{ id: string }[]>`select id from project_tags where project_id = ${projectId} and id = any(${wanted}::uuid[])`;
     if (known.length !== wanted.length) throw unprocessable('unknown_tags', 'Some tags do not belong to this project');
-    await tx`delete from file_tags where item_id = ${itemId} and tag_id <> all(${wanted}::uuid[])`;
-    if (wanted.length > 0) {
-      await tx`
-        insert into file_tags ${tx(wanted.map((tagId) => ({ projectId, tagId, itemId, createdBy: userId })))}
-        on conflict do nothing
-      `;
+    const removed = await tx`delete from file_tags where item_id = ${itemId} and tag_id <> all(${wanted}::uuid[])`;
+    const added =
+      wanted.length > 0
+        ? await tx`
+            insert into file_tags ${tx(wanted.map((tagId) => ({ projectId, tagId, itemId, createdBy: userId })))}
+            on conflict do nothing
+          `
+        : { count: 0 };
+    // Saving the same tags again isn't a change, so it leaves no line in the activity.
+    if (removed.count + added.count > 0) {
+      await recordEvent(tx, { projectId, actorId: userId, kind: 'file_tags_changed', subjectId: itemId, payload: { tagIds: wanted } });
     }
-    await recordEvent(tx, { projectId, actorId: userId, kind: 'file_tags_changed', subjectId: itemId, payload: { tagIds: wanted } });
     return tx<TagView[]>`
       select t.id, t.name from file_tags ft join project_tags t on t.id = ft.tag_id where ft.item_id = ${itemId} order by t.name_key
     `;

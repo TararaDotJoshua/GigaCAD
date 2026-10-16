@@ -1,3 +1,4 @@
+import Form from 'next/form';
 import Link from 'next/link';
 import { EmptyState } from '../../../components/product/EmptyState';
 import { PageHead } from '../../../components/product/PageHead';
@@ -27,12 +28,12 @@ export default async function Explore({ searchParams }: { searchParams: Promise<
       <div className="page">
         <PageHead crumbs={[]} title="Explore public projects" />
         <div className="explore-bar">
-          <form action="/explore" className="app-search explore-search" role="search">
+          <Form action="/explore" className="app-search explore-search" role="search">
             <SearchIcon className="icon" />
             <label className="sr-only" htmlFor="explore-q">Search public projects</label>
             <input id="explore-q" name="q" defaultValue={q} placeholder="Search by name, owner, or description" />
             {sort === 'recent' && <input type="hidden" name="sort" value="recent" />}
-          </form>
+          </Form>
           <nav className="segmented interval-toggle" aria-label="Sort">
             {tab('stars', 'Most starred')}
             {tab('recent', 'Newest')}

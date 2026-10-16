@@ -18,7 +18,8 @@ export async function generateMetadata({ params }: { params: Promise<ReleasePara
     .then((project) => getRelease(project.id, parseNumber(number)))
     .then((detail) => detail.release)
     .catch(() => null);
-  return { title: `${release?.title ? `v${release.number}: ${release.title}` : `v${number}`} · ${owner}/${slug}` };
+  if (!release) return { title: 'Not found' };
+  return { title: `${release.title ? `v${release.number}: ${release.title}` : `v${release.number}`} · ${owner}/${slug}` };
 }
 
 /** A release: what it's called, what changed since the one before, and all its files, locked. */

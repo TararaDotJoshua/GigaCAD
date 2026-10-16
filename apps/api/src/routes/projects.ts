@@ -19,6 +19,7 @@ import {
   setMember,
   updateProject,
 } from '../services/projects.js';
+import { notifyMemberRemoved, notifyProjectDeleted } from '../services/notices.js';
 import { getRelease, listReleases, releaseArchive } from '../services/releases.js';
 import { contentDisposition } from '../storage.js';
 
@@ -67,7 +68,9 @@ export function projectRoutes(app: FastifyInstance, { sql, storage, mailer, webO
 
   app.delete('/v1/projects/:id', async (request, reply) => {
     const { id } = parse(idParams, request.params);
-    await deleteProject(sql, id, requireCaller(request).userId);
+    const actorId = requireCaller(request).userId;
+    await deleteProject(sql, id, actorId);
+    if (mailer) await notifyProjectDeleted(sql, mailer, { projectId: id, actorId }).catch((error: unknown) => request.log.warn(error, 'deletion notice not sent'));
     reply.status(204);
   });
 
@@ -93,7 +96,9 @@ export function projectRoutes(app: FastifyInstance, { sql, storage, mailer, webO
 
   app.delete('/v1/projects/:id/members/:handle', async (request) => {
     const { id, handle } = parse(idParams.extend({ handle: z.string().min(1).max(39) }), request.params);
-    await setMember(sql, id, requireCaller(request).userId, handle, null);
+    const actorId = requireCaller(request).userId;
+    await setMember(sql, id, actorId, handle, null);
+    if (mailer) await notifyMemberRemoved(sql, mailer, webOrigin, { projectId: id, handle, actorId }).catch((error: unknown) => request.log.warn(error, 'removal notice not sent'));
     return withAvatars(storage, await listMembers(sql, id, requireCaller(request).userId));
   });
 
@@ -122,13 +127,15 @@ export function projectRoutes(app: FastifyInstance, { sql, storage, mailer, webO
     const query = parse(
       z.object({
         after: z.coerce.number().int().min(0).default(0),
+        /** Only events older than this id, for paging back through a `desc` feed. */
+        before: z.coerce.number().int().min(1).optional(),
         limit: z.coerce.number().int().min(1).max(500).default(200),
         /** `desc` lists the newest first, for activity feeds; `asc` (default) is for catching up. */
         order: z.enum(['asc', 'desc']).default('asc'),
       }),
       request.query,
     );
-    return listEvents(sql, id, viewerId(request), query.after, query.limit, query.order);
+    return listEvents(sql, id, viewerId(request), query.after, query.limit, query.order, query.before);
   });
 
   app.get('/v1/projects/:id/releases', async (request) => {

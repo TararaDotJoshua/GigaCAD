@@ -20,7 +20,8 @@ export async function generateMetadata({ params }: { params: Promise<RequestPara
     .then((project) => getReleaseRequestByNumber(project.id, parseNumber(number)))
     .then((detail) => detail.releaseRequest)
     .catch(() => null);
-  return { title: `${request ? `#${request.number} ${request.title}` : `#${number}`} · ${owner}/${slug}` };
+  if (!request) return { title: 'Not found' };
+  return { title: `#${request.number} ${request.title} · ${owner}/${slug}` };
 }
 
 export default async function RequestPage({ params }: { params: Promise<RequestParams> }) {

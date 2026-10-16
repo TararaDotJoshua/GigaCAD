@@ -421,19 +421,25 @@ export async function approve(sql: Sql, id: string, userId: string): Promise<Rel
     const reason = approverIneligibility(rules, userId, role ?? undefined, request.requesterId ?? '');
     if (reason) throw forbidden("You can't approve this release request", { reason });
 
+    const [already] = await tx<{ candidateManifestId: string }[]>`
+      select candidate_manifest_id from approvals where release_request_id = ${id} and user_id = ${userId}
+    `;
     await tx`
       insert into approvals (release_request_id, user_id, candidate_manifest_id)
       values (${id}, ${userId}, ${request.candidateManifestId})
       on conflict (release_request_id, user_id)
       do update set candidate_manifest_id = excluded.candidate_manifest_id, created_at = now()
     `;
-    await recordEvent(tx, {
-      projectId: request.projectId,
-      actorId: userId,
-      kind: 'release_request_approved',
-      subjectId: id,
-      payload: { candidateManifestId: request.candidateManifestId },
-    });
+    // Approving the same candidate twice changes nothing, so it isn't news twice.
+    if (already?.candidateManifestId !== request.candidateManifestId) {
+      await recordEvent(tx, {
+        projectId: request.projectId,
+        actorId: userId,
+        kind: 'release_request_approved',
+        subjectId: id,
+        payload: { candidateManifestId: request.candidateManifestId },
+      });
+    }
     return detail(tx, await loadRequest(tx, id));
   });
 }

@@ -100,13 +100,16 @@ export async function updateProject(
   return sql.begin(async (tx) => {
     const { role } = await requireProjectRole(tx, projectId, userId, 'maintainer', { lock: true });
     const defined = Object.fromEntries(Object.entries(changes).filter(([, value]) => value !== undefined));
+    const [before] = await tx<Record<string, unknown>[]>`select name, description, visibility, license from projects where id = ${projectId}`;
+    // The activity records what actually changed, as { from, to }, so a visibility flip is never lost among unchanged fields.
+    const changed = Object.fromEntries(Object.entries(defined).flatMap(([key, value]) => (before?.[key] === value ? [] : [[key, { from: before?.[key] ?? null, to: value }]])));
     if (changes.visibility === 'public') {
       const [row] = await tx<{ mustStayPrivate: boolean }[]>`select must_stay_private from projects where id = ${projectId}`;
       if (row?.mustStayPrivate) throw forbidden('A fork of a private project must stay private');
     }
     if (Object.keys(defined).length > 0) {
       await tx`update projects set ${tx(defined)} where id = ${projectId}`;
-      await recordEvent(tx, { projectId, actorId: userId, kind: 'project_updated', subjectId: projectId, payload: defined });
+      if (Object.keys(changed).length > 0) await recordEvent(tx, { projectId, actorId: userId, kind: 'project_updated', subjectId: projectId, payload: changed });
     }
     return summarize(tx, projectId, role, userId);
   });
@@ -289,11 +292,16 @@ export async function setApprovalRules(sql: Sql, projectId: string, userId: stri
   });
 }
 
-export async function listEvents(sql: Sql, projectId: string, userId: string | null, after: number, limit: number, order: 'asc' | 'desc' = 'asc') {
+/**
+ * A page of the project's events, after `after` and, for paging back through a feed, before
+ * `before`. Each names its actor's handle, so people who have since left are still named.
+ */
+export async function listEvents(sql: Sql, projectId: string, userId: string | null, after: number, limit: number, order: 'asc' | 'desc' = 'asc', before?: number) {
   await projectAccess(sql, projectId, userId);
-  return sql<{ id: string; kind: string; actorId: string | null; subjectId: string | null; payload: unknown; createdAt: Date }[]>`
-    select id::text, kind, actor_id, subject_id, payload, created_at
-    from project_events where project_id = ${projectId} and id > ${after}
-    order by id ${order === 'desc' ? sql`desc` : sql`asc`} limit ${limit}
+  return sql<{ id: string; kind: string; actorId: string | null; actorHandle: string | null; subjectId: string | null; payload: unknown; createdAt: Date }[]>`
+    select e.id::text, e.kind, e.actor_id, a.handle as actor_handle, e.subject_id, e.payload, e.created_at
+    from project_events e left join profiles a on a.id = e.actor_id
+    where e.project_id = ${projectId} and e.id > ${after} ${before ? sql`and e.id < ${before}` : sql``}
+    order by e.id ${order === 'desc' ? sql`desc` : sql`asc`} limit ${limit}
   `;
 }

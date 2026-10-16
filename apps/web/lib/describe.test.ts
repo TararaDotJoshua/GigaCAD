@@ -1,7 +1,8 @@
 import type { ApprovalRules, PickRow } from '@gigacad/core';
 import { describe, expect, it } from 'vitest';
 import type { Commit, Member } from './api';
-import { blockerText, branchTone, collapseActivity, describeEvent, eligibleApprovers, groupTimeline, rowNote } from './describe';
+import { readFileSync } from 'node:fs';
+import { blockerText, branchTone, collapseActivity, describeEvent, eligibleApprovers, groupTimeline, lineText, releaseFileOrder, rowNote, type EventNames } from './describe';
 import { draftFromPicks, outcomeText, pickOutcome, picksFromDraft, samePicks } from './picks';
 
 const entry = (itemId: string, path: string, blob = 'b') => ({ itemId, path, blob });
@@ -99,8 +100,8 @@ describe('history', () => {
   it('writes events as sentences and skips noise', () => {
     const names = { handle: (id: string | null) => `@${id}`, branch: () => 'dev' };
     const base = { id: '1', actorId: 'alex', subjectId: 'b', createdAt: '' };
-    expect(describeEvent({ ...base, kind: 'release_created', payload: { number: 3 } }, names)).toBe('@alex released v3');
-    expect(describeEvent({ ...base, kind: 'branch_checked_out', payload: {} }, names)).toBe('@alex checked out dev');
+    expect(lineText(describeEvent({ ...base, kind: 'release_created', payload: { number: 3 } }, names))).toBe('@alex released v3');
+    expect(lineText(describeEvent({ ...base, kind: 'branch_checked_out', payload: {} }, names))).toBe('@alex checked out dev');
     expect(describeEvent({ ...base, kind: 'commit_created', payload: { kind: 'autosave' } }, names)).toBeUndefined();
   });
 
@@ -110,11 +111,17 @@ describe('history', () => {
 });
 
 describe('activity feed', () => {
-  const names = { handle: (id: string | null) => `@${id}`, branch: (id: string | null) => (id === 'b1' ? 'longer-arms' : undefined) };
-  const at = (kind: string, actorId: string, subjectId: string | null, payload: Record<string, unknown> | null = null) => ({
-    event: { id: `${kind}-${Math.random()}`, kind, actorId, subjectId, payload, createdAt: '2026-09-30T00:00:00Z' },
-    text: kind,
-  });
+  const names: EventNames = {
+    handle: (id, known) => (id === 'gone' ? (known ? `@${known}` : 'A former member') : `@${id}`),
+    branch: (id) => (id === 'b1' ? 'longer-arms' : undefined),
+    request: (id) => (id === 'rr' ? { number: 2, title: 'Stiffer arms' } : undefined),
+    release: (number) => (number === 4 ? 'Stiffer arms' : null),
+    tag: (id) => ({ t1: 'Printed', t2: 'Needs review' })[id],
+    href: { branch: (name) => `/b/${name}`, request: (number) => `/rr/${number}`, release: (number) => `/r/${number}`, commit: (id) => `/c/${id}` },
+  };
+  const event = (kind: string, actorId: string, subjectId: string | null, payload: Record<string, unknown> | null = null) => ({ id: `${kind}-${Math.random()}`, kind, actorId, subjectId, payload, createdAt: '2026-09-30T00:00:00Z' });
+  const at = (kind: string, actorId: string, subjectId: string | null, payload: Record<string, unknown> | null = null) => ({ event: event(kind, actorId, subjectId, payload), line: [kind] });
+  const say = (kind: string, payload: Record<string, unknown> | null = null, subjectId: string | null = 'rr', actorId = 'alex') => lineText(describeEvent(event(kind, actorId, subjectId, payload), names));
 
   it('folds one person’s run of branch work into a line, and keeps everything else', () => {
     const feed = collapseActivity(
@@ -130,7 +137,61 @@ describe('activity feed', () => {
       ],
       names,
     );
-    expect(feed.map((entry) => entry.text)).toEqual(['release_request_opened', '@alex committed 2 versions on longer-arms', '@sam worked on longer-arms', 'project_created']);
+    expect(feed.map((entry) => lineText(entry.line))).toEqual(['release_request_opened', '@alex committed 2 versions on longer-arms', '@sam worked on longer-arms', 'project_created']);
+  });
+
+  it('keeps a lone version’s label and link when it folds a run', () => {
+    const [line] = collapseActivity([at('branch_checked_in', 'alex', 'b1'), at('commit_created', 'alex', 'b1', { kind: 'version', versionLabel: 'rev B', commitId: 'c1' })], names);
+    expect(lineText(line!.line)).toBe('@alex committed version rev B on longer-arms');
+    expect(line!.line).toContainEqual({ text: 'version rev B', href: '/c/c1' });
+  });
+
+  it('folds a batch of uploads into one folder, and drops repeats', () => {
+    const feed = collapseActivity(
+      [
+        ...['a', 'b', 'c'].map((name) => at('directory_entry_created', 'alex', name, { kind: 'file', path: `Docs/${name}.pdf` })),
+        at('directory_entry_created', 'alex', 'd', { kind: 'file', path: 'top.pdf' }),
+        at('release_request_approved', 'sam', 'rr'),
+        at('release_request_approved', 'sam', 'rr'),
+      ],
+      names,
+    );
+    expect(feed.map((entry) => lineText(entry.line))).toEqual(['@alex added 3 files to Docs', 'directory_entry_created', 'release_request_approved']);
+  });
+
+  it('names requests, releases, lock holders and people who left, with links', () => {
+    expect(say('release_request_approved')).toBe('@alex approved #2 Stiffer arms');
+    expect(describeEvent(event('release_request_closed', 'alex', 'rr'), names)).toContainEqual({ text: '#2 Stiffer arms', href: '/rr/2' });
+    expect(say('release_created', { number: 4 })).toBe('@alex released v4: Stiffer arms');
+    expect(say('branch_lock_force_released', { previousHolder: 'gone', previousHolderHandle: 'bea' }, 'b1')).toBe('@alex force-released @bea’s lock on longer-arms');
+    expect(lineText(describeEvent({ ...event('release_request_opened', 'gone', 'rr', { number: 2 }), actorHandle: 'bea' }, names))).toBe('@bea opened release request #2 Stiffer arms');
+  });
+
+  it('says what changed in the project, rules, files and tags', () => {
+    expect(say('project_updated', { visibility: { from: 'private', to: 'public' } })).toBe('@alex made the project public');
+    expect(say('project_updated', { name: { from: 'Arm', to: 'Robot arm' }, description: { from: '', to: 'x' } })).toBe('@alex renamed the project from Arm to Robot arm and changed the description');
+    expect(say('approval_rules_changed', { requiredCount: 2, approverRoles: ['maintainer'], approverUserIds: [], allowSelfApproval: true })).toBe(
+      '@alex changed the approval rules to 2 approvals from maintainers, requester can approve',
+    );
+    expect(say('directory_entry_moved', { from: 'Docs/a.pdf', to: 'Docs/b.pdf' })).toBe('@alex renamed Docs/a.pdf to Docs/b.pdf');
+    expect(say('directory_entry_moved', { from: 'Docs/a.pdf', to: 'a.pdf' })).toBe('@alex moved Docs/a.pdf to a.pdf');
+    expect(say('file_tags_changed', { tagIds: ['t1', 't2'] })).toBe('@alex tagged a file Printed, Needs review');
+    expect(say('release_request_approval_withdrawn')).toBe('@alex withdrew their approval of #2 Stiffer arms');
+  });
+
+  it('has a sentence for every event the API records', () => {
+    const source = readFileSync(new URL('../../api/src/services/events.ts', import.meta.url), 'utf8');
+    const kinds = [...source.slice(source.indexOf('export type EventKind'), source.indexOf(';', source.indexOf('export type EventKind'))).matchAll(/'([a-z_]+)'/g)].map((match) => match[1]!);
+    expect(kinds.length).toBeGreaterThan(20);
+    const payload = { kind: 'version', number: 1, name: 'n', path: 'p', from: 'a', to: 'b', handle: 'h', role: 'viewer', status: 'passed', revision: 2, requiredCount: 1 };
+    for (const kind of kinds) expect(say(kind, payload), kind).toMatch(/^@alex /);
+  });
+});
+
+describe('latest release files', () => {
+  it('lists the top-level assembly first', () => {
+    const paths = ['parts/Wheel.SLDPRT', 'drawings/Chassis.SLDDRW', 'README.md', 'Rover.SLDASM'].map((path) => ({ path }));
+    expect([...paths].sort(releaseFileOrder).map((file) => file.path)).toEqual(['Rover.SLDASM', 'README.md', 'drawings/Chassis.SLDDRW', 'parts/Wheel.SLDPRT']);
   });
 });
 

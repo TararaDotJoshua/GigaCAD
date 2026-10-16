@@ -3,6 +3,8 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useLayoutEffect, useRef, useState, useTransition, type ReactNode } from 'react';
 import { moveEntryTo, removeEntry, renameEntry } from '../../app/(product)/actions';
+import { focusAfterRefresh } from '../../lib/focus';
+import { safeAction } from '../../lib/safe-action';
 
 /** A root file or folder the menu acts on, read from its row's `data-entry-*` attributes. */
 interface Target {
@@ -88,12 +90,28 @@ export function EntryMenu({ projectId, folders, children }: { projectId: string;
     };
   }, [target]);
 
-  const run = (action: () => Promise<{ error?: string }>) =>
+  /**
+   * Runs a menu action. The refresh replaces the row (a rename changes its key) or removes it,
+   * so focus then goes to the entry's new row, or the row after it when it left this folder.
+   */
+  const run = (action: () => Promise<{ error?: string }>, stays: boolean) => {
+    if (!target) return;
+    const row = document.querySelector(`tr[data-entry-id="${target.id}"]`);
+    const neighbor = row?.nextElementSibling ?? row?.previousElementSibling;
+    const nextId = stays ? target.id : (neighbor instanceof HTMLElement ? neighbor.dataset.entryId : undefined);
     start(async () => {
-      const result = await action();
-      if (result.error) setError(result.error);
-      else close();
+      const result = await safeAction(action);
+      if (result.error) return setError(result.error);
+      close(false);
+      focusAfterRefresh(
+        () =>
+          (nextId && document.querySelector<HTMLElement>(`tr[data-entry-id="${nextId}"] a`)) ||
+          (neighbor instanceof HTMLElement && neighbor.isConnected ? neighbor.querySelector<HTMLElement>('a') : null) ||
+          document.querySelector<HTMLElement>('#main h1'),
+        row ?? null,
+      );
     });
+  };
 
   // Escape steps back from rename or move to the menu, then closes it, wherever focus is.
   useEffect(() => {
@@ -208,7 +226,7 @@ export function EntryMenu({ projectId, folders, children }: { projectId: string;
               <p className="muted entry-menu-note">
                 {target.kind === 'folder' ? 'Everything in this folder is deleted too.' : 'Every revision of this file is deleted.'} This can’t be undone. Branches and releases keep their own copies.
               </p>
-              <button type="button" role="menuitem" className="is-danger" disabled={pending} onClick={() => run(() => removeEntry(projectId, target.id))}>
+              <button type="button" role="menuitem" className="is-danger" disabled={pending} onClick={() => run(() => removeEntry(projectId, target.id), false)}>
                 {pending ? 'Deleting…' : 'Delete permanently'}
               </button>
               <button type="button" role="menuitem" onClick={() => setMode('menu')}>
@@ -223,7 +241,7 @@ export function EntryMenu({ projectId, folders, children }: { projectId: string;
                 event.preventDefault();
                 const name = String(new FormData(event.currentTarget).get('name') ?? '').trim();
                 if (!name || name === target.name) return close();
-                run(() => renameEntry(projectId, target.id, name));
+                run(() => renameEntry(projectId, target.id, name), true);
               }}
             >
               <label className="field">
@@ -263,7 +281,7 @@ export function EntryMenu({ projectId, folders, children }: { projectId: string;
                     className="mono"
                     disabled={pending || folder.path === currentParent}
                     aria-current={folder.path === currentParent ? 'true' : undefined}
-                    onClick={() => run(() => moveEntryTo(projectId, target.id, folder.id))}
+                    onClick={() => run(() => moveEntryTo(projectId, target.id, folder.id), false)}
                   >
                     {folder.path || 'Project root'}
                   </button>

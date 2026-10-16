@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
 import { idParams, parse, requireCaller, sha256Schema, viewerId } from '../http.js';
@@ -15,16 +15,23 @@ import {
   updateCandidateFiles,
   withdrawApproval,
 } from '../services/releaseRequests.js';
+import { notifyReleaseRequest, type RequestNotice } from '../services/notices.js';
 
 const picks = z.object({
   actions: z.record(z.uuid(), z.enum(['take_branch', 'keep_main'])).optional(),
   replacements: z.array(z.object({ branchItemId: z.uuid(), mainItemId: z.uuid() })).max(10_000).optional(),
 });
 
-export function releaseRequestRoutes(app: FastifyInstance, { sql }: AppDeps): void {
+export function releaseRequestRoutes(app: FastifyInstance, { sql, mailer, webOrigin }: AppDeps): void {
+  /** Emails who the step concerns, after it commits; a mail failure is logged, never returned. */
+  const notify = async <T>(request: FastifyRequest, kind: RequestNotice, requestId: string, result: T): Promise<T> => {
+    if (mailer) await notifyReleaseRequest(sql, mailer, webOrigin, { kind, requestId, actorId: requireCaller(request).userId }).catch((error: unknown) => request.log.warn(error, 'release request notice not sent'));
+    return result;
+  };
+
   app.post('/v1/branches/:id/release-requests', async (request, reply) => {
     const { id } = parse(idParams, request.params);
-    const input = parse(z.object({ title: z.string().min(1).max(200), body: z.string().max(20_000).optional() }), request.body);
+    const input = parse(z.object({ title: z.string().trim().min(1).max(200), body: z.string().max(20_000).optional() }), request.body);
     reply.status(201);
     return openReleaseRequest(sql, id, requireCaller(request).userId, input);
   });
@@ -46,7 +53,7 @@ export function releaseRequestRoutes(app: FastifyInstance, { sql }: AppDeps): vo
 
   app.post('/v1/release-requests/:id/candidate', async (request) => {
     const { id } = parse(idParams, request.params);
-    return generateCandidate(sql, id, requireCaller(request).userId);
+    return notify(request, 'candidate', id, await generateCandidate(sql, id, requireCaller(request).userId));
   });
 
   app.put('/v1/release-requests/:id/candidate/files', async (request) => {
@@ -78,7 +85,7 @@ export function releaseRequestRoutes(app: FastifyInstance, { sql }: AppDeps): vo
 
   app.post('/v1/release-requests/:id/approvals', async (request) => {
     const { id } = parse(idParams, request.params);
-    return approve(sql, id, requireCaller(request).userId);
+    return notify(request, 'approved', id, await approve(sql, id, requireCaller(request).userId));
   });
 
   app.delete('/v1/release-requests/:id/approvals', async (request) => {
@@ -90,11 +97,11 @@ export function releaseRequestRoutes(app: FastifyInstance, { sql }: AppDeps): vo
     const { id } = parse(idParams, request.params);
     const input = parse(z.object({ notes: z.string().max(20_000).optional() }), request.body ?? {});
     reply.status(201);
-    return release(sql, id, requireCaller(request).userId, input);
+    return notify(request, 'released', id, await release(sql, id, requireCaller(request).userId, input));
   });
 
   app.post('/v1/release-requests/:id/close', async (request) => {
     const { id } = parse(idParams, request.params);
-    return closeReleaseRequest(sql, id, requireCaller(request).userId);
+    return notify(request, 'closed', id, await closeReleaseRequest(sql, id, requireCaller(request).userId));
   });
 }

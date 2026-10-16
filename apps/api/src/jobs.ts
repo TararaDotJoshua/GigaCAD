@@ -58,6 +58,7 @@ export async function purgeDeletedProjects(sql: Sql, options: JobOptions = {}): 
         set target_release_id = null, candidate_manifest_id = null, rebuild_manifest_id = null, released_release_id = null
         where project_id = ${id}
       `;
+      await tx`delete from release_exports where project_id = ${id}`;
       await tx`delete from releases where project_id = ${id}`;
       await tx`delete from release_requests where project_id = ${id}`;
       await tx`delete from commits where branch_id in (select id from branches where project_id = ${id})`;
@@ -91,6 +92,8 @@ export async function unlinkUnusedBlobs(sql: Sql, options: JobOptions = {}): Pro
         and not exists (select 1 from root_file_revisions rv where rv.project_id = pb.project_id and rv.blob_sha256 = pb.sha256)
         -- Exports stay while their source file does; unlinking the source removes the export row.
         and not exists (select 1 from file_exports x where x.project_id = pb.project_id and x.blob_sha256 = pb.sha256)
+        -- Releases keep the exports they were made with.
+        and not exists (select 1 from release_exports x where x.project_id = pb.project_id and x.blob_sha256 = pb.sha256)
       limit ${batch}
     ),
     refs as (

@@ -103,9 +103,9 @@ describe('SolidWorks exports', () => {
     await api.put(`/v1/projects/${projectId}/exports`, { source: sha256(part), format: 'stl', blob: stlHash });
     const opened = await api.post(`/v1/branches/${branchId}/release-requests`, { title: 'v1' });
     const requestId = opened.body.releaseRequest.id;
-    await api.post(`/v1/release-requests/${requestId}/candidate`);
-    await api.post(`/v1/release-requests/${requestId}/approvals`);
-    expect((await api.post(`/v1/release-requests/${requestId}/release`)).status).toBe(201);
+    const candidateManifestId = (await api.post(`/v1/release-requests/${requestId}/candidate`)).body.candidate.manifestId;
+    await api.post(`/v1/release-requests/${requestId}/approvals`, { candidateManifestId });
+    expect((await api.post(`/v1/release-requests/${requestId}/release`, { candidateManifestId })).status).toBe(201);
 
     const fork = await asViewer.post(`/v1/projects/${projectId}/forks`, { slug: `fork-${randomUUID().slice(0, 8)}`, name: 'Fork' });
     expect(fork.status).toBe(201);

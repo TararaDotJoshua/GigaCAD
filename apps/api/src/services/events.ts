@@ -14,6 +14,8 @@ export type EventKind =
   | 'branch_lock_force_released'
   | 'branch_archived'
   | 'commit_created'
+  | 'export_attached'
+  | 'export_replaced'
   | 'release_request_opened'
   | 'release_request_picks_changed'
   | 'release_request_candidate_generated'

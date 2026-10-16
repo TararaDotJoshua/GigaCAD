@@ -30,8 +30,11 @@ export function blobRoutes(app: FastifyInstance, { sql, storage }: AppDeps): voi
 
   app.post('/v1/projects/:id/exports/lookup', async (request) => {
     const { id } = parse(idParams, request.params);
-    const { sha256s } = parse(z.object({ sha256s: z.array(sha256Schema).max(1000) }), request.body);
-    return { exports: await listFileExports(sql, id, viewerId(request), sha256s) };
+    const { sha256s, releaseNumber } = parse(
+      z.object({ sha256s: z.array(sha256Schema).max(1000), releaseNumber: z.number().int().positive().optional() }),
+      request.body,
+    );
+    return { exports: await listFileExports(sql, id, viewerId(request), sha256s, releaseNumber) };
   });
 
   app.post('/v1/projects/:id/thumbnails', async (request) => {

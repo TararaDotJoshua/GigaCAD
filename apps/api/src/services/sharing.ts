@@ -5,6 +5,7 @@ import type { BlobStorage } from '../storage.js';
 import { projectAccess } from './access.js';
 import { requireStorageFor } from './billing.js';
 import { recordEvent } from './events.js';
+import { snapshotReleaseExports } from './exports.js';
 import { insertManifest, loadManifest } from './manifests.js';
 import { avatarUrl, contributionDays, recentActivity, visibleProject } from './profiles.js';
 import { summarize, type ProjectSummary } from './projects.js';
@@ -138,10 +139,9 @@ export async function forkProject(
   if (!release) throw input.releaseNumber ? notFound('Release') : unprocessable('nothing_to_fork', 'This project has no releases to fork yet');
   const [owner] = await sql<{ handle: string }[]>`select handle from profiles where id = ${source.ownerId}`;
   const entries = await loadManifest(sql, release.manifestId);
-  // STEP and STL exports of the released files come along, so the fork can be downloaded and previewed the same way.
+  // The STEP and STL exports the release was made with come along, so the fork can be downloaded and previewed the same way.
   const exports = await sql<{ sourceSha256: string; format: string; blobSha256: string }[]>`
-    select source_sha256, format, blob_sha256 from file_exports
-    where project_id = ${sourceId} and source_sha256 = any(${[...new Set(entries.map((entry) => entry.blob))]}::text[])
+    select source_sha256, format, blob_sha256 from release_exports where release_id = ${release.id}
   `;
   const blobs = await sql<{ sha256: string; size: number }[]>`
     select sha256, size::float8 as size from blobs
@@ -178,6 +178,7 @@ export async function forkProject(
       values (${projectId}, 1, ${manifestId}, ${`Forked from @${owner!.handle}/${source.slug} v${release.number}.`}, ${userId})
       returning id
     `;
+    if (exports.length) await snapshotReleaseExports(tx, projectId, created!.id, manifestId);
     await recordEvent(tx, { projectId, actorId: userId, kind: 'project_created', subjectId: projectId, payload: { forkedFrom: release.id } });
     await recordEvent(tx, { projectId, actorId: userId, kind: 'release_created', subjectId: created!.id, payload: { number: 1 } });
     return summarize(tx, projectId, 'owner', userId);

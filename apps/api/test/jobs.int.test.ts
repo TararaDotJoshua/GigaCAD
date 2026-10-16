@@ -114,9 +114,9 @@ describe('purging deleted projects', () => {
     await commitVersion(harness, api, projectId, branchId, { 'Robot.SLDASM': content });
     const opened = await api.post(`/v1/branches/${branchId}/release-requests`, { title: 'v1' });
     const requestId = opened.body.releaseRequest.id;
-    await api.post(`/v1/release-requests/${requestId}/candidate`);
-    await api.post(`/v1/release-requests/${requestId}/approvals`);
-    expect((await api.post(`/v1/release-requests/${requestId}/release`)).status).toBe(201);
+    const candidateManifestId = (await api.post(`/v1/release-requests/${requestId}/candidate`)).body.candidate.manifestId;
+    await api.post(`/v1/release-requests/${requestId}/approvals`, { candidateManifestId });
+    expect((await api.post(`/v1/release-requests/${requestId}/release`, { candidateManifestId })).status).toBe(201);
 
     // A project deleted only yesterday must survive.
     const recent = await newProject();

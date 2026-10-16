@@ -22,7 +22,7 @@ export default async function ProjectSettings({ params }: { params: Promise<Proj
 
       <section className="section">
         <h2>General</h2>
-        <ActionForm action={updateProject.bind(null, project.id)} submitLabel="Save project">
+        <ActionForm action={updateProject.bind(null, project.id)} submitLabel="Save project" discardable={canManage}>
           <label className="field">
             <span>Name</span>
             <input name="name" defaultValue={project.name} required maxLength={100} disabled={!canManage} />
@@ -81,7 +81,7 @@ export default async function ProjectSettings({ params }: { params: Promise<Proj
           </table>
         </div>
         {canManage && (
-          <ActionForm action={setMember.bind(null, project.id)} submitLabel="Add member" pendingLabel="Adding…" className="form form-inline">
+          <ActionForm action={setMember.bind(null, project.id)} submitLabel="Add member" pendingLabel="Adding…" className="form form-inline" resetOnSuccess>
             <AddMemberFields canAddMaintainers={isOwner} />
           </ActionForm>
         )}
@@ -89,7 +89,7 @@ export default async function ProjectSettings({ params }: { params: Promise<Proj
 
       <section className="section">
         <h2>Approval rules</h2>
-        <ActionForm action={setApprovalRules.bind(null, project.id)} submitLabel="Save approval rules">
+        <ActionForm action={setApprovalRules.bind(null, project.id)} submitLabel="Save approval rules" discardable={canManage}>
           <label className="field">
             <span>Required approvals</span>
             <input type="number" name="requiredCount" min="0" max="20" defaultValue={rules.requiredCount} disabled={!canManage} />

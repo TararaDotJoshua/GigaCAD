@@ -1,11 +1,11 @@
 'use server';
 
-import { isPlanId, type ApprovalRules, type Picks, type ProjectRole } from '@gigacad/core';
+import { HANDLE_PATTERN, isPlanId, type ApprovalRules, type Picks, type ProjectRole } from '@gigacad/core';
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError, apiRequest, type Project, type ReleaseRequestDetail } from '../../lib/api';
 import { dashboardPath } from '../../lib/hosts';
-import { messageFor } from '../../lib/messages';
+import { fieldFor, messageFor } from '../../lib/messages';
 import { projectPath, releasePath, releaseRequestPath, treePath } from '../../lib/paths';
 import { safeReturnPath } from '../../lib/return-path';
 import { requireAccessToken } from '../../lib/session';
@@ -18,6 +18,8 @@ import { requireAccessToken } from '../../lib/session';
 export interface ActionState {
   readonly error?: string;
   readonly message?: string;
+  /** The form field the error is about, which the form focuses. */
+  readonly field?: string;
   /** Set when an upload was refused because the project owner's storage is full. */
   readonly storageFull?: { readonly usedBytes: number; readonly quotaBytes: number };
 }
@@ -42,16 +44,34 @@ function id(value: string): string {
 
 const json = (method: string, body?: unknown): RequestInit => ({ method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
 
-async function mutate(run: (token: string) => Promise<unknown>, message?: string): Promise<ActionState> {
+/** Errors about what was typed, which send focus back to the field. */
+const FIELD_ERRORS = new Set(['invalid_request', 'already_exists', 'branch_exists', 'name_taken', 'invalid_name', 'reserved_name', 'tag_exists', 'invalid_tag', 'not_found']);
+
+/** An API error as form state. `field` is the input it's about, if it's about what was typed. */
+function failure(error: unknown, field?: string): ActionState {
+  const code = error instanceof ApiError ? error.code : '';
+  return { error: messageFor(error), storageFull: storageFull(error), ...(field && FIELD_ERRORS.has(code) ? { field: fieldFor(error) ?? field } : {}) };
+}
+
+async function mutate(run: (token: string) => Promise<unknown>, message?: string, field?: string): Promise<ActionState> {
   const token = await requireAccessToken();
   try {
     await run(token);
   } catch (error) {
-    return { error: messageFor(error), storageFull: storageFull(error) };
+    return failure(error, field);
   }
   refresh();
   return message ? { message } : {};
 }
+
+/** Creating or forking a project into an address its owner already uses. */
+function projectFailure(error: unknown): ActionState {
+  if (error instanceof ApiError && error.code === 'already_exists') return { error: 'You already have a project at that address. Choose another.', field: 'slug' };
+  return failure(error, 'slug');
+}
+
+/** A required field left blank (or only spaces), caught before it reaches the API. */
+const blank = (field: string, error: string): ActionState => ({ error, field });
 
 const text = (form: FormData, name: string) => {
   const value = form.get(name);
@@ -104,6 +124,7 @@ export async function saveProfile(_state: ActionState, form: FormData): Promise<
         }),
       ),
     'Saved.',
+    'handle',
   );
 }
 
@@ -129,6 +150,7 @@ export async function signOutDevice(tokenId: string): Promise<ActionState> {
 // Projects
 
 export async function createProject(_state: ActionState, form: FormData): Promise<ActionState> {
+  if (!text(form, 'name')) return blank('name', 'Enter a name.');
   const token = await requireAccessToken();
   let project: Project;
   try {
@@ -143,12 +165,15 @@ export async function createProject(_state: ActionState, form: FormData): Promis
       }),
     );
   } catch (error) {
-    return { error: messageFor(error) };
+    return projectFailure(error);
   }
+  // The sidebar lists your projects, and the redirect alone wouldn't redraw it.
+  refresh();
   redirect(projectPath(project.ownerHandle, project.slug));
 }
 
 export async function updateProject(projectId: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  if (!text(form, 'name')) return blank('name', 'Enter a name.');
   return mutate(
     (token) =>
       apiRequest(
@@ -162,13 +187,24 @@ export async function updateProject(projectId: string, _state: ActionState, form
         }),
       ),
     'Saved.',
+    'name',
   );
 }
 
 export async function setMember(projectId: string, _state: ActionState, form: FormData): Promise<ActionState> {
   const handle = text(form, 'handle').replace(/^@/, '').toLowerCase();
   const role = text(form, 'role') as ProjectRole;
-  return mutate((token) => apiRequest(token, `/v1/projects/${id(projectId)}/members`, json('PUT', { handle, role })), `Added @${handle}.`);
+  if (!handle) return blank('handle', 'Enter their handle.');
+  const nobody = { error: `No one has the handle @${handle}. Check the spelling, or ask them to sign up first.`, field: 'handle' };
+  if (!HANDLE_PATTERN.test(handle)) return nobody;
+  const token = await requireAccessToken();
+  try {
+    await apiRequest(token, `/v1/projects/${id(projectId)}/members`, json('PUT', { handle, role }));
+  } catch (error) {
+    return error instanceof ApiError && error.code === 'not_found' ? nobody : failure(error, 'handle');
+  }
+  refresh();
+  return { message: `Added @${handle}.` };
 }
 
 /** Changes a member's role from the members table. */
@@ -205,13 +241,15 @@ export async function setApprovalRules(projectId: string, _state: ActionState, f
 }
 
 export async function deleteProject(projectId: string, slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
-  if (text(form, 'confirm') !== slug) return { error: `Type ${slug} to confirm.` };
+  if (text(form, 'confirm') !== slug) return { error: `Type ${slug} to confirm.`, field: 'confirm' };
   const token = await requireAccessToken();
   try {
     await apiRequest(token, `/v1/projects/${id(projectId)}`, json('DELETE'));
   } catch (error) {
     return { error: messageFor(error) };
   }
+  // Drops it from the sidebar, and from the page Back would return to.
+  refresh();
   redirect(`${dashboardPath()}?deleted=${encodeURIComponent(slug)}`);
 }
 
@@ -223,6 +261,7 @@ export async function restoreProject(projectId: string): Promise<ActionState> {
   } catch (error) {
     return { error: messageFor(error) };
   }
+  refresh();
   redirect(projectPath(project.ownerHandle, project.slug));
 }
 
@@ -251,6 +290,7 @@ export async function setStar(projectId: string, starred: boolean): Promise<Acti
 }
 
 export async function forkProject(sourceId: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  if (!text(form, 'name')) return blank('name', 'Enter a name.');
   const token = await requireAccessToken();
   const release = Number(text(form, 'releaseNumber'));
   let project: Project;
@@ -266,20 +306,24 @@ export async function forkProject(sourceId: string, _state: ActionState, form: F
       }),
     );
   } catch (error) {
-    return { error: messageFor(error) };
+    return projectFailure(error);
   }
+  refresh();
   redirect(projectPath(project.ownerHandle, project.slug));
 }
 
 export async function createBranch(projectId: string, owner: string, slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
   const name = text(form, 'name');
+  if (!name) return blank('name', 'Enter a name.');
   const from = Number(text(form, 'fromRelease'));
   const token = await requireAccessToken();
   try {
     await apiRequest(token, `/v1/projects/${id(projectId)}/branches`, json('POST', { name, ...(from > 0 ? { fromRelease: from } : {}) }));
   } catch (error) {
-    return { error: messageFor(error) };
+    return failure(error, 'name');
   }
+  // The sidebar lists open branches; redirecting alone leaves it without the new one.
+  refresh();
   redirect(projectPath(owner, slug, 'branches', name));
 }
 
@@ -292,6 +336,7 @@ export async function archiveBranch(branchId: string): Promise<ActionState> {
 }
 
 export async function openReleaseRequest(branchId: string, owner: string, slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  if (!text(form, 'title')) return blank('title', 'Give the request a title.');
   const token = await requireAccessToken();
   let detail: ReleaseRequestDetail;
   try {
@@ -301,13 +346,14 @@ export async function openReleaseRequest(branchId: string, owner: string, slug: 
       json('POST', { title: text(form, 'title'), body: text(form, 'body') || undefined }),
     );
   } catch (error) {
-    return { error: messageFor(error) };
+    return failure(error, 'title');
   }
   // Build the first candidate from the default picks right away, so a request that needs
   // no changes to its picks is one step from release. A pick error just leaves it unbuilt.
   if (detail.preview.ok) {
     await apiRequest(token, `/v1/release-requests/${id(detail.releaseRequest.id)}/candidate`, json('POST', {})).catch(() => undefined);
   }
+  refresh();
   redirect(releaseRequestPath(owner, slug, detail.releaseRequest.number));
 }
 
@@ -367,6 +413,7 @@ export async function releaseCandidate(requestId: string, owner: string, slug: s
   } catch (error) {
     return { error: messageFor(error) };
   }
+  refresh();
   redirect(releasePath(owner, slug, number));
 }
 
@@ -447,23 +494,28 @@ export async function replaceRootFile(projectId: string, entryId: string, sha256
 
 export async function createFolder(projectId: string, parentId: string | null, _state: ActionState, form: FormData): Promise<ActionState> {
   const name = text(form, 'name');
+  if (!name) return blank('name', 'Enter a name.');
   return mutate(
     (token) => apiRequest(token, `/v1/projects/${id(projectId)}/directory/folders`, json('POST', { parentId: parent(parentId), name })),
     `Created ${name}.`,
+    'name',
   );
 }
 
-/** Renames and moves a root entry in one step. An empty destination is the project root. */
+/**
+ * Renames and moves a root entry in one step. An empty destination is the project root.
+ * Only fields that differ from the page's `was*` values are sent, so a rename never moves
+ * the entry back to a folder the form showed before someone else moved it.
+ */
 export async function moveEntry(projectId: string, entryId: string, _state: ActionState, form: FormData): Promise<ActionState> {
-  return mutate(
-    (token) =>
-      apiRequest(
-        token,
-        `/v1/projects/${id(projectId)}/directory/entries/${id(entryId)}`,
-        json('PATCH', { name: text(form, 'name'), parentId: parent(text(form, 'parentId')) }),
-      ),
-    'Saved.',
-  );
+  const name = text(form, 'name');
+  if (!name) return blank('name', 'Enter a name.');
+  const change = {
+    ...(form.has('wasName') && name === text(form, 'wasName') ? {} : { name }),
+    ...(form.has('wasParentId') && text(form, 'parentId') === text(form, 'wasParentId') ? {} : { parentId: parent(text(form, 'parentId')) }),
+  };
+  if (Object.keys(change).length === 0) return { message: 'Nothing to change.' };
+  return mutate((token) => apiRequest(token, `/v1/projects/${id(projectId)}/directory/entries/${id(entryId)}`, json('PATCH', change)), 'Saved.', 'name');
 }
 
 /** From the directory's right-click menu: one change at a time, staying in the folder. */
@@ -491,11 +543,14 @@ export async function deleteEntry(projectId: string, entryId: string, owner: str
 
 export async function createTag(projectId: string, _state: ActionState, form: FormData): Promise<ActionState> {
   const name = text(form, 'name');
-  return mutate((token) => apiRequest(token, `/v1/projects/${id(projectId)}/tags`, json('POST', { name })), `Added ${name}.`);
+  if (!name) return blank('name', 'Enter a tag name.');
+  return mutate((token) => apiRequest(token, `/v1/projects/${id(projectId)}/tags`, json('POST', { name })), `Added ${name}.`, 'name');
 }
 
 export async function renameTag(projectId: string, tagId: string, _state: ActionState, form: FormData): Promise<ActionState> {
-  return mutate((token) => apiRequest(token, `/v1/projects/${id(projectId)}/tags/${id(tagId)}`, json('PATCH', { name: text(form, 'name') })), 'Renamed.');
+  const name = text(form, 'name');
+  if (!name) return blank('name', 'Enter a tag name.');
+  return mutate((token) => apiRequest(token, `/v1/projects/${id(projectId)}/tags/${id(tagId)}`, json('PATCH', { name })), 'Renamed.', 'name');
 }
 
 export async function deleteTag(projectId: string, tagId: string): Promise<ActionState> {

@@ -53,9 +53,10 @@ export default async function ForkPage({ params }: { params: Promise<ProjectPara
             </label>
             <label className="field">
               <span>Visibility</span>
-              <select name="visibility" defaultValue={project.visibility} disabled={mustStayPrivate}>
-                <option value="public">Public: anyone can see and fork it</option>
+              {/* Private unless you choose otherwise, even when forking a public project. */}
+              <select name="visibility" defaultValue="private" disabled={mustStayPrivate}>
                 <option value="private">Private: only people you add</option>
+                <option value="public">Public: anyone can see and fork it</option>
               </select>
               {mustStayPrivate && <input type="hidden" name="visibility" value="private" />}
               {mustStayPrivate && <span className="field-hint">A fork of a private project stays private.</span>}

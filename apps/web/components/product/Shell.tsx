@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import type { Project } from '../../lib/api';
 import { dashboardPath } from '../../lib/hosts';
 import { getBilling, getBranches, getMyProjectsIfSignedIn, getReleaseRequests, getViewer } from '../../lib/product';
+import { Announcer } from './Announcer';
 import { SidebarNav, type NavProject } from './SidebarNav';
 import { relative } from './RelativeTime';
 import { STORAGE_BANNER_COOKIE } from '../../lib/storage-banner';
@@ -48,6 +49,7 @@ export async function Shell({ project, children }: { project?: Project; children
       <main id="main" className="shell-pane">
         {storage && <StorageBanner usedBytes={storage.usedBytes} quotaBytes={storage.quotaBytes} />}
         {children}
+        <Announcer />
       </main>
     </div>
   );

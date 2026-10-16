@@ -1,6 +1,7 @@
 import { formatBytes } from '@gigacad/core';
+import Form from 'next/form';
 import Link from 'next/link';
-import { createFolder, createTag, deleteTag, renameTag } from '../../app/(product)/actions';
+import { createTag, deleteTag, renameTag } from '../../app/(product)/actions';
 import type { DirectoryFile, DirectoryItem, DirectoryListing, FilePage, Project, ProjectTag } from '../../lib/api';
 import { BRANCH_STATUS_LABEL, branchTone } from '../../lib/describe';
 import { exportFilename, isSolidWorks, previewFormat } from '../../lib/preview';
@@ -16,6 +17,7 @@ import { EmptyState } from './EmptyState';
 import { FavoriteButton } from './FavoriteButton';
 import { FileGlyph } from './FileGlyph';
 import { GettingStarted } from './GettingStarted';
+import { NewFolderMenu } from './NewFolderMenu';
 import { PreviewButton } from './PreviewButton';
 import { ProjectReadme } from './ProjectReadme';
 import { RelativeTime } from './RelativeTime';
@@ -131,7 +133,7 @@ export async function ProjectDirectory({
     <div className="directory">
       {!embedded && (
       <div className="toolbar directory-toolbar">
-        <form action={projectPath(owner, slug)} className="app-search explore-search" role="search">
+        <Form action={projectPath(owner, slug)} className="app-search explore-search" role="search">
           <SearchIcon className="icon" />
           <label className="sr-only" htmlFor="directory-q">
             Search files in this project
@@ -140,7 +142,7 @@ export async function ProjectDirectory({
           {scope && <input type="hidden" name="under" value={scope} />}
           {tagIds.length > 0 && <input type="hidden" name="tags" value={tagIds.join(',')} />}
           {view && <input type="hidden" name="view" value={view} />}
-        </form>
+        </Form>
         <nav className="segmented interval-toggle" aria-label="Files view">
           {tab(null, 'All files')}
           {tab('recent', 'Recent')}
@@ -273,20 +275,7 @@ function FolderBar({ project, listing, owner: storageOwner }: { project: Project
 
       {location.writable && (
         <div className="folder-actions">
-          <details className="menu">
-            <summary className="btn btn-secondary btn-small">
-              <FolderIcon className="icon" />
-              New folder
-            </summary>
-            <div className="menu-list menu-form">
-              <ActionForm action={createFolder.bind(null, project.id, location.folderId)} submitLabel="Create folder" submitClassName="btn btn-primary btn-small">
-                <label className="field">
-                  <span>Folder name</span>
-                  <input name="name" required maxLength={255} autoComplete="off" />
-                </label>
-              </ActionForm>
-            </div>
-          </details>
+          <NewFolderMenu projectId={project.id} folderId={location.folderId} />
           <UploadFiles projectId={project.id} parentId={location.folderId} existing={existing} owner={storageOwner} />
         </div>
       )}
@@ -592,7 +581,7 @@ export function TagsCard({ project, tags }: { project: Project; tags: ProjectTag
       {canManage && (
         <details className="manage-tags">
           <summary>Manage tags</summary>
-          <ActionForm action={createTag.bind(null, project.id)} submitLabel="Add tag" submitClassName="btn btn-secondary btn-small" className="form form-inline">
+          <ActionForm action={createTag.bind(null, project.id)} submitLabel="Add tag" submitClassName="btn btn-secondary btn-small" className="form form-inline" resetOnSuccess>
             <label className="field">
               <span className="sr-only">New tag</span>
               <input name="name" required maxLength={50} placeholder="New tag" autoComplete="off" />

@@ -538,6 +538,12 @@
   cursor: not-allowed;
 }
 
+/* A button whose action is running keeps focus, so it's aria-disabled rather than disabled. */
+.shell .btn[aria-disabled="true"] {
+  opacity: 0.7;
+  cursor: progress;
+}
+
 .shell .btn-primary {
   background: var(--forest);
   color: var(--paper);
@@ -2723,6 +2729,31 @@
   background: #fff;
   box-shadow: 0 12px 40px -12px rgb(10 41 34 / 0.35);
   text-align: left;
+}
+
+.shell .action-toast-region {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  z-index: 31;
+  max-width: calc(100vw - 32px);
+  transform: translateX(-50%);
+}
+
+.shell .action-toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 16px;
+  border-radius: var(--r-md);
+  background: var(--forest);
+  color: var(--paper);
+  font-weight: 500;
+  box-shadow: 0 12px 40px -12px rgb(10 41 34 / 0.35);
+}
+
+.shell .action-toast .icon-button {
+  color: inherit;
 }
 
 .shell .upload-toast-title {

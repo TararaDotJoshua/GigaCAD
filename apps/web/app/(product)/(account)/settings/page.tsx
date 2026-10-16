@@ -46,7 +46,7 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
         <p className="section-intro">
           Anyone can see your profile{isPlaceholderHandle(me.handle) ? ' once you choose a handle' : <> at <Link href={`/${me.handle}`}>app.gigacad.site/{me.handle}</Link></>}.
         </p>
-        <ActionForm action={saveProfile} submitLabel="Save profile">
+        <ActionForm action={saveProfile} submitLabel="Save profile" discardable>
           <HandleField defaultValue={isPlaceholderHandle(me.handle) ? '' : me.handle} />
           <label className="field">
             <span>Display name <em>optional</em></span>

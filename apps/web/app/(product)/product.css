@@ -1919,8 +1919,9 @@
   outline-offset: 1px;
 }
 
-/* A Remove or Leave confirm wraps inside its cell rather than widening the column. */
+/* A Remove or Leave confirm wraps at a fixed width instead of stretching the column (the cell is 1% wide, nowrap). */
 .shell .data-table .cell-action .confirm-inline {
+  width: max-content;
   max-width: 28ch;
   text-align: left;
   white-space: normal;

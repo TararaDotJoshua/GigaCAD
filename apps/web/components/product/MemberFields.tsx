@@ -153,6 +153,7 @@ function AddMemberForm({
           <span>Handle</span>
           <input
             name="handle"
+            aria-label="Handle"
             placeholder="@alex"
             required
             autoComplete="off"
@@ -175,7 +176,7 @@ function AddMemberForm({
         </label>
         <label className="field">
           <span>Role</span>
-          <select name="role" aria-describedby={hintId} value={role} onChange={(event) => setRole(event.target.value as typeof role)}>
+          <select name="role" aria-label="Role" aria-describedby={hintId} value={role} onChange={(event) => setRole(event.target.value as typeof role)}>
             <option value="viewer">Viewer</option>
             <option value="contributor">Contributor</option>
             {canAddMaintainers && <option value="maintainer">Maintainer</option>}

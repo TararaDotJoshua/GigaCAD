@@ -81,10 +81,11 @@ describe('branch commits', () => {
     const [blob] = (await upload(harness, asOwner, projectId, [`root ${randomUUID()}`])) as [string];
     const root = await asOwner.post(`/v1/projects/${projectId}/directory/files`, { parentId: null, name: 'Root.SLDPRT', blob });
     expect(root.status).toBe(201);
-    const [{ id: entryId, itemId }] = await harness.sql<{ id: string; itemId: string }[]>`
+    const [entry] = await harness.sql<{ id: string; itemId: string }[]>`
       select id, item_id from directory_entries where project_id = ${projectId} and name = 'Root.SLDPRT'
     `;
-    await expect(commitVersion(harness, asOwner, projectId, branchId, { 'Unrelated.SLDPRT': `x ${randomUUID()}` }, { itemIds: { 'Unrelated.SLDPRT': itemId! } })).rejects.toThrow(/unknown_items/);
+    const { id: entryId, itemId } = entry!;
+    await expect(commitVersion(harness, asOwner, projectId, branchId, { 'Unrelated.SLDPRT': `x ${randomUUID()}` }, { itemIds: { 'Unrelated.SLDPRT': itemId } })).rejects.toThrow(/unknown_items/);
     expect((await asOwner.delete(`/v1/projects/${projectId}/directory/entries/${entryId}`)).status).toBe(204);
   });
 });
@@ -154,7 +155,8 @@ describe('sessions', () => {
 describe('handles', () => {
   it('without a chosen one, can’t own a project or a public profile', async () => {
     const user = await createSignedInUser('fresh');
-    const [{ handle }] = await harness.sql<{ handle: string }[]>`select handle from profiles where id = ${user.id}`;
+    const [profile] = await harness.sql<{ handle: string }[]>`select handle from profiles where id = ${user.id}`;
+    const handle = profile!.handle;
     const created = await call(harness, user.token, 'POST', '/v1/projects', { slug: 'bench', name: 'Bench' });
     expect(created.status).toBe(422);
     expect(created.body.error.code).toBe('handle_required');

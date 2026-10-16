@@ -268,9 +268,10 @@ giga commit -m "First upload" --label "rev A"`}</Command>
       <p>
         In the project’s <strong>Settings</strong>, add people by their handle and pick a role. Viewers can
         see and download files. Contributors can also make branches, commit, and open release requests.
-        Maintainers can also change settings and approval rules, add and remove viewers and contributors,
-        and release someone else’s checkout lock. The owner can do everything, including adding maintainers
-        and deleting the project.
+        Maintainers can also edit the project’s details, add and remove viewers and contributors, and
+        release someone else’s checkout lock. The owner can do everything, including adding maintainers,
+        changing who can see the project, setting the approval rules, and deleting the project. Anyone but
+        the owner can leave a project from their dashboard.
       </p>
     </>
   );
@@ -339,7 +340,7 @@ function PublicProjects() {
 
       <h2 id="make-a-project-public">Make a project public</h2>
       <p>
-        Owners and maintainers can change who sees a project under <strong>Settings</strong> on the project.
+        The owner can change who sees a project under <strong>Settings</strong> on the project.
         Making it private again hides it from everyone who isn’t a member, including from Explore.
       </p>
 

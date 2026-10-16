@@ -38,10 +38,12 @@ export const HANDLE_HOLD_DAYS = 90;
  * (whose links stay out there). The account that gave it up can always take it back.
  */
 async function handleIsHeld(db: Db, handle: string, userId: string): Promise<boolean> {
+  // Saving the profile resends the handle you already have, which is always yours to keep.
   const [held] = await db`
-    select 1 from handle_history
-    where handle = ${handle} and user_id <> ${userId}
-      and (had_public_projects or released_at > now() - make_interval(days => ${HANDLE_HOLD_DAYS}))
+    select 1 from handle_history h
+    where h.handle = ${handle} and h.user_id is distinct from ${userId}
+      and (h.had_public_projects or h.released_at > now() - make_interval(days => ${HANDLE_HOLD_DAYS}))
+      and not exists (select 1 from profiles p where p.id = ${userId} and p.handle = ${handle})
   `;
   return Boolean(held);
 }

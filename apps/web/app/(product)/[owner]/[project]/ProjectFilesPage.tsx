@@ -9,7 +9,7 @@ import { StatusBadge } from '../../../../components/product/StatusBadge';
 import type { Project, Release } from '../../../../lib/api';
 import { collapseActivity, describeEvent, releaseName } from '../../../../lib/describe';
 import { projectPath, releaseDownloadPath, releasePath, treePath } from '../../../../lib/paths';
-import { getBranches, getEvents, getMembers, getProject, getRelease, getReleases, getTags, getViewer } from '../../../../lib/product';
+import { getBranches, getEvents, getVisibleMembers, getProject, getRelease, getReleases, getTags, getViewer, isFullMember } from '../../../../lib/product';
 
 /** How much of the feed the project page shows; the rest is on the activity page. */
 const ACTIVITY_SHOWN = 5;
@@ -20,13 +20,31 @@ const RELEASE_FILES_SHOWN = 8;
  * The project page and its folders. At the root: the latest release, then the project's
  * files, with tags and recent activity beside them. In a folder: just the folder.
  */
-export async function ProjectFilesPage({ owner, slug, path, params }: { owner: string; slug: string; path: string; params: DirectoryParams }) {
+export async function ProjectFilesPage({
+  owner,
+  slug,
+  path,
+  params,
+  justForked = false,
+  finishStar = false,
+}: {
+  owner: string;
+  slug: string;
+  path: string;
+  params: DirectoryParams;
+  /** Arrived here from the fork form. */
+  justForked?: boolean;
+  /** Clicked Star while signed out, then logged in. */
+  finishStar?: boolean;
+}) {
   const project = await getProject(owner, slug);
   const isRoot = path === '';
   const searching = Boolean(params.q || params.tags || params.view);
   const [branches, releases, viewer] = await Promise.all([getBranches(project.id), getReleases(project.id), getViewer()]);
   const latest = releases.reduce<Release | null>((best, release) => (!best || release.number > best.number ? release : best), null);
   const openBranches = branches.filter((branch) => branch.status === 'open' || branch.status === 'frozen').length;
+  // Forking a private project is for its maintainers (the API enforces it).
+  const canFork = project.visibility === 'public' || project.role === 'owner' || project.role === 'maintainer';
 
   return (
     <div className="page">
@@ -54,9 +72,9 @@ export async function ProjectFilesPage({ owner, slug, path, params }: { owner: s
           <>
             {/* Starring your own private project only ever counts you. */}
             {(project.visibility === 'public' || project.starred) && (
-              <StarButton projectId={project.id} starred={project.starred} count={project.starCount} signedIn={!!viewer} next={projectPath(owner, slug)} />
+              <StarButton projectId={project.id} starred={project.starred} count={project.starCount} signedIn={!!viewer} next={projectPath(owner, slug)} finish={finishStar} />
             )}
-            {latest ? (
+            {latest && canFork ? (
               <Link href={projectPath(owner, slug, 'fork')} className="btn btn-secondary" title={project.forkCount ? `${project.forkCount} public ${project.forkCount === 1 ? 'fork' : 'forks'}` : undefined}>
                 <ForkIcon className="icon" />
                 Fork{project.forkCount ? ` ${project.forkCount}` : ''}
@@ -72,6 +90,11 @@ export async function ProjectFilesPage({ owner, slug, path, params }: { owner: s
           </>
         }
       />
+      {justForked && project.forkedFrom && project.role === 'owner' && (
+        <p className="notice" role="status">
+          Forked {project.forkedFrom.ownerHandle}/{project.forkedFrom.slug} v{project.forkedFrom.releaseNumber}. This copy is yours, and its history starts here.
+        </p>
+      )}
       {isRoot ? (
         <div className="page-grid">
           <div className="stack">
@@ -141,8 +164,9 @@ async function LatestRelease({ project, release }: { project: Project; release: 
 
 /** Tags and a short activity feed, beside the root's files. */
 async function ProjectRail({ project }: { project: Project }) {
-  const [events, members, branches, tags] = await Promise.all([getEvents(project.id, 40), getMembers(project.id), getBranches(project.id), getTags(project.id)]);
-  const handles = new Map(members.map((member) => [member.userId, member.handle]));
+  const [events, members, branches, tags] = await Promise.all([getEvents(project.id, 40), getVisibleMembers(project.id), getBranches(project.id), getTags(project.id)]);
+  // Events carry their actor's handle, so people who have left are still named.
+  const handles = new Map([...events.flatMap((event) => (event.actorId && event.actorHandle ? [[event.actorId, event.actorHandle] as const] : [])), ...members.filter(isFullMember).map((member) => [member.userId, member.handle] as const)]);
   const branchNames = new Map(branches.map((branch) => [branch.id, branch.name]));
   const names = {
     handle: (id: string | null) => (id && handles.has(id) ? `@${handles.get(id)}` : 'Someone'),

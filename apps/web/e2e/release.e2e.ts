@@ -322,8 +322,9 @@ test('shares a public project: browse it signed out, star it, and fork it', asyn
   await page.getByRole('link', { name: /Fork/ }).click();
   await page.getByLabel('Address').fill(`${slug}-fork`);
   await page.getByRole('button', { name: 'Fork project' }).click();
-  await page.waitForURL(`**/${world.handle}/${slug}-fork`);
-  await expect(page.getByText(`${world.handle}/${slug} v1`)).toBeVisible();
+  await page.waitForURL(`**/${world.handle}/${slug}-fork?forked=1`);
+  await expect(page.getByRole('status').filter({ hasText: `Forked ${world.handle}/${slug} v1.` })).toBeVisible();
+  await expect(page.getByRole('link', { name: `${world.handle}/${slug} v1` })).toBeVisible();
   // The fork's root has Branches and Releases; its v1 holds the forked files.
   await page.getByRole('region', { name: 'Files' }).getByRole('link', { name: 'Releases', exact: true }).click();
   await page.locator('#main').getByRole('link', { name: 'v1', exact: true }).click();
@@ -341,7 +342,12 @@ test('adds a member by handle and changes their role in place', async ({ page })
   await page.getByLabel('Role', { exact: true }).selectOption('contributor');
   await expect(page.getByText('Also uploads files, checks out branches, and opens release requests.')).toBeVisible();
   await page.getByRole('button', { name: 'Add member' }).click();
-  await expect(page.getByText(`Added @${teammate.handle}.`)).toBeVisible();
+  await expect(page.getByText(`Added @${teammate.handle} as a contributor.`)).toBeVisible();
+  // The form clears, and adding them again never changes their role.
+  await expect(page.getByLabel('Handle')).toHaveValue('');
+  await page.getByLabel('Handle').fill(teammate.handle);
+  await page.getByRole('button', { name: 'Add member' }).click();
+  await expect(page.getByText(`@${teammate.handle} is already a contributor. Change their role in the table above.`)).toBeVisible();
 
   const role = page.getByLabel(`Role for @${teammate.handle}`);
   await expect(role).toHaveValue('contributor');
@@ -400,6 +406,7 @@ test('changes email and password from Account', async ({ browser }) => {
   await expect(page.getByRole('textbox', { name: /^Email/ })).toHaveValue(person.email);
   await expect(page.getByText('Choose an image…')).toBeVisible();
 
+  await page.getByLabel('Current password').fill(person.password);
   await page.getByLabel(/^New password/).fill('a-new-password-1');
   await page.getByLabel('Confirm new password').fill('a-new-password-1');
   await page.getByRole('button', { name: 'Change password' }).click();

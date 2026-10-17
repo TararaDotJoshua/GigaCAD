@@ -83,17 +83,32 @@ export function projectRoutes(app: FastifyInstance, { sql, storage, mailer, webO
     return withAvatars(storage, await listMembers(sql, id, viewerId(request)));
   });
 
+  const memberInput = z.object({ handle: z.string().min(1).max(39), role });
+
+  /** Adds someone new. An existing member is a 409 `already_member`, so adding never changes a role by surprise. */
+  app.post('/v1/projects/:id/members', async (request, reply) => {
+    const { id } = parse(idParams, request.params);
+    const input = parse(memberInput, request.body);
+    const { added } = await setMember(sql, id, requireCaller(request).userId, input.handle, input.role, { onlyNew: true });
+    if (added && mailer) await notifyNewMember(mailer, webOrigin, added).catch((error: unknown) => request.log.warn(error, 'member notice not sent'));
+    reply.status(201);
+    return withAvatars(storage, await listMembers(sql, id, requireCaller(request).userId));
+  });
+
+  /** Sets a member's role, adding them if needed. */
   app.put('/v1/projects/:id/members', async (request) => {
     const { id } = parse(idParams, request.params);
-    const input = parse(z.object({ handle: z.string().min(1).max(39), role }), request.body);
-    const added = await setMember(sql, id, requireCaller(request).userId, input.handle, input.role);
+    const input = parse(memberInput, request.body);
+    const { added } = await setMember(sql, id, requireCaller(request).userId, input.handle, input.role);
     if (added && mailer) await notifyNewMember(mailer, webOrigin, added).catch((error: unknown) => request.log.warn(error, 'member notice not sent'));
     return withAvatars(storage, await listMembers(sql, id, requireCaller(request).userId));
   });
 
-  app.delete('/v1/projects/:id/members/:handle', async (request) => {
+  /** Removes a member. Anyone but the owner can remove themselves, which leaves the project (and returns no list). */
+  app.delete('/v1/projects/:id/members/:handle', async (request, reply) => {
     const { id, handle } = parse(idParams.extend({ handle: z.string().min(1).max(39) }), request.params);
-    await setMember(sql, id, requireCaller(request).userId, handle, null);
+    const { left } = await setMember(sql, id, requireCaller(request).userId, handle, null);
+    if (left) return reply.status(204).send();
     return withAvatars(storage, await listMembers(sql, id, requireCaller(request).userId));
   });
 

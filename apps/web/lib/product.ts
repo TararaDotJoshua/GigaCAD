@@ -9,6 +9,7 @@ import {
   type Branch,
   type BranchDetail,
   type CommitDetail,
+  type DeletedProject,
   type DirectoryFile,
   type DirectoryItem,
   type DirectoryListing,
@@ -17,6 +18,7 @@ import {
   type ProjectTag,
   type Commit,
   type Member,
+  type PublicMember,
   type Profile,
   type Project,
   type ProjectCard,
@@ -55,18 +57,18 @@ export const getMe = cache(() => get<Profile>('/v1/me'));
 /** The signed-in user, or null for a signed-out visitor to a public page. */
 export const getViewer = cache(async () => ((await getAccessToken()) ? getMe() : null));
 export const getMyProjectsIfSignedIn = cache(async () => ((await getAccessToken()) ? getMyProjects() : []));
-export const getExplore = cache((q: string, sort: 'stars' | 'recent') =>
-  get<ProjectCard[]>(`/v1/explore?${new URLSearchParams({ sort, ...(q ? { q } : {}) })}`),
+export const getExplore = cache((q: string, sort: 'stars' | 'recent', offset = 0, limit = 30) =>
+  get<ProjectCard[]>(`/v1/explore?${new URLSearchParams({ sort, ...(q ? { q } : {}), offset: String(offset), limit: String(limit) })}`),
 );
 export const getUserPage = cache((handle: string) => orNotFound(get<UserPage>(`/v1/users/${encodeURIComponent(handle)}`)));
 export const getUserStars = cache((handle: string) => orNotFound(get<ProjectCard[]>(`/v1/users/${encodeURIComponent(handle)}/stars`)));
 /** Thumbnail links for a project's files. They're a nicety, so a failure shows file glyphs instead of an error. */
-export async function getThumbnails(projectId: string, sha256s: readonly string[]): Promise<Record<string, string>> {
+export async function getThumbnails(projectId: string, sha256s: readonly string[], releaseNumber?: number): Promise<Record<string, string>> {
   if (sha256s.length === 0) return {};
   try {
     const links = await apiRequest<ThumbnailLinks>(await getAccessToken(), `/v1/projects/${projectId}/thumbnails`, {
       method: 'POST',
-      body: JSON.stringify({ sha256s: [...new Set(sha256s)].slice(0, 1000) }),
+      body: JSON.stringify({ sha256s: [...new Set(sha256s)].slice(0, 1000), ...(releaseNumber ? { releaseNumber } : {}) }),
     });
     return links.thumbnails;
   } catch {
@@ -138,7 +140,13 @@ export const getReleaseRequestByNumber = cache(async (projectId: string, number:
 export const getRebuildReport = cache((requestId: string) =>
   get<{ total: number; messages: { level: 'info' | 'warning' | 'error'; message: string; path?: string }[] }>(`/v1/release-requests/${requestId}/rebuild-report?limit=1000`),
 );
+export const getDeletedProjects = cache(() => get<DeletedProject[]>('/v1/me/deleted-projects'));
+/** Members with ids and roles, for the project's own members. Outsiders get `PublicMember`s; see `getVisibleMembers`. */
 export const getMembers = cache((projectId: string) => get<Member[]>(`/v1/projects/${projectId}/members`));
+/** Members as the viewer may see them: full `Member`s for members, handles only for everyone else. */
+export const getVisibleMembers = cache((projectId: string) => get<(Member | PublicMember)[]>(`/v1/projects/${projectId}/members`));
+/** Whether a member came with an id and role, which only the project's own members get. */
+export const isFullMember = (member: Member | PublicMember): member is Member => 'userId' in member;
 export const getApprovalRules = cache((projectId: string) => get<ApprovalRules>(`/v1/projects/${projectId}/approval-rules`));
 export const getEvents = cache((projectId: string, limit = 20) => get<ProjectEvent[]>(`/v1/projects/${projectId}/events?order=desc&limit=${limit}`));
 

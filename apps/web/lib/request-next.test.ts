@@ -10,7 +10,8 @@ const view: RequestView = {
   branchName: 'wheel',
   canDrive: true,
   isRequester: true,
-  canManage: false,
+  canChangeRules: false,
+  ownerHandle: 'olive',
   mayApprove: false,
   approved: false,
   picksOk: true,
@@ -34,7 +35,7 @@ describe('the next step on a release request', () => {
   it('asks an approver to approve first, and offers the one-step release only to someone who can release', () => {
     const approver = { ...view, isRequester: false, canDrive: false, mayApprove: true };
     expect(nextStep(approver).text).toBe('Review the picks and approve the candidate.');
-    expect(nextStep({ ...approver, canDrive: true, canManage: true }).text).toBe('Your approval is the last one needed. Approve the candidate, or approve and release v3 in one step.');
+    expect(nextStep({ ...approver, canDrive: true }).text).toBe('Your approval is the last one needed. Approve the candidate, or approve and release v3 in one step.');
     const rebuildToo = { ...approver, blockers: [...view.blockers, { kind: 'rebuild_missing' as const }] };
     expect(nextStep(rebuildToo).text).toBe('Review the picks and approve the candidate. It also needs a clean SolidWorks rebuild before it can be released.');
   });
@@ -46,13 +47,13 @@ describe('the next step on a release request', () => {
     expect(nextStep({ ...ready, rebuild: { status: 'failed', errors: 2, warnings: 0 } })).toEqual({ text: 'Ready to release v3, but the last SolidWorks rebuild failed (2 errors).', tone: 'caution' });
   });
 
-  it('explains why no one can approve, once, with the way out', () => {
-    const stuck = { ...view, canManage: true, waitingOn: [], blockers: [{ kind: 'not_enough_eligible_approvers' as const, eligible: 0, need: 1 }, { kind: 'needs_approvals' as const, have: 0, need: 1 }] };
+  it('explains why no one can approve, once, with the way out for whoever can take it', () => {
+    const stuck = { ...view, canChangeRules: true, waitingOn: [], blockers: [{ kind: 'not_enough_eligible_approvers' as const, eligible: 0, need: 1 }, { kind: 'needs_approvals' as const, have: 0, need: 1 }] };
     expect(nextStep(stuck)).toEqual({
       text: 'Only 0 of the 1 required approvers can approve this request. Self-approval is off, so you can’t approve your own request. Change who can approve in the approval rules.',
       tone: 'caution',
       rules: true,
-    });
+    });    expect(nextStep({ ...stuck, canChangeRules: false }).text).toContain('Ask @olive to change who can approve in the approval rules.');
   });
 
   it('offers to build a missing candidate, and says when there is nothing to release', () => {

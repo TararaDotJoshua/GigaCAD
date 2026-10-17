@@ -98,23 +98,29 @@ export interface TestUser {
   readonly token: string;
 }
 
-/** Creates a real Supabase user, signs in, and gives them a unique handle. */
-export async function createUser(harness: AppHarness, name: string): Promise<TestUser> {
+/** A Supabase admin client, for what tests do outside the API (like ending sessions). */
+export const supabaseAdmin = () => createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+
+/** Creates a real Supabase user and signs in, without touching the API (so it keeps its generated handle). */
+export async function createSignedInUser(name: string): Promise<{ id: string; email: string; password: string; token: string }> {
   const email = `${name}-${randomUUID().slice(0, 8)}@test.gigacad.site`;
   const password = `pw-${randomUUID()}`;
-  const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
-  const created = await admin.auth.admin.createUser({ email, password, email_confirm: true });
+  const created = await supabaseAdmin().auth.admin.createUser({ email, password, email_confirm: true });
   if (created.error) throw created.error;
 
   const anon = createClient(SUPABASE_URL, ANON_KEY, { auth: { persistSession: false } });
   const session = await anon.auth.signInWithPassword({ email, password });
   if (session.error) throw session.error;
+  return { id: created.data.user.id, email, password, token: session.data.session.access_token };
+}
 
-  const token = session.data.session.access_token;
+/** Creates a real Supabase user, signs in, and gives them a unique handle. */
+export async function createUser(harness: AppHarness, name: string): Promise<TestUser> {
+  const { id, token } = await createSignedInUser(name);
   const handle = `${name}-${randomUUID().slice(0, 8)}`;
   const response = await call(harness, token, 'PATCH', '/v1/me', { handle });
   if (response.status !== 200) throw new Error(`could not set handle: ${JSON.stringify(response.body)}`);
-  return { id: created.data.user.id, handle, token };
+  return { id, handle, token };
 }
 
 export interface Response<T = any> {

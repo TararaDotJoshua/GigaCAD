@@ -16,7 +16,7 @@ import { REBUILD_STATUS_LABEL, blockerText, eligibleApprovers, errorText, reques
 import { sites } from '../../../../../../lib/hosts';
 import { branchPath, projectPath, releasePath, releaseRequestPath } from '../../../../../../lib/paths';
 import { previewFormat } from '../../../../../../lib/preview';
-import { getMembers, getViewer, getProject, getRebuildReport, getRelease, getReleaseRequestByNumber, parseNumber } from '../../../../../../lib/product';
+import { getVisibleMembers, getViewer, getProject, getRebuildReport, getRelease, getReleaseRequestByNumber, isFullMember, parseNumber } from '../../../../../../lib/product';
 import { nextStep } from '../../../../../../lib/request-next';
 import type { ProjectParams } from '../../layout';
 
@@ -48,7 +48,10 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
   const finished = request.status === 'released' || request.status === 'closed';
   // Finished requests read against the main they targeted; active ones against the latest.
   const mainRelease = finished ? targetRelease : latestRelease;
-  const [me, members, main] = await Promise.all([getViewer(), getMembers(project.id), mainRelease ? getRelease(project.id, mainRelease.number) : Promise.resolve(null)]);
+  const [me, visibleMembers, main] = await Promise.all([getViewer(), getVisibleMembers(project.id), mainRelease ? getRelease(project.id, mainRelease.number) : Promise.resolve(null)]);
+  // Only the project's own members get ids and roles, so outsiders see who has approved rather than who may.
+  const outsider = !project.role;
+  const members = visibleMembers.filter(isFullMember);
   const rulesRecorded = approvals.rules !== null;
   const rules = approvals.rules ?? UNRECORDED_RULES;
   const requester = request.requesterHandle ? `@${request.requesterHandle}` : 'the requester';
@@ -57,7 +60,7 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
   const isRequester = Boolean(me && me.id === request.requesterId);
   // The requester and maintainers drive a request; everyone else reviews it.
   const canDrive = !finished && ((isRequester && canWrite) || canManage);
-  const eligible = finished ? [] : eligibleApprovers(members, rules, request.requesterId);
+  const eligible = finished || outsider ? [] : eligibleApprovers(members, rules, request.requesterId);
   const mayApprove = eligible.some((member) => member.userId === me?.id);
   const counted = new Set(approvals.evaluation?.countedUserIds ?? []);
   const approved = Boolean(me && counted.has(me.id));
@@ -103,7 +106,8 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
         branchName: request.branchName,
         canDrive,
         isRequester,
-        canManage,
+        canChangeRules: project.role === 'owner',
+        ownerHandle: project.ownerHandle,
         mayApprove,
         approved,
         picksOk: preview.ok,
@@ -146,8 +150,10 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
               {REBUILD_STATUS_LABEL[request.rebuildStatus]}
             </StatusBadge>
             <span className="muted">
-              {request.rebuildReportedAt && <RelativeTime value={request.rebuildReportedAt} />}
-              {request.rebuildReportedByHandle && ` by @${request.rebuildReportedByHandle}`}
+              {report.reportedAt && <RelativeTime value={report.reportedAt} />}
+              {report.reportedBy && ` by @${report.reportedBy.handle ?? 'someone'}`}
+              {report.via === 'device' ? ` from “${report.deviceName ?? 'a desktop sign-in'}”` : report.via === 'session' ? ' from the website' : ''}
+              {report.reportedBy && report.reportedBy.userId === request.requesterId && ', who opened this request'}
               {!reportCurrent ? ' · for an older candidate' : reportOutdated ? ' · for an outdated candidate' : ''}
             </span>
           </p>
@@ -181,10 +187,12 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
             , or attach a report from your own rebuild with <code className="mono">giga rr rebuild-report</code>. <a href={`${siteUrl}/docs/cli`}>How to attach a report</a>
           </p>
           {history.lastCandidateChange && candidate && <p className="muted">The previous rebuild, if any, was for an older candidate.</p>}
-          {canManage && (
+          {project.role === 'owner' ? (
             <p className="muted">
               <Link href={settingsRules}>Turn off the rebuild rule</Link> if this project doesn’t use the add-in yet.
             </p>
+          ) : (
+            canManage && <p className="muted">If this project doesn’t use the add-in yet, ask @{project.ownerHandle} to turn off the rebuild rule.</p>
           )}
         </>
       )}
@@ -267,7 +275,7 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
         {step && (
           <NextStep tone={step.tone} action={step.build ? buildButton : undefined}>
             {step.text}
-            {step.rules && (
+            {step.rules && canManage && (
               <>
                 {' '}
                 <Link href={settingsRules}>Approval rules</Link>
@@ -355,7 +363,7 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
             <section className="rail-card">
               <h2>{!rulesRecorded ? 'Approvals' : rules.requiredCount === 0 ? 'Approvals · Not required' : `Approvals · ${approvals.evaluation?.countedUserIds.length ?? 0} of ${rules.requiredCount}`}</h2>
               {rulesRecorded && <p className="muted">{ruleSummary(rules, handles)}</p>}
-              {finished ? (
+              {finished || outsider ? (
                 approvals.given.length ? (
                   <ul className="approvers">
                     {approvals.given.map((approval) => (
@@ -366,7 +374,7 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
                     ))}
                   </ul>
                 ) : (
-                  <p className="muted">No one approved it.</p>
+                  <p className="muted">{finished ? 'No one approved it.' : 'No approvals yet.'}</p>
                 )
               ) : rules.requiredCount > 0 && eligible.length ? (
                 <ul className="approvers">

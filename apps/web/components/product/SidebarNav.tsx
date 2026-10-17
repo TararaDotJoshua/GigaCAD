@@ -81,8 +81,12 @@ export function SidebarNav({
         <ul className="app-nav">
           {shown.map((p) => (
             <li key={`${p.owner}/${p.slug}`} className={isCurrent(p) ? 'is-current' : undefined}>
-              <Link href={projectPath(p.owner, p.slug)} onClick={() => setOpen(false)}>
-                {p.name}
+              <Link href={projectPath(p.owner, p.slug)} title={`${p.owner}/${p.slug}`} onClick={() => setOpen(false)}>
+                {/* Someone else's project shows whose it is, so a fork and its source never look the same. */}
+                <span>
+                  {p.owner !== me?.handle && <span className="app-nav-owner">{p.owner}/</span>}
+                  {p.name}
+                </span>
               </Link>
               {isCurrent(p) && current && <ProjectSections project={current} pathname={pathname} onNavigate={() => setOpen(false)} />}
             </li>

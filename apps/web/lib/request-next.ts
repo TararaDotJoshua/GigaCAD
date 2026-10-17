@@ -9,7 +9,9 @@ export interface RequestView {
   /** The requester (while a contributor or above), an owner, or a maintainer. */
   readonly canDrive: boolean;
   readonly isRequester: boolean;
-  readonly canManage: boolean;
+  /** Only the owner can change the approval rules. */
+  readonly canChangeRules: boolean;
+  readonly ownerHandle: string;
   /** The rules let this viewer approve. */
   readonly mayApprove: boolean;
   /** This viewer's approval counts on the current candidate. */
@@ -87,7 +89,7 @@ export function nextStep(view: RequestView): NextStep {
   const short = view.blockers.find((blocker) => blocker.kind === 'not_enough_eligible_approvers');
   if (short && short.kind === 'not_enough_eligible_approvers') {
     const self = view.rules.allowSelfApproval ? '' : view.isRequester ? ' Self-approval is off, so you can’t approve your own request.' : ` Self-approval is off, so ${requester} can’t approve their own request.`;
-    const fix = view.canManage ? ' Change who can approve in the approval rules.' : ' An owner or maintainer can change who approves in the approval rules.';
+    const fix = view.canChangeRules ? ' Change who can approve in the approval rules.' : ` Ask @${view.ownerHandle} to change who can approve in the approval rules.`;
     return { text: `Only ${short.eligible} of the ${short.need} required approvers can approve this request.${self}${fix}`, tone: 'caution', rules: true };
   }
 

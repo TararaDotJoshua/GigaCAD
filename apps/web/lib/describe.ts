@@ -180,8 +180,14 @@ export function describeEvent(
   const payload = event.payload ?? {};
   const branch = names.branch(event.subjectId);
   switch (event.kind) {
-    case 'project_created':
-      return `${who} created the project`;
+    case 'project_created': {
+      const from = payload.forkedFrom as { ownerHandle?: string; slug?: string; releaseNumber?: number } | string | undefined;
+      return typeof from === 'object' && from?.ownerHandle ? `${who} forked @${from.ownerHandle}/${from.slug} v${from.releaseNumber}` : `${who} created the project`;
+    }
+    case 'project_forked': {
+      const fork = payload.fork as { ownerHandle?: string; slug?: string } | undefined;
+      return `${who} forked v${String(payload.releaseNumber)} into ${fork?.ownerHandle}/${fork?.slug}`;
+    }
     case 'project_restored':
       return `${who} restored the project`;
     case 'branch_created':
@@ -222,6 +228,7 @@ export function describeEvent(
     case 'export_replaced':
       return `${who} ${event.kind === 'export_replaced' ? 'replaced the' : 'attached a'} ${String(payload.format).toUpperCase()} export of ${String(payload.path ?? 'a SolidWorks file')}`;
     case 'member_changed':
+      if (payload.left) return `${who} left the project`;
       return payload.role ? `${who} made @${String(payload.handle)} a ${String(payload.role)}` : `${who} removed @${String(payload.handle)}`;
     case 'approval_rules_changed':
       return `${who} changed the approval rules`;

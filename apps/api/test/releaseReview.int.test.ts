@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { snapshotMissingReleaseExports } from '../src/jobs.js';
 import { client, commitVersion, createHarness, createUser, MACHINE, sha256, upload, type Client, type Harness, type TestUser } from './helpers.js';
 
 /**
@@ -139,10 +140,32 @@ describe('finished requests', () => {
     expect(after.releasedRelease).toMatchObject({ number: 2, createdByHandle: cam.handle });
   });
 
+  it('read as they were decided even without a recorded review, and hide named approvers from outsiders', async () => {
+    const projectId = await team();
+    await asAlex.patch(`/v1/projects/${projectId}`, { visibility: 'public' });
+    await asAlex.put(`/v1/projects/${projectId}/approval-rules`, { requiredCount: 1, approverUserIds: [bea.id], approverRoles: [], allowSelfApproval: false, requireCleanRebuild: false });
+    const { id, detail } = await requestOn(projectId, asCam, { 'Robot.SLDASM': 'asm', 'parts/Wheel.SLDPRT': 'wheel v2' });
+    expect((await client(harness, null).get(`/v1/release-requests/${id}`)).body.approvals.rules.approverUserIds).toEqual([]);
+    expect((await asVic.get(`/v1/release-requests/${id}`)).body.approvals.rules.approverUserIds).toEqual([bea.id]);
+
+    const reviewed = { candidateManifestId: detail.candidate.manifestId };
+    await asBea.post(`/v1/release-requests/${id}/approvals`, reviewed);
+    expect((await asCam.post(`/v1/release-requests/${id}/release`, reviewed)).status).toBe(201);
+    // Requests released before reviews were recorded have no snapshot; today's rules don't judge them.
+    await harness.sql`update release_requests set review_snapshot = null where id = ${id}`;
+    await asAlex.put(`/v1/projects/${projectId}/approval-rules`, { requiredCount: 2, approverUserIds: [], approverRoles: ['owner'], allowSelfApproval: false, requireCleanRebuild: false });
+    const after = (await asVic.get(`/v1/release-requests/${id}`)).body;
+    expect(after.approvals.rules).toBeNull();
+    expect(after.approvals.evaluation).toMatchObject({ canRelease: true, countedUserIds: [bea.id], blockers: [] });
+  });
+
   it('say who closed them and what the branch is doing now', async () => {
     const projectId = await team();
     const { id, branch } = await requestOn(projectId, asCam, { 'Robot.SLDASM': 'asm', 'parts/Wheel.SLDPRT': 'wheel v2' });
     await asCam.post(`/v1/release-requests/${id}/close`);
+    // Work on the reopened branch isn't a rebuild of the closed request's candidate.
+    await commitVersion(harness, asCam, projectId, branch, { 'Robot.SLDASM': 'asm edited later', 'parts/Wheel.SLDPRT': 'wheel v3' });
+    expect((await asCam.get(`/v1/release-requests/${id}`)).body.candidate.rebuilt).toEqual([]);
     const reopened = await asCam.post(`/v1/branches/${branch}/release-requests`, { title: 'Again' });
 
     const closed = (await asCam.get(`/v1/release-requests/${id}`)).body;
@@ -272,6 +295,32 @@ describe('released exports', () => {
     expect(events.find((event) => event.kind === 'export_replaced')).toMatchObject({ actorId: cam.id, payload: { path: 'parts/Wheel.SLDPRT', format: 'step', blob: second, previousBlob: first } });
     await expect(harness.sql`update release_exports set blob_sha256 = ${second} where project_id = ${projectId}`).rejects.toThrow(/permanently locked/);
     await expect(harness.sql`delete from release_exports where project_id = ${projectId}`).rejects.toThrow(/permanently locked/);
+
+    // Thumbnails drawn from the exports follow the same split: the release keeps its own.
+    await harness.sql`update thumbnails set status = 'ready' where blob_sha256 in (${first}, ${second})`;
+    const thumbnail = async (releaseNumber?: number) =>
+      (await asVic.post(`/v1/projects/${projectId}/thumbnails`, { sha256s: [sha256(part)], ...(releaseNumber ? { releaseNumber } : {}) })).body.thumbnails[sha256(part)] as string;
+    expect(await thumbnail()).toContain(second);
+    expect(await thumbnail(2)).toContain(first);
+  });
+
+  it('are copied by the jobs for releases an older API made without them', async () => {
+    const part = `axle ${randomUUID()}`;
+    const projectId = await team({ 'parts/Axle.SLDPRT': part });
+    const [step] = (await upload(harness, asAlex, projectId, [`ISO-10303-21; ${part}`])) as [string];
+    expect((await asAlex.put(`/v1/projects/${projectId}/exports`, { source: sha256(part), format: 'step', blob: step })).status).toBe(200);
+    // As if the previous API had made v1 after the schema change: no copy, and no mark.
+    await harness.sql.begin(async (tx) => {
+      await tx`select set_config('gigacad.purge', 'on', true)`;
+      await tx`delete from release_exports where project_id = ${projectId}`;
+      await tx`delete from release_export_snapshots where release_id in (select id from releases where project_id = ${projectId})`;
+    });
+    expect(await snapshotMissingReleaseExports(harness.sql)).toBeGreaterThanOrEqual(1);
+    const lookup = await asAlex.post(`/v1/projects/${projectId}/exports/lookup`, { sha256s: [sha256(part)], releaseNumber: 1 });
+    expect(lookup.body.exports[sha256(part)]).toMatchObject([{ format: 'step', sha256: step }]);
+    // Each release is copied once; a later export doesn't join it.
+    const [marked] = await harness.sql`select 1 from release_export_snapshots s join releases r on r.id = s.release_id where r.project_id = ${projectId}`;
+    expect(marked).toBeDefined();
   });
 });
 

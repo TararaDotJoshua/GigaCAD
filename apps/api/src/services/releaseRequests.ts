@@ -45,7 +45,14 @@ interface ReleaseRequestRow {
   readonly candidateManifestId: string | null;
   readonly rebuildManifestId: string | null;
   readonly rebuildStatus: RebuildStatus | null;
-  readonly rebuildReport: { messages: RebuildMessage[] } | null;
+  readonly rebuildReport: {
+    messages: RebuildMessage[];
+    /** Missing on reports from before 2026-10-16. */
+    reportedBy?: { userId: string; handle: string | null };
+    reportedAt?: string;
+    via?: 'session' | 'device';
+    deviceName?: string;
+  } | null;
   readonly rebuildReportedAt: Date | null;
   readonly rebuildReportedBy: string | null;
   readonly releasedReleaseId: string | null;
@@ -69,6 +76,12 @@ export interface RebuildReportSummary {
   readonly messages: RebuildMessage[];
   readonly total: number;
   readonly counts: { readonly error: number; readonly warning: number; readonly info: number };
+  /** Who sent the report and when; missing on reports from before 2026-10-16. */
+  readonly reportedBy?: { readonly userId: string; readonly handle: string | null } | undefined;
+  readonly reportedAt?: string | undefined;
+  /** Where it came from: a website session, or a named desktop, add-in, or CLI sign-in. */
+  readonly via?: 'session' | 'device' | undefined;
+  readonly deviceName?: string | undefined;
 }
 
 /** A candidate file whose contents differ from what the picks built, because a SolidWorks rebuild saved it. */
@@ -203,11 +216,21 @@ function leavesMainAsIs(candidate: Manifest, latestMain: Manifest): boolean {
   return diffManifests(latestMain, candidate).length === 0;
 }
 
-function summarizeReport(report: { messages: RebuildMessage[] } | null): RebuildReportSummary | null {
+function summarizeReport(request: ReleaseRequestRow, reporterHandle: string | null): RebuildReportSummary | null {
+  const report = request.rebuildReport;
   if (!report) return null;
   const counts = { error: 0, warning: 0, info: 0 };
   for (const message of report.messages) counts[message.level]++;
-  return { messages: sortedMessages(report.messages).slice(0, REPORT_PREVIEW), total: report.messages.length, counts };
+  const { messages, reportedBy, reportedAt, ...source } = report;
+  return {
+    ...source,
+    // The reported-by columns are the record; reports stored before them carry it in the JSON only.
+    reportedBy: request.rebuildReportedBy ? { userId: request.rebuildReportedBy, handle: reporterHandle } : reportedBy,
+    reportedAt: request.rebuildReportedAt?.toISOString() ?? reportedAt,
+    messages: sortedMessages(messages).slice(0, REPORT_PREVIEW),
+    total: messages.length,
+    counts,
+  };
 }
 
 /** Errors first, then warnings, then notes, each in the order the rebuild reported them. */
@@ -271,8 +294,11 @@ async function evaluate(db: Db, request: ReleaseRequestRow, rules: ApprovalRules
 
 export async function getReleaseRequest(sql: Sql, id: string, userId: string | null): Promise<ReleaseRequestDetail> {
   const request = await loadRequest(sql, id);
-  await projectAccess(sql, request.projectId, userId);
-  return detail(sql, request);
+  const { role } = await projectAccess(sql, request.projectId, userId);
+  const result = await detail(sql, request);
+  // Outsiders don't learn member ids, so the people the rules name stay private, as on /approval-rules.
+  const { rules } = result.approvals;
+  return role === null && rules ? { ...result, approvals: { ...result.approvals, rules: { ...rules, approverUserIds: [] } } } : result;
 }
 
 async function detail(db: Db, request: ReleaseRequestRow): Promise<ReleaseRequestDetail> {
@@ -322,14 +348,14 @@ async function detail(db: Db, request: ReleaseRequestRow): Promise<ReleaseReques
   const snapshot = active ? null : request.reviewSnapshot;
   const rules = active ? await loadApprovalRules(db, request.projectId) : (snapshot?.rules ?? null);
   const evaluation = active ? await evaluate(db, request, rules!) : snapshot ? snapshot.evaluation : unjudged(request, given);
-  const { rebuildReport, reviewSnapshot: _snapshot, ...row } = request;
+  const { rebuildReport: _report, reviewSnapshot: _snapshot, ...row } = request;
 
   return {
     releaseRequest: {
       ...row,
       requesterHandle: names?.requesterHandle ?? null,
       branchName: names?.branchName ?? '',
-      rebuildReport: summarizeReport(rebuildReport),
+      rebuildReport: summarizeReport(request, names?.reporterHandle ?? null),
       rebuildReportedByHandle: names?.reporterHandle ?? null,
     },
     branch: { status: names?.branchStatus ?? 'archived', activeRequestNumber: activeRequest?.number ?? null, baseReleaseNumber: names?.baseNumber ?? null },
@@ -635,11 +661,19 @@ export function reportStatus(claimed: RebuildStatus, messages: readonly RebuildM
   return SEVERITY[implied] > SEVERITY[claimed] ? implied : claimed;
 }
 
+/** Where a rebuild report came from, shown with it so approvers can tell the add-in from a hand-typed report. */
+export interface RebuildSource {
+  readonly via: 'session' | 'device';
+  /** The name a desktop, add-in, or CLI sign-in gave itself. */
+  readonly deviceName?: string | undefined;
+}
+
 export async function reportRebuild(
   sql: Sql,
   id: string,
   userId: string,
   input: { candidateManifestId: string; status: RebuildStatus; messages: readonly RebuildMessage[] },
+  source: RebuildSource = { via: 'session' },
 ): Promise<ReleaseRequestDetail> {
   return withDriver(sql, id, userId, async (tx, request) => {
     if (request.status !== 'candidate') throw conflict('no_candidate', 'There is no candidate yet. Build one from the picks first');
@@ -647,10 +681,18 @@ export async function reportRebuild(
       throw conflict('stale_candidate', 'This report is for an older candidate', { candidateManifestId: request.candidateManifestId });
     }
     const status = reportStatus(input.status, input.messages);
+    const [reporter] = await tx<{ handle: string }[]>`select handle from profiles where id = ${userId}`;
+    const report = {
+      messages: input.messages,
+      reportedBy: { userId, handle: reporter?.handle ?? null },
+      reportedAt: new Date().toISOString(),
+      via: source.via,
+      ...(source.deviceName ? { deviceName: source.deviceName } : {}),
+    };
     await tx`
       update release_requests set
         rebuild_manifest_id = ${input.candidateManifestId}, rebuild_status = ${status},
-        rebuild_report = ${tx.json({ messages: input.messages } as unknown as postgres.JSONValue)},
+        rebuild_report = ${tx.json(report as unknown as postgres.JSONValue)},
         rebuild_reported_at = now(), rebuild_reported_by = ${userId}, updated_at = now()
       where id = ${id}
     `;

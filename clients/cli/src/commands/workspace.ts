@@ -99,7 +99,10 @@ async function statCache(root: string, files: readonly ManifestEntry[]): Promise
 function checkManifest(files: readonly ManifestEntry[]): void {
   const issues = validateManifest(files);
   if (issues.length > 0) {
-    throw new CliError('invalid_snapshot', 'The branch contains paths this computer can’t store', { details: issues });
+    // Nothing is written yet, so name the first bad path for whoever has to rename it.
+    const first = issues.find((issue) => issue.kind === 'invalid_path');
+    const which = first ? ` (${first.path}: ${first.reason})` : '';
+    throw new CliError('invalid_snapshot', `The branch contains paths this computer can’t store${which}`, { details: issues });
   }
 }
 

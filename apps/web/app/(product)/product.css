@@ -136,6 +136,10 @@
   transition: background-color 150ms, color 150ms;
 }
 
+.shell .app-nav-owner {
+  color: var(--paper-muted);
+}
+
 .shell .app-nav a:hover {
   background: rgb(245 245 247 / 0.06);
   color: var(--paper);
@@ -833,6 +837,7 @@
 
 .shell .empty-title {
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .shell .empty-body {
@@ -1500,6 +1505,7 @@
 .shell .explore-search {
   flex: 1 1 320px;
   max-width: 520px;
+  margin-top: 0;
   background: var(--mist);
   color: var(--ink-muted);
 }
@@ -1887,6 +1893,70 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  max-width: 100%;
+}
+
+/* Long handles end in an ellipsis (the full one is the cell's title) instead of wrapping mid-handle. */
+.shell .member-handle {
+  max-width: 28ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The role select in a member row, drawn like the form selects. */
+.shell .member-role select {
+  min-height: 32px;
+  padding: 4px 30px 4px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: var(--mist) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%230a2922' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3 4.5 3 3 3-3'/%3E%3C/svg%3E") right 10px center no-repeat;
+  color: var(--ink);
+  font: inherit;
+  appearance: none;
+  cursor: pointer;
+}
+
+.shell .member-role select:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+/* A Remove or Leave confirm wraps at a fixed width instead of stretching the column (the cell is 1% wide, nowrap). */
+.shell .data-table .cell-action .confirm-inline {
+  width: max-content;
+  max-width: 28ch;
+  text-align: left;
+  white-space: normal;
+}
+
+.shell .members-status:empty {
+  display: none;
+}
+
+.shell .members-status {
+  margin-top: 12px;
+}
+
+/* Handle and Role line up at the top; each hint sits under its own field. */
+.shell .member-add {
+  margin-top: 16px;
+}
+
+.shell .member-add-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.shell .member-add-fields .field {
+  flex: 1 1 200px;
+}
+
+.shell .confirm-short {
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
 }
 
 /* Account settings: the avatar row */

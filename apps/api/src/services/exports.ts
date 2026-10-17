@@ -58,15 +58,10 @@ export async function setFileExport(
       on conflict (project_id, source_sha256, format)
       do update set blob_sha256 = excluded.blob_sha256, created_by = excluded.created_by, created_at = now()
     `;
-    // Draw the file's thumbnail from its geometry: an STL always, a STEP unless there's an STL.
-    await tx`
-      insert into thumbnails (blob_sha256, format, model_sha256, model_format)
-      values (${input.source}, 'solidworks', ${input.blob}, ${input.format})
-      on conflict (blob_sha256) do update
-      set model_sha256 = excluded.model_sha256, model_format = excluded.model_format,
-          status = 'pending', attempts = 0, error = null, updated_at = now()
-      where ${input.format} = 'stl' or thumbnails.model_format is distinct from 'stl'
-    `;
+    // The export is drawn as its own file, by its own content. The source file's thumbnail row is
+    // shared by every project holding the same bytes, so it is never changed from here; this
+    // project's thumbnail lookups pick the export's image instead (file_thumbnail()).
+    await tx`insert into thumbnails (blob_sha256, format) values (${input.blob}, ${input.format}) on conflict (blob_sha256) do nothing`;
     // Releases keep the exports they were made with, so a replaced export shows only outside them.
     if (previous?.blobSha256 !== input.blob) {
       await recordEvent(tx, {

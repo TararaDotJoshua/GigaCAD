@@ -27,6 +27,7 @@ export interface JobReport {
   clearedUploads: number;
   staleNotices: number;
   snapshottedReleases: number;
+  purgedDeviceCodes: number;
 }
 
 /**
@@ -207,6 +208,17 @@ export async function snapshotMissingReleaseExports(sql: Sql, options: JobOption
   return missing.length;
 }
 
+/** Removes device sign-in codes a day after they expired; used ones expire within minutes too. */
+export async function purgeDeviceCodes(sql: Sql, options: JobOptions = {}): Promise<number> {
+  const { batch } = { ...DEFAULTS, ...options };
+  const purged = await sql`
+    delete from device_codes where device_code_hash in (
+      select device_code_hash from device_codes where expires_at < now() - interval '1 day' limit ${batch}
+    )
+  `;
+  return purged.count;
+}
+
 /** One pass of every job. Holds an advisory lock so two API instances never run at once. */
 export async function runJobs(deps: { sql: Sql; storage: BlobStorage; mailer?: Mailer; webOrigin: string }, options: JobOptions = {}): Promise<JobReport | null> {
   const { sql } = deps;
@@ -221,7 +233,8 @@ export async function runJobs(deps: { sql: Sql; storage: BlobStorage; mailer?: M
       const clearedUploads = await clearAbandonedUploads(sql, deps.storage, options);
       const staleNotices = deps.mailer ? await notifyStaleCheckouts(sql, deps.mailer, deps.webOrigin, options) : 0;
       const snapshottedReleases = await snapshotMissingReleaseExports(sql, options);
-      return { purgedProjects, unlinkedBlobs, deletedBlobs, clearedUploads, staleNotices, snapshottedReleases };
+      const purgedDeviceCodes = await purgeDeviceCodes(sql, options);
+      return { purgedProjects, unlinkedBlobs, deletedBlobs, clearedUploads, staleNotices, snapshottedReleases, purgedDeviceCodes };
     } finally {
       await reserved`select pg_advisory_unlock(hashtext('gigacad.jobs'))`;
     }

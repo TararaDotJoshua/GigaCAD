@@ -1,4 +1,4 @@
-import { comparePaths, InvalidPathError, normalizePath } from './paths.js';
+import { comparePaths, InvalidPathError, validateProjectPath } from './paths.js';
 
 export type Sha256 = string;
 export type ItemId = string;
@@ -40,7 +40,7 @@ export function validateManifest(manifest: Manifest): ManifestIssue[] {
 
     let normalized: string;
     try {
-      normalized = normalizePath(entry.path);
+      normalized = validateProjectPath(entry.path);
     } catch (error) {
       if (!(error instanceof InvalidPathError)) throw error;
       issues.push({ kind: 'invalid_path', itemId: entry.itemId, path: entry.path, reason: error.reason });

@@ -1,14 +1,15 @@
 import { randomUUID } from 'node:crypto';
+import { isPlaceholderHandle } from '@gigacad/core';
 import type { Sql } from '../db.js';
 import { forbidden, notFound, unprocessable } from '../errors.js';
 import type { BlobStorage } from '../storage.js';
-import { projectAccess } from './access.js';
+import { hasRole, projectAccess } from './access.js';
 import { requireStorageFor } from './billing.js';
 import { recordEvent } from './events.js';
 import { snapshotReleaseExports } from './exports.js';
 import { insertManifest, loadManifest } from './manifests.js';
 import { avatarUrl, contributionDays, recentActivity, visibleProject } from './profiles.js';
-import { summarize, type ProjectSummary } from './projects.js';
+import { requireChosenHandle, summarize, type ProjectSummary } from './projects.js';
 
 /** A public project as Explore and profile pages list it. */
 export interface ProjectCard {
@@ -22,6 +23,8 @@ export interface ProjectCard {
   readonly createdAt: Date;
   readonly latestReleaseNumber: number | null;
   readonly starCount: number;
+  /** Copied from another project's release. */
+  readonly isFork: boolean;
   readonly thumbnailSha: string | null;
 }
 
@@ -54,6 +57,7 @@ function projectCardColumns(sql: Sql) {
     p.id, o.handle as owner_handle, p.slug, p.name, p.description, p.visibility, p.license, p.created_at,
     (select max(number) from releases r where r.project_id = p.id) as latest_release_number,
     (select count(*)::int from stars s where s.project_id = p.id) as star_count,
+    p.forked_from_release_id is not null as is_fork,
     project_thumbnail(p.id) as thumbnail_sha
   `;
 }
@@ -69,11 +73,12 @@ interface ProfileRow {
   readonly createdAt: Date;
 }
 
-async function profileByHandle(sql: Sql, handle: string): Promise<ProfileRow> {
+/** A profile by handle. Accounts that haven't chosen a handle yet have no public page, except to themselves. */
+async function profileByHandle(sql: Sql, handle: string, viewerId: string | null): Promise<ProfileRow> {
   const [profile] = await sql<ProfileRow[]>`
     select id, handle, display_name, bio, location, website, avatar_key, created_at from profiles where handle = ${handle.toLowerCase()}
   `;
-  if (!profile) throw notFound('User');
+  if (!profile || (isPlaceholderHandle(profile.handle) && profile.id !== viewerId)) throw notFound('User');
   return profile;
 }
 
@@ -82,7 +87,7 @@ async function profileByHandle(sql: Sql, handle: string): Promise<ProfileRow> {
  * Everything is limited to projects the viewer can read, so you see your own private ones.
  */
 export async function userProfile(sql: Sql, storage: BlobStorage, handle: string, viewerId: string | null) {
-  const { id, avatarKey, ...profile } = await profileByHandle(sql, handle);
+  const { id, avatarKey, ...profile } = await profileByHandle(sql, handle, viewerId);
   const [projects, contributions, activity, [stars]] = await Promise.all([
     sql<ProjectCard[]>`
       select ${projectCardColumns(sql)}
@@ -107,7 +112,7 @@ export async function userProfile(sql: Sql, storage: BlobStorage, handle: string
 
 /** Projects a user starred that the viewer can read, most recently starred first. */
 export async function starredProjects(sql: Sql, handle: string, viewerId: string | null): Promise<ProjectCard[]> {
-  const { id } = await profileByHandle(sql, handle);
+  const { id } = await profileByHandle(sql, handle, viewerId);
   return sql<ProjectCard[]>`
     select ${projectCardColumns(sql)}
     from stars s join projects p on p.id = s.project_id join profiles o on o.id = p.owner_id
@@ -127,7 +132,10 @@ export async function forkProject(
   userId: string,
   input: { slug: string; name: string; releaseNumber?: number | undefined; visibility?: 'public' | 'private' | undefined },
 ): Promise<ProjectSummary> {
-  const { project: source } = await projectAccess(sql, sourceId, userId);
+  const { project: source, role } = await projectAccess(sql, sourceId, userId);
+  // A private fork is a copy its maker keeps and can share after they leave, so it's for maintainers, not every viewer.
+  if (source.visibility === 'private' && !hasRole(role, 'maintainer')) throw forbidden('Only maintainers can fork a private project');
+  await requireChosenHandle(sql, userId);
   const visibility = input.visibility ?? source.visibility;
   if (source.visibility === 'private' && visibility === 'public') throw forbidden('A fork of a private project must stay private');
 
@@ -179,7 +187,19 @@ export async function forkProject(
       returning id
     `;
     await snapshotReleaseExports(tx, projectId, created!.id, manifestId);
-    await recordEvent(tx, { projectId, actorId: userId, kind: 'project_created', subjectId: projectId, payload: { forkedFrom: release.id } });
+    const forkedFrom = { ownerHandle: owner!.handle, slug: source.slug, releaseNumber: release.number };
+    await recordEvent(tx, { projectId, actorId: userId, kind: 'project_created', subjectId: projectId, payload: { forkedFrom, forkedFromRelease: release.id } });
+    // The source's members hear about forks, except a private fork of a public project, which stays the forker's business.
+    if (source.visibility === 'private' || visibility === 'public') {
+      const [forker] = await tx<{ handle: string }[]>`select handle from profiles where id = ${userId}`;
+      await recordEvent(tx, {
+        projectId: sourceId,
+        actorId: userId,
+        kind: 'project_forked',
+        subjectId: projectId,
+        payload: { releaseNumber: release.number, fork: { ownerHandle: forker!.handle, slug: input.slug }, visibility },
+      });
+    }
     await recordEvent(tx, { projectId, actorId: userId, kind: 'release_created', subjectId: created!.id, payload: { number: 1 } });
     return summarize(tx, projectId, 'owner', userId);
   });

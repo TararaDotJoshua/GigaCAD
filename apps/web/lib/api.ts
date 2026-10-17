@@ -114,6 +114,8 @@ export interface ProjectCard {
   createdAt: string;
   latestReleaseNumber: number | null;
   starCount: number;
+  /** Copied from another project's release. */
+  isFork?: boolean;
   /** A short-lived link to the project's cover thumbnail, if it has one. */
   thumbnailUrl: string | null;
 }
@@ -173,11 +175,16 @@ export interface DeletedProject {
   purgeAt: string;
 }
 
-export interface Member {
-  userId: string;
+/** A project member as anyone who can see the project may: no user id, no role. */
+export interface PublicMember {
   handle: string;
   displayName: string | null;
   avatarUrl: string | null;
+}
+
+/** A project member as the project's own members see them. */
+export interface Member extends PublicMember {
+  userId: string;
   role: ProjectRole;
 }
 
@@ -284,7 +291,16 @@ export interface ReleaseRequestDetail {
     rebuildManifestId: string | null;
     rebuildStatus: RebuildStatus | null;
     /** The most severe messages first, with counts by level; the full list is at /rebuild-report. */
-    rebuildReport: { messages: RebuildMessage[]; total: number; counts: Record<RebuildMessage['level'], number> } | null;
+    rebuildReport: {
+      messages: RebuildMessage[];
+      total: number;
+      counts: Record<RebuildMessage['level'], number>;
+      /** Who reported it, when, and from where; missing on older reports. */
+      reportedBy?: { userId: string; handle: string | null };
+      reportedAt?: string;
+      via?: 'session' | 'device';
+      deviceName?: string;
+    } | null;
     rebuildReportedAt: string | null;
     rebuildReportedByHandle: string | null;
     releasedReleaseId: string | null;
@@ -333,6 +349,8 @@ export interface ProjectEvent {
   id: string;
   kind: string;
   actorId: string | null;
+  /** The actor's current handle, even if they're no longer a member. */
+  actorHandle?: string | null;
   subjectId: string | null;
   payload: Record<string, unknown> | null;
   createdAt: string;

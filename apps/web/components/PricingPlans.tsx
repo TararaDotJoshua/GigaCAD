@@ -7,6 +7,9 @@ import { APP_URL } from "./site";
 // Paid plans open once Stripe is set up; see docs/payments/README.md.
 const PAID_OPEN = process.env.NEXT_PUBLIC_BILLING_ENABLED === "true";
 
+/** "$5", "$12.50": dollars, with cents only when there are some. */
+const dollars = (amount: number) => `$${Number.isInteger(amount) ? amount : amount.toFixed(2)}`;
+
 export function PricingPlans() {
   const [interval, setInterval] = useState<BillingInterval>("monthly");
   return (
@@ -26,14 +29,15 @@ export function PricingPlans() {
       <ul className="plan-grid">
         {PLANS.map((plan) => {
           const free = plan.id === "free";
-          const amount = interval === "monthly" ? plan.monthlyUsd : plan.yearlyUsd;
+          // Yearly plans show what they come to per month, so the two tabs compare directly.
+          const amount = interval === "monthly" ? plan.monthlyUsd : plan.yearlyUsd / 12;
           return (
             <li key={plan.id} className="plan">
               <h2 className="h3">{plan.name}</h2>
               <p className="plan-storage">{formatBytes(plan.storageBytes)}</p>
               <p className="plan-price">
-                <span>${amount}</span>
-                {!free && <span className="plan-per">{interval === "monthly" ? "per month" : "per year"}</span>}
+                <span>{dollars(amount)}</span>
+                {!free && <span className="plan-per">{interval === "monthly" ? "per month" : `per month, billed ${dollars(plan.yearlyUsd)} yearly`}</span>}
               </p>
               <p className="plan-summary">{plan.summary}</p>
               {free ? (

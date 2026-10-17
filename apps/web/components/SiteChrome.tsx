@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AccountLink, HeaderAccount } from "./AccountLinks";
 import { Logo } from "./Logo";
 import { SiteMenu, SiteNav } from "./SiteNav";
 import { APP_URL } from "./site";
@@ -12,13 +13,8 @@ export function SiteHeader() {
         </Link>
         <SiteNav />
         <div className="nav-actions">
-          <a className="nav-login" href={`${APP_URL}/login`}>
-            Log in
-          </a>
-          <a className="button button-small" href={`${APP_URL}/signup`}>
-            Start a project
-          </a>
-          <SiteMenu loginHref={`${APP_URL}/login`} />
+          <HeaderAccount />
+          <SiteMenu />
         </div>
       </div>
     </header>
@@ -34,8 +30,9 @@ export function SiteFooter() {
           <Link href="/pricing">Pricing</Link>
           <Link href="/docs">Docs</Link>
           <Link href="/newsroom">Newsroom</Link>
+          <a href={`${APP_URL}/explore`}>Explore</a>
           <Link href="/download">Desktop app</Link>
-          <a href={`${APP_URL}/login`}>Log in</a>
+          <AccountLink />
           <Link href="/terms">Terms</Link>
           <Link href="/privacy">Privacy</Link>
         </nav>

@@ -168,15 +168,17 @@ export async function getReleaseRequest(sql: Sql, id: string, userId: string | n
 }
 
 async function detail(db: Db, request: ReleaseRequestRow): Promise<ReleaseRequestDetail> {
-  const [names] = await db<{ requesterHandle: string | null; branchName: string }[]>`
-    select p.handle as requester_handle, b.name as branch_name
+  const [names] = await db<{ requesterHandle: string | null; branchName: string; baseReleaseId: string | null }[]>`
+    select p.handle as requester_handle, b.name as branch_name, b.base_release_id
     from branches b left join profiles p on p.id = ${request.requesterId}
     where b.id = ${request.branchId}
   `;
   const latest = await latestRelease(db, request.projectId);
   const active = request.status === 'open' || request.status === 'candidate';
   const { manifest: _manifest, ...preview } = buildCandidate(await candidateInputs(db, request, active ? 'latest' : 'target'));
-  const [target, released] = await Promise.all([releaseNumber(db, request.targetReleaseId), releaseNumber(db, request.releasedReleaseId)]);
+  // A finished request without a candidate was compared against its branch's base, as in candidateInputs.
+  const targetId = request.targetReleaseId ?? (active ? null : (names?.baseReleaseId ?? null));
+  const [target, released] = await Promise.all([releaseNumber(db, targetId), releaseNumber(db, request.releasedReleaseId)]);
 
   const given = await db<{ userId: string; handle: string; candidateManifestId: string; createdAt: Date }[]>`
     select a.user_id, p.handle, a.candidate_manifest_id, a.created_at

@@ -25,7 +25,7 @@ export function blobRoutes(app: FastifyInstance, { sql, storage }: AppDeps): voi
   app.put('/v1/projects/:id/exports', async (request) => {
     const { id } = parse(idParams, request.params);
     const input = parse(z.object({ source: sha256Schema, format: z.enum(['stl', 'step']), blob: sha256Schema }), request.body);
-    return setFileExport(sql, id, requireCaller(request).userId, input);
+    return setFileExport(sql, storage, id, requireCaller(request).userId, input);
   });
 
   app.post('/v1/projects/:id/exports/lookup', async (request) => {

@@ -6,7 +6,8 @@ import { crc32 } from 'node:zlib';
  * formats are mostly compressed already, and storing keeps the server's work to a CRC.
  * Sizes are known up front (from the blobs table) but CRCs aren't, so each entry ends in
  * a data descriptor. ZIP64 records are written only when a size or offset needs them, so
- * ordinary archives open in every unzip tool.
+ * ordinary archives open in every unzip tool. Known sizes also make the archive's length
+ * known before it's written (`zipSize`), so downloads can show their progress.
  */
 
 export interface ZipEntry {
@@ -21,6 +22,8 @@ const MAX_32 = 0xffffffff;
 const MAX_16 = 0xffff;
 // Bit 3: sizes and CRC follow in a data descriptor. Bit 11: names are UTF-8.
 const FLAGS = 0x0808;
+/** How many files are opened ahead of the one being written, so storage round trips overlap. */
+const OPEN_AHEAD = 4;
 
 interface Written {
   readonly name: Buffer;
@@ -45,16 +48,46 @@ function u64(value: number): Buffer {
   return buffer;
 }
 
+/** The exact length in bytes of the archive `zipStream` writes for these entries. */
+export function zipSize(entries: readonly Pick<ZipEntry, 'path' | 'size'>[], options: { zip64Threshold?: number } = {}): number {
+  const limit = options.zip64Threshold ?? MAX_32;
+  let offset = 0;
+  let directorySize = 0;
+  for (const entry of entries) {
+    const name = Buffer.byteLength(entry.path, 'utf8');
+    const zip64 = entry.size >= limit || offset >= limit;
+    // Mirrors the records below: local header, data, descriptor; then one directory record.
+    const fields = (entry.size >= limit ? 2 : 0) + (offset >= limit ? 1 : 0);
+    directorySize += 46 + name + (fields ? 4 + fields * 8 : 0);
+    offset += 30 + name + (zip64 ? 20 : 0) + entry.size + (zip64 ? 24 : 16);
+  }
+  const zip64End = entries.length >= MAX_16 || offset >= limit || directorySize >= limit;
+  return offset + directorySize + (zip64End ? 56 + 20 : 0) + 22;
+}
+
+type Opened = Awaited<ReturnType<ZipEntry['open']>>;
+
 export function zipStream(entries: readonly ZipEntry[], options: { modified?: Date; zip64Threshold?: number } = {}): Readable {
   const { time, date } = dosTime(options.modified ?? new Date());
   // Tests lower this to exercise the ZIP64 records without writing gigabytes.
   const limit = options.zip64Threshold ?? MAX_32;
 
+  const opening = new Map<number, Promise<Opened>>();
+
   async function* generate(): AsyncGenerator<Buffer> {
     const written: Written[] = [];
     let offset = 0;
+    let ahead = 0;
 
-    for (const entry of entries) {
+    for (const [index, entry] of entries.entries()) {
+      while (ahead < Math.min(entries.length, index + OPEN_AHEAD)) {
+        const opened = entries[ahead]!.open();
+        // Awaited in turn below; this only keeps an early failure from going unhandled meanwhile.
+        opened.catch(() => {});
+        opening.set(ahead++, opened);
+      }
+      const body = opening.get(index)!;
+      opening.delete(index);
       const name = Buffer.from(entry.path, 'utf8');
       const zip64 = entry.size >= limit || offset >= limit;
       const extra = zip64 ? Buffer.concat([Buffer.from([0x01, 0x00, 16, 0x00]), u64(entry.size), u64(entry.size)]) : Buffer.alloc(0);
@@ -74,7 +107,7 @@ export function zipStream(entries: readonly ZipEntry[], options: { modified?: Da
 
       let crc = 0;
       let size = 0;
-      for await (const chunk of await entry.open()) {
+      for await (const chunk of await body) {
         crc = crc32(chunk, crc);
         size += chunk.byteLength;
         yield Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
@@ -149,5 +182,14 @@ export function zipStream(entries: readonly ZipEntry[], options: { modified?: Da
     yield end;
   }
 
-  return Readable.from(generate(), { objectMode: false });
+  async function* closing(): AsyncGenerator<Buffer> {
+    try {
+      yield* generate();
+    } finally {
+      // Files opened ahead that the archive never reached, as when a download is cancelled.
+      for (const opened of opening.values()) void opened.then((stream) => (stream as { destroy?: () => void }).destroy?.(), () => {});
+    }
+  }
+
+  return Readable.from(closing(), { objectMode: false });
 }

@@ -42,10 +42,13 @@ export function directoryRoutes(app: FastifyInstance, { sql }: AppDeps): void {
     return listDirectory(sql, id, viewerId(request), path, page);
   });
 
-  /** Files across the root, branch heads, and releases, by path text, tags, or the caller's favorites. `sort=modified` lists recent files. */
+  /**
+   * Files across the root, branch heads, and releases, by path text, tags, or the caller's favorites, each once.
+   * `sort=modified` lists recent files. `history=true` also looks in released and archived branches.
+   */
   app.get('/v1/projects/:id/files', async (request) => {
     const { id } = parse(idParams, request.params);
-    const { q, tags, favorites, area, under, ...page } = parse(
+    const { q, tags, favorites, area, under, history, ...page } = parse(
       z.object({
         q: z.string().max(200).optional(),
         /** Comma-separated tag ids; a file must have all of them. */
@@ -58,11 +61,12 @@ export function directoryRoutes(app: FastifyInstance, { sql }: AppDeps): void {
         favorites: z.enum(['true', 'false']).optional().transform((value) => value === 'true'),
         area: z.enum(['root', 'branch', 'release']).optional(),
         under: z.string().max(1024).optional(),
+        history: z.enum(['true', 'false']).optional().transform((value) => value === 'true'),
         ...paging,
       }),
       request.query,
     );
-    return searchFiles(sql, id, viewerId(request), { q, tagIds: tags, favorites, area, under }, page);
+    return searchFiles(sql, id, viewerId(request), { q, tagIds: tags, favorites, area, under, history }, page);
   });
 
   app.get('/v1/projects/:id/directory/folders', async (request) => {

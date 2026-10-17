@@ -205,6 +205,24 @@ describe('release workflow', () => {
     expect(detail.approvals.evaluation.countedUserIds).toEqual([alex.id]);
   });
 
+  it('names the main a request closed without a candidate was compared against', async () => {
+    const projectId = await newProject(asAlex);
+    const first = await newBranch(asAlex, projectId, 'initial');
+    await commitVersion(harness, asAlex, projectId, first, { 'A.SLDPRT': 'a v1' });
+    await releaseBranch(asAlex, first);
+    const work = await newBranch(asAlex, projectId, 'work', 1);
+    await commitVersion(harness, asAlex, projectId, work, { 'A.SLDPRT': 'a v2' });
+    const opened = await asAlex.post(`/v1/branches/${work}/release-requests`, { title: 'Abandoned' });
+    const id = opened.body.releaseRequest.id as string;
+    expect((await asAlex.post(`/v1/release-requests/${id}/close`)).status).toBe(200);
+
+    // Not "(first release)": it was compared against v1, the branch's base.
+    const detail = (await asAlex.get(`/v1/release-requests/${id}`)).body;
+    expect(detail.releaseRequest).toMatchObject({ status: 'closed', targetReleaseId: null });
+    expect(detail.targetRelease).toMatchObject({ number: 1 });
+    expect(detail.preview.rows.map((row: { path: string }) => row.path)).toEqual(['A.SLDPRT']);
+  });
+
   it('downloads a release as one zip, to people who can see the project', async () => {
     const projectId = await newProject(asAlex);
     const branch = await newBranch(asAlex, projectId, 'initial');
@@ -216,6 +234,8 @@ describe('release workflow', () => {
     expect(response.statusCode).toBe(200);
     expect(response.headers['content-type']).toBe('application/zip');
     expect(response.headers['content-disposition']).toContain(`${slug}-v1.zip`);
+    // Its exact size is known up front, so browsers can show the download's progress.
+    expect(Number(response.headers['content-length'])).toBe(response.rawPayload.length);
     const files = unzipSync(new Uint8Array(response.rawPayload));
     expect(Object.keys(files).sort()).toEqual([`${slug}-v1/Robot.SLDASM`, `${slug}-v1/parts/P1.SLDPRT`]);
     expect(Buffer.from(files[`${slug}-v1/parts/P1.SLDPRT`]!).toString()).toBe('part one');
@@ -223,6 +243,18 @@ describe('release workflow', () => {
     // The project is private.
     const outsider = await harness.app.inject({ method: 'GET', url: `/v1/projects/${projectId}/releases/1/archive`, headers: { authorization: `Bearer ${bea.token}` } });
     expect(outsider.statusCode).toBe(404);
+  });
+
+  it('refuses release numbers too large to exist instead of failing', async () => {
+    const projectId = await newProject(asAlex, 'public');
+    const huge = 1_099_511_627_776;
+    expect((await asAlex.post(`/v1/projects/${projectId}/branches`, { name: 'big', fromRelease: huge })).status).toBe(400);
+    expect((await asBea.post(`/v1/projects/${projectId}/forks`, { slug: `fork-${randomUUID().slice(0, 8)}`, name: 'Fork', releaseNumber: huge })).status).toBe(400);
+    expect((await asAlex.get(`/v1/projects/${projectId}/releases/${huge}`)).status).toBe(400);
+    expect((await asAlex.get(`/v1/projects/${projectId}/releases/${huge}/archive`)).status).toBe(400);
+    // The largest number there could be is simply not found.
+    expect((await asAlex.get(`/v1/projects/${projectId}/releases/2147483647`)).status).toBe(404);
+    expect((await asAlex.post(`/v1/projects/${projectId}/branches`, { name: 'big', fromRelease: 2_147_483_647 })).status).toBe(404);
   });
 });
 

@@ -78,6 +78,26 @@ describe('storage limits', () => {
     expect(billing.body).toMatchObject({ plan: 'free', usedBytes: 16, quotaBytes: getPlan('free').storageBytes, billingEnabled: true, canManage: false });
   });
 
+  it('lists the projects using the storage, largest first', async () => {
+    const user = await createUser(harness, 'sizer');
+    const api = client(harness, user);
+    const [small, big, empty] = [await newProject(api), await newProject(api), await newProject(api)];
+    await upload(harness, api, small, ['four']);
+    await upload(harness, api, big, ['twenty-three bytes long', 'four']);
+    const billing = (await api.get('/v1/me/billing')).body;
+    // A file in two projects counts in each, and once in the total.
+    expect(billing.usedBytes).toBe(27);
+    expect(billing.projects.map((project: { id: string; usedBytes: number }) => [project.id, project.usedBytes])).toEqual([
+      [big, 27],
+      [small, 4],
+      [empty, 0],
+    ]);
+    expect(billing.projects[0]).toEqual({ id: big, ownerHandle: user.handle, slug: expect.any(String), name: 'P', usedBytes: 27 });
+    // Deleted projects no longer count.
+    await api.delete(`/v1/projects/${big}`);
+    expect((await api.get('/v1/me/billing')).body.projects.map((project: { id: string }) => project.id)).toEqual([small, empty]);
+  });
+
   it("refuses uploads past the project owner's limit, even from a contributor", async () => {
     const projectId = await newProject(asOwner);
     await asOwner.put(`/v1/projects/${projectId}/members`, { handle: helper.handle, role: 'contributor' });

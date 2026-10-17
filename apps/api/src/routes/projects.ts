@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
-import { idParams, parse, requireCaller, viewerId } from '../http.js';
+import { idParams, parse, releaseNumberSchema, requireCaller, viewerId } from '../http.js';
 import { withAvatars } from '../services/profiles.js';
 import {
   createProject,
@@ -137,14 +137,19 @@ export function projectRoutes(app: FastifyInstance, { sql, storage, mailer, webO
   });
 
   app.get('/v1/projects/:id/releases/:number', async (request) => {
-    const { id, number } = parse(idParams.extend({ number: z.coerce.number().int().positive() }), request.params);
+    const { id, number } = parse(idParams.extend({ number: releaseNumberSchema }), request.params);
     return getRelease(sql, id, number, viewerId(request));
   });
 
-  /** Every file in a release as one stored (uncompressed) ZIP, streamed. */
+  /** Every file in a release as one stored (uncompressed) ZIP, streamed. `exports=1` adds the SolidWorks files' STEP and STL exports. */
   app.get('/v1/projects/:id/releases/:number/archive', async (request, reply) => {
-    const { id, number } = parse(idParams.extend({ number: z.coerce.number().int().positive() }), request.params);
-    const archive = await releaseArchive(sql, storage, id, number, viewerId(request));
-    return reply.header('content-type', 'application/zip').header('content-disposition', contentDisposition(archive.filename)).send(archive.stream);
+    const { id, number } = parse(idParams.extend({ number: releaseNumberSchema }), request.params);
+    const { exports } = parse(z.object({ exports: z.stringbool().optional() }), request.query);
+    const archive = await releaseArchive(sql, storage, id, number, viewerId(request), { exports });
+    return reply
+      .header('content-type', 'application/zip')
+      .header('content-disposition', contentDisposition(archive.filename))
+      .header('content-length', archive.length)
+      .send(archive.stream);
   });
 }

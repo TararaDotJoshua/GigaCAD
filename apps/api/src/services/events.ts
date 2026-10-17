@@ -30,7 +30,8 @@ export type EventKind =
   | 'tag_created'
   | 'tag_renamed'
   | 'tag_deleted'
-  | 'file_tags_changed';
+  | 'file_tags_changed'
+  | 'file_export_attached';
 
 /**
  * Every state change writes an event in the same transaction. The table is the

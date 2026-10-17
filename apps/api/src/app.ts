@@ -36,6 +36,8 @@ export interface AppDeps {
 // Postgres error codes the schema raises on purpose.
 const PG_RAISED = 'P0001';
 const PG_UNIQUE_VIOLATION = '23505';
+// A number too large for its column, like a release number past the `int` range.
+const PG_OUT_OF_RANGE = '22003';
 
 export function buildApp(deps: AppDeps): FastifyInstance {
   const app = Fastify({ logger: deps.logger ?? false, bodyLimit: 32 * 1024 * 1024 });
@@ -56,6 +58,9 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     }
     if (error.code === PG_UNIQUE_VIOLATION) {
       return reply.status(409).send({ error: { code: 'already_exists', message: 'That already exists' } });
+    }
+    if (error.code === PG_OUT_OF_RANGE) {
+      return reply.status(422).send({ error: { code: 'out_of_range', message: 'A number in the request is too large' } });
     }
     if (error.statusCode && error.statusCode < 500) {
       return reply.status(error.statusCode).send({ error: { code: 'invalid_request', message: error.message } });

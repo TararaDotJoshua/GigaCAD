@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { unzipSync } from 'fflate';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { unlinkUnusedBlobs } from '../src/jobs.js';
 import { thumbnailKey } from '../src/storage.js';
@@ -60,6 +61,9 @@ describe('SolidWorks exports', () => {
     expect(added.status).toBe(200);
     expect(added.body).toEqual({ format: 'stl', sha256: stlHash, size: Buffer.byteLength(stl) });
     expect(await thumbnail(part)).toMatchObject({ status: 'pending', modelFormat: 'stl' });
+    // Open pages refresh on project events, so they show the new export.
+    const [event] = (await asViewer.get(`/v1/projects/${projectId}/events?order=desc&limit=1`)).body;
+    expect(event).toMatchObject({ kind: 'file_export_attached', actorId: owner.id, payload: { source: sha256(part), format: 'stl', blob: stlHash } });
 
     await render();
     expect(await thumbnail(part)).toMatchObject({ status: 'ready', error: null });
@@ -95,6 +99,82 @@ describe('SolidWorks exports', () => {
     expect((await put(asViewer, { source: sha256(part), format: 'stl', blob: stlHash })).status).toBe(403);
     const outsider = client(harness, await createUser(harness, 'outsider'));
     expect((await outsider.post(`/v1/projects/${projectId}/exports/lookup`, { sha256s: [sha256(part)] })).status).toBe(404);
+  });
+
+  it('must look like the format they’re added as', async () => {
+    const { projectId, part } = await project();
+    const put = (format: string, blob: string) => api.put(`/v1/projects/${projectId}/exports`, { source: sha256(part), format, blob });
+    // A binary STL: an 80-byte header that needn't say "solid", a triangle count, and 50 bytes per triangle.
+    const binary = Buffer.alloc(84 + 2 * 50);
+    binary.write(`exported ${randomUUID()}`, 0);
+    binary.writeUInt32LE(2, 80);
+    const [stepHash, textStlHash, binaryHash, bomStepHash, truncatedHash] = (await upload(harness, api, projectId, [
+      `ISO-10303-21;\nHEADER; ${randomUUID()}`,
+      tetrahedron(),
+      binary.toString('latin1'),
+      `\uFEFF\r\n  ISO-10303-21; ${randomUUID()}`,
+      binary.subarray(0, 120).toString('latin1'),
+    ])) as [string, string, string, string, string];
+
+    const wrong = await put('stl', stepHash);
+    expect(wrong.status).toBe(422);
+    expect(wrong.body.error).toMatchObject({ code: 'export_wrong_format', details: { format: 'stl' } });
+    expect((await put('step', textStlHash)).body.error.code).toBe('export_wrong_format');
+    expect((await put('stl', truncatedHash)).body.error.code).toBe('export_wrong_format');
+    expect((await api.post(`/v1/projects/${projectId}/exports/lookup`, { sha256s: [sha256(part)] })).body.exports).toEqual({});
+
+    expect((await put('stl', textStlHash)).status).toBe(200);
+    expect((await put('stl', binaryHash)).status).toBe(200);
+    expect((await put('step', stepHash)).status).toBe(200);
+    expect((await put('step', bomStepHash)).status).toBe(200);
+  });
+
+  it('can be downloaded with a release, beside its files, leaving the plain download as it was', async () => {
+    const created = await api.post('/v1/projects', { slug: `exports-${randomUUID().slice(0, 8)}`, name: 'Exports' });
+    const projectId = created.body.id as string;
+    const branch = await api.post(`/v1/projects/${projectId}/branches`, { name: 'work' });
+    const [part, assembly, clip] = [`part ${randomUUID()}`, `assembly ${randomUUID()}`, `clip ${randomUUID()}`];
+    await commitVersion(harness, api, projectId, branch.body.id, { 'Bracket.SLDPRT': part, 'Bracket.SLDASM': assembly, 'sub/Clip.SLDPRT': clip, 'Notes.txt': 'notes' });
+    const opened = await api.post(`/v1/branches/${branch.body.id}/release-requests`, { title: 'v1' });
+    const requestId = opened.body.releaseRequest.id;
+    await api.post(`/v1/release-requests/${requestId}/candidate`);
+    await api.post(`/v1/release-requests/${requestId}/approvals`);
+    expect((await api.post(`/v1/release-requests/${requestId}/release`)).status).toBe(201);
+    const slug = created.body.slug as string;
+    const archive = (query = '') => harness.app.inject({ method: 'GET', url: `/v1/projects/${projectId}/releases/1/archive${query}`, headers: { authorization: `Bearer ${owner.token}` } });
+    const before = await archive();
+
+    const [stl, step, assemblyStep, clipStl] = [tetrahedron(), `ISO-10303-21; part ${randomUUID()}`, `ISO-10303-21; assembly ${randomUUID()}`, tetrahedron()];
+    const [stlHash, stepHash, assemblyHash, clipHash] = (await upload(harness, api, projectId, [stl, step, assemblyStep, clipStl])) as [string, string, string, string];
+    for (const [source, format, blob] of [[part, 'stl', stlHash], [part, 'step', stepHash], [assembly, 'step', assemblyHash], [clip, 'stl', clipHash]] as const) {
+      expect((await api.put(`/v1/projects/${projectId}/exports`, { source: sha256(source), format, blob })).status).toBe(200);
+    }
+
+    const plain = await archive();
+    expect(plain.rawPayload.equals(before.rawPayload)).toBe(true);
+    expect(Number(plain.headers['content-length'])).toBe(plain.rawPayload.length);
+
+    const full = await archive('?exports=1');
+    expect(full.statusCode).toBe(200);
+    expect(full.headers['content-disposition']).toContain(`${slug}-v1-with-exports.zip`);
+    expect(Number(full.headers['content-length'])).toBe(full.rawPayload.length);
+    const files = unzipSync(new Uint8Array(full.rawPayload));
+    // A part and an assembly named alike keep their extensions, so their exports don't collide.
+    expect(Object.keys(files).sort()).toEqual(
+      [
+        'Bracket.SLDASM',
+        'Bracket.SLDPRT',
+        'Notes.txt',
+        'exports/Bracket.SLDASM.step',
+        'exports/Bracket.SLDPRT.step',
+        'exports/Bracket.SLDPRT.stl',
+        'exports/sub/Clip.stl',
+        'sub/Clip.SLDPRT',
+      ].map((path) => `${slug}-v1/${path}`),
+    );
+    expect(Buffer.from(files[`${slug}-v1/exports/Bracket.SLDPRT.step`]!).toString()).toBe(step);
+    expect(Buffer.from(files[`${slug}-v1/exports/sub/Clip.stl`]!).toString()).toBe(clipStl);
+    expect((await archive('?exports=maybe')).statusCode).toBe(400);
   });
 
   it('come along when a release is forked', async () => {

@@ -48,6 +48,8 @@ export interface DirectoryFile {
   readonly location: FileLocation;
   readonly tags: readonly TagView[];
   readonly favorite: boolean;
+  /** Search results only: how many other places the search found this same file. */
+  readonly alsoIn?: number;
 }
 
 export interface DirectoryFolder {
@@ -174,17 +176,17 @@ async function resolveRootFolder(db: Db, projectId: string, segments: readonly s
   return { id: parentId, names };
 }
 
+/** Folders first. Sorting by size or time leaves ties (like every folder, by size) in name order. */
 function sortAndPage<T extends DirectoryItem>(items: T[], paging: Paging): Page<T> {
   const order = paging.order ?? DEFAULT_ORDER[paging.sort];
   const sign = order === 'asc' ? 1 : -1;
-  // The root's Branches and Releases folders come first, in that order.
-  const rank = (item: DirectoryItem) => (item.kind === 'folder' ? (item.virtual === 'branches' ? 0 : item.virtual === 'releases' ? 1 : 2) : 3);
+  const rank = (item: DirectoryItem) => (item.kind === 'folder' ? 0 : 1);
   const key = (item: DirectoryItem) =>
     paging.sort === 'size' ? (item.kind === 'file' ? item.size : 0) : paging.sort === 'modified' ? (item.modifiedAt?.getTime() ?? 0) : 0;
   const byName = (a: DirectoryItem, b: DirectoryItem) =>
     // v10 sorts after v9.
     a.kind === 'folder' && b.kind === 'folder' && a.release && b.release ? a.release.number - b.release.number : comparePaths(a.name, b.name);
-  const sorted = items.sort((a, b) => rank(a) - rank(b) || ((paging.sort === 'name' ? 0 : key(a) - key(b)) || byName(a, b)) * sign);
+  const sorted = items.sort((a, b) => rank(a) - rank(b) || (paging.sort === 'name' ? byName(a, b) * sign : (key(a) - key(b)) * sign || byName(a, b)));
   const entries = sorted.slice(paging.offset, paging.offset + paging.limit);
   const next = paging.offset + entries.length;
   return { entries, total: sorted.length, nextOffset: next < sorted.length ? next : null };
@@ -229,7 +231,14 @@ async function decorate<T extends DirectoryItem>(db: Db, projectId: string, view
 
 const withoutDecorations = (file: Undecorated): DirectoryFile => ({ ...file, tags: [], favorite: false });
 
-async function listRoot(db: Db, projectId: string, segments: readonly string[]): Promise<{ location: Omit<DirectoryLocation, 'writable'>; items: DirectoryItem[] }> {
+interface Listed {
+  readonly location: Omit<DirectoryLocation, 'writable'>;
+  readonly items: DirectoryItem[];
+  /** The root's Branches and Releases folders: shown first on the first page, outside the paging and the total. */
+  readonly pinned?: readonly DirectoryFolder[];
+}
+
+async function listRoot(db: Db, projectId: string, segments: readonly string[]): Promise<Listed> {
   const { id: folderId, names } = await resolveRootFolder(db, projectId, segments);
   const rows = await rootChildren(db, projectId, folderId);
   const items: DirectoryItem[] = rows.map((row) => {
@@ -251,17 +260,17 @@ async function listRoot(db: Db, projectId: string, segments: readonly string[]):
       location: { area: 'root', branchId: null, branchName: null, releaseNumber: null, path },
     });
   });
-  if (folderId === null) {
-    const [latest] = await db<{ branches: Date | null; releases: Date | null }[]>`
-      select (select max(c.created_at) from commits c join branches b on b.id = c.branch_id where b.project_id = ${projectId}) as branches,
-             (select max(created_at) from releases where project_id = ${projectId}) as releases
-    `;
-    items.unshift(
-      { kind: 'folder', name: 'Branches', path: 'Branches', entryId: null, virtual: 'branches', modifiedAt: latest?.branches ?? null, branch: null, release: null },
-      { kind: 'folder', name: 'Releases', path: 'Releases', entryId: null, virtual: 'releases', modifiedAt: latest?.releases ?? null, branch: null, release: null },
-    );
-  }
-  return { location: { area: 'root', path: names.join('/'), crumbs: crumbsFor(names), folderId, branch: null, release: null }, items };
+  const location: Listed['location'] = { area: 'root', path: names.join('/'), crumbs: crumbsFor(names), folderId, branch: null, release: null };
+  if (folderId !== null) return { location, items };
+  const [latest] = await db<{ branches: Date | null; releases: Date | null }[]>`
+    select (select max(c.created_at) from commits c join branches b on b.id = c.branch_id where b.project_id = ${projectId}) as branches,
+           (select max(created_at) from releases where project_id = ${projectId}) as releases
+  `;
+  const pinned: DirectoryFolder[] = [
+    { kind: 'folder', name: 'Branches', path: 'Branches', entryId: null, virtual: 'branches', modifiedAt: latest?.branches ?? null, branch: null, release: null },
+    { kind: 'folder', name: 'Releases', path: 'Releases', entryId: null, virtual: 'releases', modifiedAt: latest?.releases ?? null, branch: null, release: null },
+  ];
+  return { location, items, pinned };
 }
 
 interface BranchRow extends BranchFolder {
@@ -451,7 +460,7 @@ export async function listDirectory(
   const area = first ? first.toLowerCase() : '';
   let paging = requested;
 
-  let result: { location: Omit<DirectoryLocation, 'writable'>; items: DirectoryItem[] };
+  let result: Listed;
   if (area === 'branches' && second === undefined) {
     result = { location: { area: 'branches', path: 'Branches', crumbs: crumbsFor(['Branches']), folderId: null, branch: null, release: null }, items: await listBranchFolders(sql, projectId) };
   } else if (area === 'branches') {
@@ -467,7 +476,9 @@ export async function listDirectory(
   }
 
   const writable = result.location.area === 'root' && role !== null && role !== 'viewer';
-  const page = await decorate(sql, projectId, viewerId, sortAndPage(result.items, paging));
+  const sorted = sortAndPage(result.items, paging);
+  const pinned = paging.offset === 0 ? (result.pinned ?? []) : [];
+  const page = await decorate(sql, projectId, viewerId, { ...sorted, entries: [...pinned, ...sorted.entries] });
   return { location: { ...result.location, writable }, ...page };
 }
 
@@ -480,12 +491,18 @@ export interface SearchQuery {
   readonly area?: FileArea | undefined;
   /** Only files inside this directory folder, like `Designs`, `Branches/main/parts`, or `Releases/v2`. */
   readonly under?: string | undefined;
+  /**
+   * Also look in released and archived branches. Like the Branches folder, search leaves
+   * them out unless asked, or unless searching inside one.
+   */
+  readonly history?: boolean | undefined;
 }
 
 /**
- * Finds files across the root, every branch head, and every release, by path and tags, or
- * among the viewer's favorites. A file that appears in several places is returned once
- * per place, each with its location.
+ * Finds files across the root, branch heads, and releases, by path and tags, or among the
+ * viewer's favorites. A file that appears in several places is returned once, at its root
+ * entry or else the place it changed most recently, with `alsoIn` counting the other places
+ * the search found it. `total` counts files, not places.
  */
 export async function searchFiles(sql: Sql, projectId: string, viewerId: string | null, query: SearchQuery, paging: Paging): Promise<Page<DirectoryFile>> {
   await projectAccess(sql, projectId, viewerId);
@@ -497,7 +514,7 @@ export async function searchFiles(sql: Sql, projectId: string, viewerId: string 
   const underPattern = `${under.replace(/[\\%_]/g, (char) => `\\${char}`)}/%`;
   const order = (paging.order ?? DEFAULT_ORDER[paging.sort]) === 'asc' ? sql`asc` : sql`desc`;
   const sortKey =
-    paging.sort === 'modified' ? sql`l.modified_at ${order}, lower(l.name)` : paging.sort === 'size' ? sql`b.size ${order}, lower(l.name)` : sql`lower(l.name) ${order}`;
+    paging.sort === 'modified' ? sql`l.modified_at ${order}, lower(l.name)` : paging.sort === 'size' ? sql`l.size ${order}, lower(l.name)` : sql`lower(l.name) ${order}`;
 
   const rows = await sql<(Omit<Undecorated, 'kind' | 'location'> & { area: FileArea; branchId: string | null; branchName: string | null; releaseNumber: number | null; innerPath: string; total: number })[]>`
     with recursive root_paths as (
@@ -524,29 +541,40 @@ export async function searchFiles(sql: Sql, projectId: string, viewerId: string 
       join manifest_entries me on me.manifest_id = c.manifest_id
       left join lateral branch_file_changed(br.id, me.item_id, me.blob_sha256) ch on true
       where br.project_id = ${projectId} and ${query.area === undefined || query.area === 'branch'}
+        and (${query.history === true} or br.status not in ('released', 'archived')
+          or starts_with(lower(${under}) || '/', lower('Branches/' || br.name || '/')))
       union all
       select 'release', null, null, r.number, null, me.item_id, me.path, me.blob_sha256, null, r.created_at, r.created_by
       from releases r join manifest_entries me on me.manifest_id = r.manifest_id
       where r.project_id = ${projectId} and ${query.area === undefined || query.area === 'release'}
+    ),
+    matched as (
+      select l.*, b.size::float8 as size, (count(*) over (partition by l.item_id) - 1)::int as also_in
+      from (select *, regexp_replace(inner_path, '^.*/', '') as name from located) l
+      join blobs b on b.sha256 = l.blob
+      where (${q} = '' or l.inner_path ilike ${pattern})
+        and (${under} = '' or (case l.area
+          when 'root' then l.inner_path
+          when 'branch' then 'Branches/' || l.branch_name || '/' || l.inner_path
+          else 'Releases/v' || l.release_number || '/' || l.inner_path
+        end) like ${underPattern})
+        and (${tagIds.length} = 0 or (
+          select count(*) from file_tags ft where ft.item_id = l.item_id and ft.tag_id = any(${tagIds}::uuid[])
+        ) = ${tagIds.length})
+        and (${!query.favorites} or exists (
+          select 1 from file_favorites f where f.user_id = ${viewerId}::uuid and f.item_id = l.item_id
+        ))
+    ),
+    -- One row per file: its root entry, or else the place it changed most recently.
+    best as (
+      select distinct on (item_id) * from matched
+      order by item_id, area = 'root' desc, modified_at desc, area, branch_name nulls last, release_number desc nulls last, inner_path
     )
     select l.area, l.branch_id, l.branch_name, l.release_number, l.entry_id, l.item_id, l.inner_path,
-           l.name, l.blob, b.size::float8 as size, l.revision, l.modified_at, p.handle as modified_by_handle,
+           l.name, l.blob, l.size, l.revision, l.modified_at, p.handle as modified_by_handle, l.also_in,
            count(*) over ()::int as total
-    from (select *, regexp_replace(inner_path, '^.*/', '') as name from located) l
-    join blobs b on b.sha256 = l.blob
+    from best l
     left join profiles p on p.id = l.modified_by
-    where (${q} = '' or l.inner_path ilike ${pattern})
-      and (${under} = '' or (case l.area
-        when 'root' then l.inner_path
-        when 'branch' then 'Branches/' || l.branch_name || '/' || l.inner_path
-        else 'Releases/v' || l.release_number || '/' || l.inner_path
-      end) like ${underPattern})
-      and (${tagIds.length} = 0 or (
-        select count(*) from file_tags ft where ft.item_id = l.item_id and ft.tag_id = any(${tagIds}::uuid[])
-      ) = ${tagIds.length})
-      and (${!query.favorites} or exists (
-        select 1 from file_favorites f where f.user_id = ${viewerId}::uuid and f.item_id = l.item_id
-      ))
     order by ${sortKey}, l.area, l.branch_name nulls last, l.release_number desc nulls last, l.inner_path
     limit ${paging.limit} offset ${paging.offset}
   `;
@@ -655,6 +683,19 @@ async function writeAccess(tx: Tx, projectId: string, userId: string) {
   return requireProjectRole(tx, projectId, userId, 'contributor', { lock: true });
 }
 
+/** Marks a folder and the folders above it as changed, so their Modified times follow what happens inside them. */
+async function touchFolders(tx: Tx, folderId: string | null): Promise<void> {
+  if (folderId === null) return;
+  await tx`
+    with recursive up as (
+      select id, parent_id from directory_entries where id = ${folderId}
+      union all
+      select p.id, p.parent_id from directory_entries p join up on p.id = up.parent_id
+    )
+    update directory_entries set updated_at = now() where id in (select id from up)
+  `;
+}
+
 export async function createFolder(sql: Sql, projectId: string, userId: string, input: { parentId: string | null; name: string }): Promise<EntryView> {
   return sql.begin(async (tx) => {
     await writeAccess(tx, projectId, userId);
@@ -667,6 +708,7 @@ export async function createFolder(sql: Sql, projectId: string, userId: string, 
       values (${projectId}, ${input.parentId}, 'folder', ${name}, ${userId})
       returning id
     `;
+    await touchFolders(tx, input.parentId);
     const view = await entryView(tx, projectId, entry!.id);
     await recordEvent(tx, { projectId, actorId: userId, kind: 'directory_entry_created', subjectId: view.id, payload: { kind: 'folder', path: view.path } });
     return view;
@@ -692,6 +734,7 @@ export async function createFile(sql: Sql, projectId: string, userId: string, in
       insert into root_file_revisions (project_id, entry_id, number, blob_sha256, author_id)
       values (${projectId}, ${entry!.id}, 1, ${input.blob}, ${userId})
     `;
+    await touchFolders(tx, input.parentId);
     const view = await entryView(tx, projectId, entry!.id);
     await recordEvent(tx, { projectId, actorId: userId, kind: 'directory_entry_created', subjectId: view.id, payload: { kind: 'file', path: view.path } });
     return view;
@@ -715,6 +758,7 @@ export async function replaceFile(sql: Sql, projectId: string, userId: string, e
       values (${projectId}, ${entryId}, ${number}, ${blob}, ${userId})
     `;
     await tx`update directory_entries set updated_at = now() where id = ${entryId}`;
+    await touchFolders(tx, entry.parentId);
     const view = await entryView(tx, projectId, entryId);
     await recordEvent(tx, { projectId, actorId: userId, kind: 'root_file_replaced', subjectId: entryId, payload: { path: view.path, revision: number } });
     return view;
@@ -766,6 +810,8 @@ export async function moveEntry(
 
     const from = await entryPath(tx, entryId);
     await tx`update directory_entries set name = ${name}, parent_id = ${parentId}, updated_at = now() where id = ${entryId}`;
+    await touchFolders(tx, entry.parentId);
+    if (parentId !== entry.parentId) await touchFolders(tx, parentId);
     const view = await entryView(tx, projectId, entryId);
     await recordEvent(tx, { projectId, actorId: userId, kind: 'directory_entry_moved', subjectId: entryId, payload: { kind: entry.kind, from, to: view.path } });
     return view;
@@ -789,6 +835,7 @@ export async function deleteEntry(sql: Sql, projectId: string, userId: string, e
     await tx`delete from directory_entries where id = ${entryId}`;
     // Root files never appear in manifests, so their items go too, with their tags and favorites.
     if (items.length > 0) await tx`delete from items where id = any(${items.map((row) => row.itemId)}::uuid[])`;
+    await touchFolders(tx, entry.parentId);
     await recordEvent(tx, { projectId, actorId: userId, kind: 'directory_entry_deleted', subjectId: entryId, payload: { kind: entry.kind, path } });
   });
 }
@@ -802,20 +849,40 @@ export interface RevisionView {
   readonly createdAt: Date;
 }
 
-/** A root file with its revisions, newest first. */
+/** What deleting an entry removes: the files and folders inside a folder (a file counts itself), and all their revisions. */
+export interface EntryContents {
+  readonly files: number;
+  readonly folders: number;
+  readonly revisions: number;
+}
+
+/** A root file with its revisions, newest first, or a folder; either with what deleting it would remove. */
 export async function getEntry(
   sql: Sql,
   projectId: string,
   viewerId: string | null,
   entryId: string,
-): Promise<{ entry: EntryView; revisions: RevisionView[]; tags: TagView[]; favorite: boolean; writable: boolean }> {
+): Promise<{ entry: EntryView; revisions: RevisionView[]; tags: TagView[]; favorite: boolean; writable: boolean; contents: EntryContents }> {
   const { role } = await projectAccess(sql, projectId, viewerId);
   const entry = await entryView(sql, projectId, entryId);
-  const revisions = await sql<RevisionView[]>`
-    select r.number, r.blob_sha256 as blob, b.size::float8 as size, r.author_id, a.handle as author_handle, r.created_at
-    from root_file_revisions r join blobs b on b.sha256 = r.blob_sha256 left join profiles a on a.id = r.author_id
-    where r.entry_id = ${entryId} order by r.number desc
-  `;
+  const [revisions, [contents]] = await Promise.all([
+    sql<RevisionView[]>`
+      select r.number, r.blob_sha256 as blob, b.size::float8 as size, r.author_id, a.handle as author_handle, r.created_at
+      from root_file_revisions r join blobs b on b.sha256 = r.blob_sha256 left join profiles a on a.id = r.author_id
+      where r.entry_id = ${entryId} order by r.number desc
+    `,
+    sql<EntryContents[]>`
+      with recursive down as (
+        select id, kind, 0 as depth from directory_entries where id = ${entryId}
+        union all
+        select c.id, c.kind, down.depth + 1 from directory_entries c join down on c.parent_id = down.id
+      )
+      select count(*) filter (where kind = 'file')::int as files,
+             count(*) filter (where kind = 'folder' and depth > 0)::int as folders,
+             (select count(*)::int from root_file_revisions r where r.entry_id in (select id from down)) as revisions
+      from down
+    `,
+  ]);
   const { tags, favorites } = await decorations(sql, projectId, viewerId, entry.itemId ? [entry.itemId] : []);
   return {
     entry,
@@ -823,20 +890,37 @@ export async function getEntry(
     tags: entry.itemId ? (tags.get(entry.itemId) ?? []) : [],
     favorite: entry.itemId ? favorites.has(entry.itemId) : false,
     writable: role !== null && role !== 'viewer',
+    contents: contents!,
   };
 }
 
 // Tags and favorites ---------------------------------------------------------
 
 export interface ProjectTag extends TagView {
-  /** How many files carry it. */
+  /** How many files carry it, counted as a search for the tag counts them. */
   readonly fileCount: number;
 }
+
+/** How many files carry tag `t`: each once, among those search finds without `history`. */
+const tagFileCount = (db: Db, projectId: string) => db`(
+  select count(*)::int from file_tags ft
+  where ft.tag_id = t.id and (
+    exists (select 1 from directory_entries e where e.item_id = ft.item_id)
+    or exists (
+      select 1 from branches br join commits c on c.id = br.head_commit_id join manifest_entries me on me.manifest_id = c.manifest_id
+      where br.project_id = ${projectId} and br.status not in ('released', 'archived') and me.item_id = ft.item_id
+    )
+    or exists (
+      select 1 from releases r join manifest_entries me on me.manifest_id = r.manifest_id
+      where r.project_id = ${projectId} and me.item_id = ft.item_id
+    )
+  )
+)`;
 
 export async function listTags(sql: Sql, projectId: string, viewerId: string | null): Promise<ProjectTag[]> {
   await projectAccess(sql, projectId, viewerId);
   return sql<ProjectTag[]>`
-    select t.id, t.name, (select count(*)::int from file_tags ft where ft.tag_id = t.id) as file_count
+    select t.id, t.name, ${tagFileCount(sql, projectId)} as file_count
     from project_tags t where t.project_id = ${projectId} order by t.name_key
   `;
 }
@@ -881,7 +965,7 @@ export async function renameTag(sql: Sql, projectId: string, userId: string, tag
     await requireFreeTagName(tx, projectId, name, tagId);
     await tx`update project_tags set name = ${name} where id = ${tagId}`;
     await recordEvent(tx, { projectId, actorId: userId, kind: 'tag_renamed', subjectId: tagId, payload: { from: before.name, to: name } });
-    const [count] = await tx<{ fileCount: number }[]>`select count(*)::int as file_count from file_tags where tag_id = ${tagId}`;
+    const [count] = await tx<{ fileCount: number }[]>`select ${tagFileCount(tx, projectId)} as file_count from project_tags t where t.id = ${tagId}`;
     return { id: tagId, name, fileCount: count?.fileCount ?? 0 };
   });
 }

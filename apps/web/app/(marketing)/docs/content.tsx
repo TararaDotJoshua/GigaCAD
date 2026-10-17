@@ -263,10 +263,10 @@ giga commit -m "First upload" --label "rev A"`}</Command>
         it until the request is released or closed.
       </p>
       <p>
-        On the release request, every file shows up as new on the branch, set to <strong>Add as new</strong>.
-        Choose <strong>Build candidate</strong>, then approve it. New projects need one approval from an
-        owner or maintainer, and you can approve your own request. Once the approval is in, release it as
-        v1. Main now shows your files, locked as v1.
+        On the release request, every file shows up as new on the branch, set to <strong>Add as new</strong>,
+        and the candidate is already built from those picks. New projects need one approval from an owner
+        or maintainer, and you can approve your own request, so the button reads{" "}
+        <strong>Approve and release v1</strong>. Choose it, and main now shows your files, locked as v1.
       </p>
 
       <h2 id="invite-people">Invite people</h2>

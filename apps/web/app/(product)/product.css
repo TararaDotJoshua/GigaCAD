@@ -886,13 +886,6 @@
   white-space: nowrap;
 }
 
-/* An in-place confirm is a sentence, so it wraps even inside the nowrap action cell. */
-.shell .cell-action .confirm-inline {
-  min-width: min(28ch, 70vw);
-  text-align: left;
-  white-space: normal;
-}
-
 /*
  * When a table is wider than its box, the row actions stay pinned to the right edge, with a
  * shadow while more of the table sits under them. Browsers without scroll timelines still pin.
@@ -1082,15 +1075,6 @@
   flex: 1 1 200px;
 }
 
-/* With a hint under a field, controls align at the top and the hint hangs below without moving them. */
-.shell .form-inline:has(.field-hint) {
-  align-items: flex-start;
-}
-
-.shell .form-inline:has(.field-hint) .form-actions {
-  margin-top: calc(1.45em + 6px);
-}
-
 .shell .form-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1130,7 +1114,6 @@
 .shell .field input:not([type="checkbox"]):not([type="radio"]),
 .shell .field textarea,
 .shell .field select,
-.shell .member-role select,
 .shell .pick-replace {
   width: 100%;
   min-height: 38px;
@@ -1151,7 +1134,6 @@
 .shell .field input:not([type="checkbox"]):not([type="radio"]):focus,
 .shell .field textarea:focus,
 .shell .field select:focus,
-.shell .member-role select:focus,
 .shell .pick-replace:focus {
   border-color: var(--line-ink);
   background: #fff;
@@ -1161,8 +1143,7 @@
 
 .shell .field input:disabled,
 .shell .field textarea:disabled,
-.shell .field select:disabled,
-.shell .member-role select:disabled {
+.shell .field select:disabled {
   opacity: 0.6;
 }
 
@@ -1171,7 +1152,6 @@
 }
 
 .shell .field select,
-.shell .member-role select,
 .shell .pick-replace {
   appearance: none;
   padding-right: 34px;
@@ -1496,13 +1476,6 @@
   .shell .segment:first-child.is-selected::before {
     background: HighlightText;
   }
-}
-
-.shell .member-role select {
-  width: auto;
-  min-height: 32px;
-  padding-block: 5px;
-  font-size: 0.8125rem;
 }
 
 .shell .pick-replace {
@@ -3760,4 +3733,14 @@
   gap: 16px;
   margin-top: 16px;
   font-weight: 500;
+}
+
+/* The drawn chevron is Ink, which vanishes on a dark forced-colors Canvas; use the system's own arrow. */
+@media (forced-colors: active) {
+  .shell .field select,
+  .shell .pick-replace,
+  .shell .member-role select {
+    appearance: auto;
+    background-image: none;
+  }
 }

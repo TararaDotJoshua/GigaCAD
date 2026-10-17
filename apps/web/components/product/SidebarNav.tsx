@@ -221,7 +221,7 @@ function ProjectSections({ project, pathname, onNavigate }: { project: NavProjec
       {branches.length > shownBranches.length && (
         <li className="app-nav-branch app-nav-more">
           <Link href={`${base}/branches`} onClick={onNavigate}>
-            All {branches.length} branches
+            All branches
           </Link>
         </li>
       )}

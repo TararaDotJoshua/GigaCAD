@@ -66,7 +66,7 @@ export default async function CommitPage({ params }: { params: Promise<ProjectPa
           </>
         }
       />
-      {commit.message.trim() !== commitTitle(commit) && <p className="notes">{commit.message.trim()}</p>}
+      {commit.message.trim() && commit.message.trim() !== commitTitle(commit) && <p className="notes">{commit.message.trim()}</p>}
       <nav className="commit-nav" aria-label="Versions">
         {parent ? <Link href={commitPath(owner, slug, parent.commit.id)}>← Previous: {commitTitle(parent.commit)}</Link> : <span className="muted">First on this branch</span>}
         <Link href={branchPath(owner, slug, branch.branch.name)}>All of {branch.branch.name}</Link>

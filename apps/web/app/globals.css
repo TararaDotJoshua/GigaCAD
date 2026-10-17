@@ -440,7 +440,7 @@ button {
   }
 }
 
-/* W-290: forced colors flatten the current link's colour and fill, so underline it. */
+/* Forced colors flatten the current link's colour and fill, so underline it. */
 @media (forced-colors: active) {
   .nav-links a[aria-current],
   .nav-menu-panel a[aria-current],
@@ -1128,60 +1128,6 @@ p .text-link:hover {
   fill: var(--paper-muted);
   font-size: 12px;
   font-weight: 600;
-}
-
-/* W-197: forced colors keep the author's pale fills on a white Canvas, so redraw in system colors. */
-@media (forced-colors: active) {
-  .diagram-main,
-  .diagram-branch,
-  .diagram-step circle,
-  .replace-arrow {
-    stroke: CanvasText;
-  }
-
-  .diagram-label,
-  .diagram-caption,
-  .diagram-step text,
-  .diagram-version,
-  .diagram-release {
-    fill: CanvasText;
-  }
-
-  .diagram-checkout,
-  .diagram-rr,
-  .diagram-autosave {
-    fill: Canvas;
-    stroke: CanvasText;
-  }
-
-  .diagram-release.is-new,
-  .diagram-label.is-new {
-    fill: Highlight;
-  }
-
-  .replace-art,
-  .replace-art.is-old,
-  .tile,
-  .pick-thumb {
-    border-color: CanvasText;
-    background: Canvas;
-    color: CanvasText;
-  }
-
-  .segment input:checked + span {
-    forced-color-adjust: none;
-    background: Highlight;
-    color: HighlightText;
-  }
-
-  .segment:first-of-type input:checked + span::before {
-    background: HighlightText;
-  }
-
-  .dot-signal {
-    forced-color-adjust: none;
-    background: Highlight;
-  }
 }
 
 .steps {
@@ -2007,7 +1953,7 @@ p .text-link:hover {
   overflow-wrap: normal;
 }
 
-/* W-305: a box that scrolls sideways fades at its right edge until it's scrolled to the end. */
+/* A box that scrolls sideways fades at its right edge until it's scrolled to the end. */
 @supports (animation-timeline: scroll()) {
   .prose pre,
   .prose-table {
@@ -2690,5 +2636,60 @@ p .text-link:hover {
   *::after {
     animation: none !important;
     transition: none !important;
+  }
+}
+
+/* Forced colors keep the author's pale fills on a white Canvas, so the diagrams, part art and demo
+   picks redraw in system colors. Last in the file, so it wins over their base rules. */
+@media (forced-colors: active) {
+  .diagram-main,
+  .diagram-branch,
+  .diagram-step circle,
+  .replace-arrow {
+    stroke: CanvasText;
+  }
+
+  .diagram-label,
+  .diagram-caption,
+  .diagram-step text,
+  .diagram-version,
+  .diagram-release {
+    fill: CanvasText;
+  }
+
+  .diagram-checkout,
+  .diagram-rr,
+  .diagram-autosave {
+    fill: Canvas;
+    stroke: CanvasText;
+  }
+
+  .diagram-release.is-new,
+  .diagram-label.is-new {
+    fill: Highlight;
+  }
+
+  .replace-art,
+  .replace-art.is-old,
+  .tile,
+  .pick-thumb {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  .segment input:checked + span {
+    forced-color-adjust: none;
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .segment:first-of-type input:checked + span::before {
+    background: HighlightText;
+  }
+
+  .dot-signal {
+    forced-color-adjust: none;
+    background: Highlight;
   }
 }

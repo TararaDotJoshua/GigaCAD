@@ -158,18 +158,6 @@
   font-weight: 500;
 }
 
-@media (forced-colors: active) {
-  .shell .app-nav li.is-active > a {
-    outline: 2px solid Highlight;
-    outline-offset: -2px;
-  }
-
-  .shell .dot {
-    forced-color-adjust: none;
-    background: Highlight;
-  }
-}
-
 .shell .app-nav .icon {
   width: 15px;
   height: 15px;
@@ -800,19 +788,6 @@
   color: var(--ink-muted);
 }
 
-/* Forced colors drop fills and inset shadows, so boxes that rely on them get a real border. */
-@media (forced-colors: active) {
-  .shell .badge,
-  .shell .tag-chip,
-  .shell .app-nav-count,
-  .shell .notice,
-  .shell .next-step,
-  .shell .confirm-inline,
-  .shell .count-pill {
-    border: 1px solid CanvasText;
-  }
-}
-
 /* Tables */
 
 /* Positioned so a hidden header label can't escape the scroll box and widen the page. */
@@ -864,7 +839,12 @@
 }
 
 .shell .data-table td:first-child {
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+}
+
+/* In a table that scrolls, the first column keeps room for a few words instead of one per line. */
+.shell .table-wrap .data-table:not(.directory-table) td:first-child {
+  min-width: 160px;
 }
 
 .shell .data-table .row-link {
@@ -903,6 +883,11 @@
   background: var(--mist);
 }
 
+/* A popover (tags, ⋯) opened from a pinned cell has to paint over the next rows' pinned cells. */
+.shell .table-wrap .data-table tr:has(details[open]) > td.cell-action:last-child {
+  z-index: 2;
+}
+
 .shell .table-wrap .data-table tbody tr:hover > td.cell-action:last-child {
   background: #fcfcfc;
 }
@@ -916,6 +901,25 @@
   .shell .table-wrap .data-table th:last-child:has(> .sr-only) {
     animation: table-more linear both;
     animation-timeline: --table-scroll;
+  }
+}
+
+/* A table with no pinned actions fades at its right edge instead, until it's scrolled to the end. */
+@supports (animation-timeline: scroll()) {
+  .shell .table-wrap:not(:has(td.cell-action:last-child)) {
+    animation: table-fade linear both;
+    animation-timeline: scroll(self inline);
+  }
+}
+
+@keyframes table-fade {
+  from,
+  99% {
+    mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+  }
+
+  to {
+    mask-image: none;
   }
 }
 
@@ -1453,31 +1457,6 @@
   background: var(--signal);
 }
 
-/* Forced colors drop the selected segment's Paper fill and shadow, so draw it in Highlight. */
-@media (forced-colors: active) {
-  .shell .segmented {
-    border: 1px solid CanvasText;
-  }
-
-  .shell .segment.is-selected,
-  .shell .segment[aria-pressed="true"],
-  .shell .segment[aria-current] {
-    forced-color-adjust: none;
-    border-color: Highlight;
-    background: Highlight;
-    color: HighlightText;
-  }
-
-  .shell .segment.is-selected .segment-count,
-  .shell .segment[aria-current] .segment-count {
-    color: HighlightText;
-  }
-
-  .shell .segment:first-child.is-selected::before {
-    background: HighlightText;
-  }
-}
-
 .shell .pick-replace {
   width: auto;
   max-width: 230px;
@@ -1637,52 +1616,6 @@
   }
 }
 
-/* Touch screens: targets of at least 44px where they fit, and room between row icons. */
-@media (pointer: coarse) {
-  .shell-menu-toggle {
-    place-items: center;
-    min-width: 44px;
-    min-height: 44px;
-    margin: -8px -8px -8px 0;
-  }
-
-  .shell .app-nav a,
-  .shell-explore {
-    min-height: 44px;
-  }
-
-  .shell .icon-button {
-    width: 40px;
-    height: 40px;
-  }
-
-  .shell .icon-button.text-button {
-    width: auto;
-    min-width: 40px;
-  }
-
-  .shell .directory-table td.cell-action {
-    min-width: calc(3 * 40px + 2 * 8px + 26px);
-  }
-
-  .shell .cell-action .icon-button + .icon-button,
-  .shell .pick-files .icon-button + .icon-button,
-  .shell .cell-action .icon-button + .tag-picker,
-  .shell .cell-action .tag-picker + .icon-button {
-    margin-left: 8px;
-  }
-
-  .shell .segment {
-    min-height: 36px;
-  }
-
-  .shell .sort-link {
-    display: inline-flex;
-    align-items: center;
-    min-height: 32px;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .shell *,
   .shell *::before {
@@ -1744,23 +1677,6 @@
 
 .shell .storage-meter.is-full > span {
   background: var(--danger);
-}
-
-@media (forced-colors: active) {
-  .shell .storage-meter,
-  .shell .upload-bar {
-    border: 1px solid CanvasText;
-  }
-
-  .shell .storage-meter > span {
-    forced-color-adjust: none;
-    background: Highlight;
-  }
-
-  .shell .upload-bar {
-    forced-color-adjust: none;
-    background: linear-gradient(to right, Highlight calc(var(--progress) * 100%), Canvas 0);
-  }
 }
 
 .shell .storage-caption {
@@ -2168,31 +2084,6 @@
   margin-right: 4px;
 }
 
-@media (forced-colors: active) {
-  .shell .contrib-graph rect {
-    stroke: CanvasText;
-  }
-
-  .shell .contrib-label {
-    fill: CanvasText;
-  }
-
-  .shell .contrib-level-0 {
-    fill: Canvas;
-  }
-
-  .shell .contrib-level-1,
-  .shell .contrib-level-2,
-  .shell .contrib-level-3,
-  .shell .contrib-level-4 {
-    fill: Highlight;
-  }
-
-  .shell .contrib-level-1 { fill-opacity: 0.3; }
-  .shell .contrib-level-2 { fill-opacity: 0.55; }
-  .shell .contrib-level-3 { fill-opacity: 0.8; }
-}
-
 /* Recent activity */
 
 .shell .activity-month + .activity-month {
@@ -2352,7 +2243,8 @@
 
 /* 3D preview */
 
-.shell .cell-action .icon-button + .icon-button {
+/* Row icons are spaced with ~ rather than +: a preview's closed <dialog> sits between its button and the next. */
+.shell .cell-action :is(.icon-button, .tag-picker) ~ :is(.icon-button, .tag-picker) {
   margin-left: 4px;
 }
 
@@ -2937,23 +2829,39 @@
   margin-top: 0;
 }
 
-/* README headings render a level down (ProjectReadme), so h2 is the README's own "#". */
-.shell .readme-markdown h2 {
+.shell .readme-markdown h1 {
   font-size: 1.5rem;
 }
 
-.shell .readme-markdown h3 {
+.shell .readme-markdown h2 {
   padding-bottom: 6px;
   border-bottom: 1px solid var(--line-ink);
   font-size: 1.25rem;
 }
 
-.shell .readme-markdown h4 {
+.shell .readme-markdown h3 {
   font-size: 1.0625rem;
 }
 
-.shell .readme-markdown :is(h5, h6) {
+.shell .readme-markdown :is(h4, h5, h6) {
   font-size: 1rem;
+}
+
+/* The README's headings render a level down (ProjectReadme), so each keeps the look of the level it was written at. */
+.shell .readme-body.readme-markdown h2 {
+  padding-bottom: 0;
+  border-bottom: 0;
+  font-size: 1.5rem;
+}
+
+.shell .readme-body.readme-markdown h3 {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line-ink);
+  font-size: 1.25rem;
+}
+
+.shell .readme-body.readme-markdown h4 {
+  font-size: 1.0625rem;
 }
 
 .shell .readme-markdown :is(ul, ol) {
@@ -3509,6 +3417,7 @@
 
 .shell .pick-files {
   display: inline-flex;
+  gap: 4px;
   margin-left: 4px;
 }
 
@@ -3733,6 +3642,147 @@
   gap: 16px;
   margin-top: 16px;
   font-weight: 500;
+}
+
+/* Mode overrides last, so they win over the base rules above at the same specificity. */
+
+/* Touch screens: targets of at least 44px where they fit, and room between row icons. */
+@media (pointer: coarse) {
+  .shell-menu-toggle {
+    place-items: center;
+    min-width: 44px;
+    min-height: 44px;
+    margin: -8px -8px -8px 0;
+  }
+
+  .shell .app-nav a,
+  .shell-explore {
+    min-height: 44px;
+  }
+
+  .shell .icon-button {
+    width: 40px;
+    height: 40px;
+  }
+
+  .shell .icon-button.text-button {
+    width: auto;
+    min-width: 40px;
+  }
+
+  .shell .directory-table td.cell-action {
+    min-width: calc(3 * 40px + 2 * 8px + 26px);
+  }
+
+  .shell .cell-action :is(.icon-button, .tag-picker) ~ :is(.icon-button, .tag-picker) {
+    margin-left: 8px;
+  }
+
+  .shell .pick-files {
+    gap: 8px;
+  }
+
+  .shell .segment {
+    min-height: 36px;
+  }
+
+  .shell .sort-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+  }
+}
+
+@media (forced-colors: active) {
+  .shell .app-nav li.is-active > a {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  .shell .dot {
+    forced-color-adjust: none;
+    background: Highlight;
+  }
+}
+
+/* Forced colors drop fills and inset shadows, so boxes that rely on them get a real border. */
+@media (forced-colors: active) {
+  .shell .badge,
+  .shell .tag-chip,
+  .shell .app-nav-count,
+  .shell .notice,
+  .shell .next-step,
+  .shell .confirm-inline,
+  .shell .count-pill {
+    border: 1px solid CanvasText;
+  }
+}
+
+/* Forced colors drop the selected segment's Paper fill and shadow, so draw it in Highlight. */
+@media (forced-colors: active) {
+  .shell .segmented {
+    border: 1px solid CanvasText;
+  }
+
+  .shell .segment.is-selected,
+  .shell .segment[aria-pressed="true"],
+  .shell .segment[aria-current] {
+    forced-color-adjust: none;
+    border-color: Highlight;
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .shell .segment.is-selected .segment-count,
+  .shell .segment[aria-current] .segment-count {
+    color: HighlightText;
+  }
+
+  .shell .segment:first-child.is-selected::before {
+    background: HighlightText;
+  }
+}
+
+@media (forced-colors: active) {
+  .shell .storage-meter,
+  .shell .upload-bar {
+    border: 1px solid CanvasText;
+  }
+
+  .shell .storage-meter > span {
+    forced-color-adjust: none;
+    background: Highlight;
+  }
+
+  .shell .upload-bar {
+    forced-color-adjust: none;
+    background: linear-gradient(to right, Highlight calc(var(--progress) * 100%), Canvas 0);
+  }
+}
+
+@media (forced-colors: active) {
+  .shell .contrib-graph rect {
+    stroke: CanvasText;
+  }
+
+  .shell .contrib-label {
+    fill: CanvasText;
+  }
+
+  .shell .contrib-level-0 {
+    fill: Canvas;
+  }
+
+  .shell .contrib-level-1,
+  .shell .contrib-level-2,
+  .shell .contrib-level-3,
+  .shell .contrib-level-4 {
+    fill: Highlight;
+  }
+
+  .shell .contrib-level-1 { fill-opacity: 0.3; }
+  .shell .contrib-level-2 { fill-opacity: 0.55; }
+  .shell .contrib-level-3 { fill-opacity: 0.8; }
 }
 
 /* The drawn chevron is Ink, which vanishes on a dark forced-colors Canvas; use the system's own arrow. */

@@ -26,6 +26,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     alternates: { canonical: `/newsroom/${article.slug}`, types: { "application/rss+xml": "/newsroom/feed.xml" } },
     openGraph: {
       siteName: "GigaCAD",
+      // An article's openGraph replaces the site's, so it names the share image again.
+      images: ["/opengraph-image.png"],
       type: "article",
       title: article.title,
       description: article.summary,

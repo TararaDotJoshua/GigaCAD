@@ -26,6 +26,8 @@ interface RequestSummary {
   readonly branchName: string;
   readonly requesterHandle: string | null;
   readonly updatedAt: string;
+  /** The candidate this list shows; approving names it, so a newer one isn't approved unseen. */
+  readonly candidateManifestId?: string | null;
 }
 
 type Tab = 'branches' | 'releases' | 'requests' | 'files';
@@ -33,7 +35,7 @@ type Tab = 'branches' | 'releases' | 'requests' | 'files';
 const canEdit = (project: ProjectState) => project.role !== null && project.role !== 'viewer';
 /** Candidates wait for approvals; anyone who can edit may be an approver. */
 const needsYou = (project: ProjectState, requests: readonly RequestSummary[] | undefined) =>
-  canEdit(project) ? (requests ?? []).filter((request) => request.status === 'candidate') : [];
+  canEdit(project) ? (requests ?? []).filter((request) => request.status === 'candidate' && request.candidateManifestId) : [];
 
 export function ProjectView({ state, project, onOpenBranch }: Props) {
   const words = platformWords(state.app.platform);
@@ -175,7 +177,7 @@ function BranchesTab({
                   done={`Approved #${request.number}`}
                   confirm={`Approve #${request.number}? The release goes out when the last approval is in.`}
                   run={async () => {
-                    const ok = await act('approveReleaseRequest', project.id, request.number);
+                    const ok = await act('approveReleaseRequest', project.id, request.number, request.candidateManifestId!);
                     if (ok) onApproved();
                     return ok;
                   }}
@@ -415,7 +417,7 @@ function RequestsTab({ state, project, requests }: { state: AppState; project: P
                   <span className="faint"> · {request.branchName}</span>
                 </span>
                 <span className={`badge${request.status === 'candidate' ? ' badge-caution' : ''}`}>{request.status === 'candidate' ? 'awaiting approval' : request.status}</span>
-                {request.status === 'candidate' && canEdit(project) ? (
+                {request.status === 'candidate' && request.candidateManifestId && canEdit(project) ? (
                   <ActionButton
                     small
                     label="Approve"
@@ -423,7 +425,7 @@ function RequestsTab({ state, project, requests }: { state: AppState; project: P
                     done={`Approved #${request.number}`}
                     confirm={`Approve #${request.number}? The release goes out when the last approval is in.`}
                     run={async () => {
-                      const ok = await act('approveReleaseRequest', project.id, request.number);
+                      const ok = await act('approveReleaseRequest', project.id, request.number, request.candidateManifestId!);
                       if (ok) requests.reload();
                       return ok;
                     }}

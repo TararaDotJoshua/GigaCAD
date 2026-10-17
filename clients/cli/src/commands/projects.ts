@@ -92,7 +92,7 @@ function branchTable(branches: readonly BranchView[]): string[] {
       b.name,
       b.status,
       b.baseReleaseNumber ? `v${b.baseReleaseNumber}` : '-',
-      b.checkedOutByHandle ? `@${b.checkedOutByHandle} on ${b.checkedOutMachine}` : '-',
+      b.checkedOutByHandle ? `@${b.checkedOutByHandle}${b.checkedOutMachine ? ` on ${b.checkedOutMachine}` : ''}` : '-',
     ]),
   );
 }

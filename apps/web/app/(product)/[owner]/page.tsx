@@ -11,7 +11,9 @@ import { Shell } from '../../../components/product/Shell';
 import { getUserPage, getUserStars, getViewer } from '../../../lib/product';
 
 export async function generateMetadata({ params }: { params: Promise<{ owner: string }> }) {
-  return { title: `@${(await params).owner}` };
+  const { owner } = await params;
+  if (!(await getUserPage(owner).catch(() => null))) return { title: 'Not found' };
+  return { title: `@${owner}` };
 }
 
 export default async function UserPage({

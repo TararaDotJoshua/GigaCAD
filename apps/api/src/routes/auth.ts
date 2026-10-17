@@ -2,9 +2,9 @@ import { HANDLE_PATTERN, isPlaceholderHandle, isReservedHandle } from '@gigacad/
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
-import { badRequest, notFound } from '../errors.js';
+import { badRequest, conflict, notFound } from '../errors.js';
 import { idParams, parse, requireCaller, requireSessionCaller } from '../http.js';
-import { approveDeviceSignIn, issueToken, listTokens, pendingDeviceSignIn, pollDeviceSignIn, revokeToken, startDeviceSignIn } from '../services/device.js';
+import { approveDeviceSignIn, denyDeviceSignIn, issueToken, listTokens, pendingDeviceSignIn, pollDeviceSignIn, revokeToken, startDeviceSignIn } from '../services/device.js';
 import { AVATAR_TYPES, MAX_AVATAR_BYTES, avatarUrl, clearAvatar, setAvatar } from '../services/profiles.js';
 
 const handleSchema = z
@@ -13,20 +13,47 @@ const handleSchema = z
   .refine((handle) => !isReservedHandle(handle), 'That handle is reserved')
   .refine((handle) => !isPlaceholderHandle(handle), 'Choose a handle of your own');
 
-// The database also checks the prefix, so a link like `HTTPS://…` must be caught here.
-const websiteSchema = z
-  .url({ protocol: /^https?$/, message: 'Use a link that starts with http:// or https://' })
-  .refine((url) => /^https?:\/\//.test(url), 'Use a link that starts with http:// or https://');
+/** Characters as the database counts them (code points), so an emoji counts as what it is made of, not as UTF-16 halves. */
+const characters = (value: string) => [...value].length;
 
-/** Free text that may be cleared: empty or blank becomes null. */
-const optionalText = (max: number) =>
+/**
+ * Free text that may be cleared: empty or blank becomes null. Line breaks arrive from forms
+ * as CRLF; they're stored as LF, so they count once, as the form's counter counts them.
+ */
+const optionalText = (field: string, max: number, options: { multiline?: boolean } = {}) =>
   z
     .string()
-    .trim()
-    .max(max)
+    .transform((value) => {
+      const text = value.replace(/\r\n?/g, '\n').trim();
+      // A blank line is enough to separate paragraphs.
+      return options.multiline ? text.replace(/\n[ \t]*(?:\n[ \t]*)+/g, '\n\n') : text.replace(/\s*\n\s*/g, ' ');
+    })
+    .refine((value) => characters(value) <= max, `${field} can be at most ${max} characters`)
     .transform((value) => value || null)
     .nullable()
     .optional();
+
+/**
+ * One rule for the website, with one message per problem. The scheme may be typed in any
+ * case; it's stored lowercase, which the database's own check needs.
+ */
+const websiteSchema = z
+  .string()
+  .transform((value) => value.trim().replace(/^[a-z][a-z0-9+.-]*:/i, (scheme) => scheme.toLowerCase()))
+  .superRefine((value, context) => {
+    if (!value) return;
+    if (characters(value) > 200) return context.addIssue({ code: 'custom', message: 'Website can be at most 200 characters' });
+    let url: URL | null = null;
+    try {
+      url = new URL(value);
+    } catch {
+      // Reported below.
+    }
+    if (!url || !/^https?:\/\//.test(value) || (url.protocol !== 'http:' && url.protocol !== 'https:') || !url.hostname) {
+      context.addIssue({ code: 'custom', message: 'Use a link that starts with http:// or https://' });
+    }
+  })
+  .transform((value) => value || null);
 
 export function authRoutes(app: FastifyInstance, { sql, storage, webOrigin }: AppDeps): void {
   app.post('/v1/auth/device/code', async (request) => {
@@ -38,6 +65,13 @@ export function authRoutes(app: FastifyInstance, { sql, storage, webOrigin }: Ap
     const caller = requireSessionCaller(request);
     const { userCode } = parse(z.object({ userCode: z.string().min(4).max(20) }), request.body);
     return approveDeviceSignIn(sql, caller.userId, userCode);
+  });
+
+  app.post('/v1/auth/device/deny', async (request, reply) => {
+    requireSessionCaller(request);
+    const { userCode } = parse(z.object({ userCode: z.string().min(4).max(20) }), request.body);
+    await denyDeviceSignIn(sql, userCode);
+    reply.status(204);
   });
 
   app.get('/v1/auth/device/pending/:userCode', async (request) => {
@@ -83,21 +117,18 @@ export function authRoutes(app: FastifyInstance, { sql, storage, webOrigin }: Ap
       z
         .object({
           handle: handleSchema.optional(),
-          displayName: optionalText(100),
-          bio: optionalText(160),
-          location: optionalText(60),
-          website: z
-            .string()
-            .trim()
-            .max(200)
-            .transform((value) => value || null)
-            .pipe(websiteSchema.nullable())
-            .nullable()
-            .optional(),
+          displayName: optionalText('Display name', 100),
+          bio: optionalText('Bio', 160, { multiline: true }),
+          location: optionalText('Location', 60),
+          website: websiteSchema.nullable().optional(),
         })
         .strict(),
       request.body,
     );
+    if (changes.handle) {
+      const [taken] = await sql`select 1 from profiles where lower(handle) = lower(${changes.handle}) and id <> ${userId}`;
+      if (taken) throw conflict('handle_taken', 'That handle is taken');
+    }
     const defined = Object.fromEntries(Object.entries(changes).filter(([, value]) => value !== undefined));
     if (Object.keys(defined).length > 0) await sql`update profiles set ${sql(defined)} where id = ${userId}`;
     return me(userId);

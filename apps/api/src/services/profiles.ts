@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto';
+import { inflateSync } from 'node:zlib';
 import type { ContributionDay } from '@gigacad/core';
 import type { Sql } from '../db.js';
 import { badRequest, notFound } from '../errors.js';
 import type { BlobStorage } from '../storage.js';
+import { crc32 } from '../thumbnails/png.js';
 
 export const MAX_AVATAR_BYTES = 1024 * 1024;
 export const AVATAR_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const;
@@ -102,8 +104,12 @@ export async function recentActivity(sql: Sql, userId: string, viewerId: string 
   `;
 }
 
+/**
+ * A link to an avatar that stays the same all day, so browsers reuse the cached image
+ * instead of downloading it on every page, and that keeps working in tabs left open.
+ */
 export async function avatarUrl(storage: BlobStorage, key: string | null): Promise<string | null> {
-  return key ? storage.presignDownload(key) : null;
+  return key ? storage.presignDownload(key, undefined, undefined, { stable: true }) : null;
 }
 
 /** Swaps each row's avatar key for a short-lived link to the image. */
@@ -123,13 +129,71 @@ export function avatarType(bytes: Uint8Array): (typeof AVATAR_TYPES)[number] | n
   return null;
 }
 
+/**
+ * Whether an image's structure holds together, so a file that only starts like an image
+ * isn't stored and shown broken everywhere. PNGs are checked through their pixel data;
+ * JPEG and WebP by their headers and segments.
+ */
+export function avatarIntact(bytes: Uint8Array, type: (typeof AVATAR_TYPES)[number]): boolean {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const ascii = (offset: number, length: number) => String.fromCharCode(...bytes.subarray(offset, offset + length));
+  try {
+    if (type === 'image/png') {
+      let offset = 8;
+      const data: Uint8Array[] = [];
+      let first = true;
+      while (offset + 12 <= bytes.length) {
+        const length = view.getUint32(offset);
+        const name = ascii(offset + 4, 4);
+        if (offset + 12 + length > bytes.length) return false;
+        if (crc32(bytes.subarray(offset + 4, offset + 8 + length)) !== view.getUint32(offset + 8 + length)) return false;
+        if (first && (name !== 'IHDR' || length !== 13 || view.getUint32(offset + 8) === 0 || view.getUint32(offset + 12) === 0)) return false;
+        first = false;
+        if (name === 'IDAT') data.push(bytes.subarray(offset + 8, offset + 8 + length));
+        if (name === 'IEND') return data.length > 0 && inflateSync(Buffer.concat(data)).length > 0;
+        offset += 12 + length;
+      }
+      return false;
+    }
+    if (type === 'image/jpeg') {
+      let offset = 2;
+      let frame = false;
+      while (offset + 4 <= bytes.length) {
+        if (bytes[offset] !== 0xff) return false;
+        const marker = bytes[offset + 1]!;
+        if (marker === 0xd9) return false;
+        const length = view.getUint16(offset + 2);
+        if (length < 2 || offset + 2 + length > bytes.length) return false;
+        // Start of frame (not DHT, JPG, or DAC, which share the range): it has the image size.
+        if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) {
+          frame = view.getUint16(offset + 5) > 0 && view.getUint16(offset + 7) > 0;
+        }
+        // Start of scan: the compressed data follows, ending at the end-of-image marker.
+        if (marker === 0xda) return frame && bytes[bytes.length - 2] === 0xff && bytes[bytes.length - 1] === 0xd9;
+        offset += 2 + length;
+      }
+      return false;
+    }
+    const size = view.getUint32(4, true);
+    if (size + 8 > bytes.length || size < 12) return false;
+    const chunk = ascii(12, 4);
+    return ['VP8 ', 'VP8L', 'VP8X'].includes(chunk) && 20 + view.getUint32(16, true) <= size + 8;
+  } catch {
+    return false;
+  }
+}
+
+/** Avatars are stored once per upload under a new key, so they can be cached for good. */
+const AVATAR_CACHE = 'public, max-age=31536000, immutable';
+
 /** Stores a new avatar and deletes the one it replaces. */
 export async function setAvatar(sql: Sql, storage: BlobStorage, userId: string, bytes: Uint8Array): Promise<string> {
   const type = avatarType(bytes);
   if (!type) throw badRequest('invalid_image', 'Upload a PNG, JPEG, or WebP image');
   if (bytes.length > MAX_AVATAR_BYTES) throw badRequest('image_too_large', 'Upload an image of 1 MB or less');
+  if (!avatarIntact(bytes, type)) throw badRequest('invalid_image', 'That image can’t be opened. It may be damaged; try another');
   const key = `avatars/${userId}/${randomUUID()}`;
-  await storage.write(key, bytes, type);
+  await storage.write(key, bytes, type, AVATAR_CACHE);
   const previous = await swapAvatarKey(sql, userId, key);
   if (previous) await removeQuietly(storage, previous);
   return (await avatarUrl(storage, key))!;

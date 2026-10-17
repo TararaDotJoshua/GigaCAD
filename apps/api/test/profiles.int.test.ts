@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { encodePng } from '../src/thumbnails/png.js';
 import { client, commitVersion, createHarness, createUser, MACHINE, upload, type Client, type Harness, type TestUser } from './helpers.js';
 
 let harness: Harness;
@@ -12,7 +13,14 @@ let publicId: string;
 let privateId: string;
 const word = randomUUID().slice(0, 8);
 
-const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+const PNG = encodePng(2, 2, new Uint8Array(16).fill(200));
+/** The smallest JPEG structure the check accepts: a frame header, a scan, and the end marker. */
+const JPEG = Buffer.from([
+  0xff, 0xd8,
+  0xff, 0xc0, 0x00, 0x0b, 0x08, 0x00, 0x01, 0x00, 0x01, 0x01, 0x01, 0x11, 0x00,
+  0xff, 0xda, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3f, 0x00, 0x12, 0x34,
+  0xff, 0xd9,
+]);
 
 /** A project with one version commit, a release request, an approval, and a release: four contributions. */
 async function releasedProject(api: Client, visibility: 'public' | 'private') {
@@ -118,6 +126,37 @@ describe('profile details', () => {
     }
     expect((await asMaker.patch('/v1/me', { bio: 'x'.repeat(161) })).status).toBe(400);
   });
+
+  it('gives one message per problem, naming the field', async () => {
+    const problems = async (body: object) => ((await asMaker.patch('/v1/me', body)).body.error.details as { message: string }[]).map((item) => item.message);
+    expect(await problems({ website: 'javascript:alert(1)' })).toEqual(['Use a link that starts with http:// or https://']);
+    expect(await problems({ website: `https://${'a'.repeat(200)}.com` })).toEqual(['Website can be at most 200 characters']);
+    expect(await problems({ bio: 'x'.repeat(161) })).toEqual(['Bio can be at most 160 characters']);
+  });
+
+  it('takes a scheme in any case and a host with a port', async () => {
+    expect((await asMaker.patch('/v1/me', { website: 'Https://Example.com/Me' })).body.website).toBe('https://Example.com/Me');
+    expect((await asMaker.patch('/v1/me', { website: 'https://example.com:8080' })).body.website).toBe('https://example.com:8080');
+  });
+
+  it('counts a bio as the form does: line breaks once, emoji by what they are made of', async () => {
+    // Three lines filling the 160 the counter allows, sent as a form sends them, with CRLF.
+    const lines = ['a'.repeat(52), 'b'.repeat(52), 'c'.repeat(54)];
+    const saved = await asMaker.patch('/v1/me', { bio: lines.join('\r\n') });
+    expect(saved.status).toBe(200);
+    expect(saved.body.bio).toBe(lines.join('\n'));
+    // A family emoji is 11 UTF-16 units but 7 characters.
+    expect((await asMaker.patch('/v1/me', { bio: `${'x'.repeat(153)}👨‍👩‍👧‍👦` })).status).toBe(200);
+    // Runs of blank lines become one.
+    expect((await asMaker.patch('/v1/me', { bio: 'one\n\n\n\ntwo' })).body.bio).toBe('one\n\ntwo');
+  });
+
+  it('says when a handle belongs to someone else', async () => {
+    const taken = await asMaker.patch('/v1/me', { handle: member.handle });
+    expect(taken.status).toBe(409);
+    expect(taken.body.error.code).toBe('handle_taken');
+    expect((await asMaker.patch('/v1/me', { handle: maker.handle })).status).toBe(200);
+  });
 });
 
 describe('avatars', () => {
@@ -129,7 +168,7 @@ describe('avatars', () => {
     expect((await asMaker.get('/v1/me')).body.avatarUrl).toBe(first.body.avatarUrl);
     expect((await anonymous.get(`/v1/users/${maker.handle}`)).body.profile.avatarUrl).toBe(first.body.avatarUrl);
 
-    const second = await putAvatar(maker, Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]), 'image/jpeg');
+    const second = await putAvatar(maker, JPEG, 'image/jpeg');
     expect(second.status).toBe(200);
     expect(harness.storage.objects.has(firstKey)).toBe(false);
 
@@ -140,6 +179,11 @@ describe('avatars', () => {
 
   it('rejects files that are not images, and images over 1 MB', async () => {
     expect((await putAvatar(maker, Buffer.from('not really a png'))).status).toBe(400);
+    // Only the first bytes of an image, then garbage.
+    const corrupt = await putAvatar(maker, Buffer.concat([PNG.subarray(0, 8), Buffer.from('garbage that is not a png chunk at all')]));
+    expect(corrupt.status).toBe(400);
+    expect(corrupt.body.error.code).toBe('invalid_image');
+    expect((await putAvatar(maker, Buffer.concat([JPEG.subarray(0, 4), Buffer.from('xx')]), 'image/jpeg')).status).toBe(400);
     expect((await putAvatar(maker, Buffer.concat([PNG, Buffer.alloc(1024 * 1024)]))).status).toBe(413);
     expect((await putAvatar(maker, PNG, 'text/plain')).status).toBe(400);
   });

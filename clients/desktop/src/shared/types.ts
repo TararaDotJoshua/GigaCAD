@@ -219,7 +219,7 @@ export interface Commands {
   branchHistory(projectId: string, branch: string): unknown;
   releaseRequests(projectId: string): unknown;
   openReleaseRequest(projectId: string, branch: string, title: string, body: string): unknown;
-  approveReleaseRequest(projectId: string, number: number): void;
+  approveReleaseRequest(projectId: string, number: number, candidateManifestId: string): void;
   /** Recently changed root files, newest first: GET /v1/projects/:id/files?area=root&sort=modified. */
   rootFiles(projectId: string): unknown;
 

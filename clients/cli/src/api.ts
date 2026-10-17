@@ -229,7 +229,15 @@ export interface ReleaseRequestDetail {
     readonly errors: readonly CandidateError[];
     readonly ok: boolean;
   };
-  readonly candidate: { readonly manifestId: string; readonly files: ManifestEntry[]; readonly upToDate: boolean } | null;
+  /** False when the picks leave main as it is (older APIs leave it out). */
+  readonly changesMain?: boolean;
+  readonly candidate: {
+    readonly manifestId: string;
+    readonly files: ManifestEntry[];
+    readonly upToDate: boolean;
+    /** Files a SolidWorks rebuild saved after the candidate was built (older APIs leave it out). */
+    readonly rebuilt?: readonly { readonly itemId: string; readonly path: string; readonly blob: string }[];
+  } | null;
   readonly approvals: {
     readonly given: readonly { readonly userId: string; readonly handle: string; readonly candidateManifestId: string; readonly createdAt: string }[];
     readonly evaluation: ApprovalEvaluation | null;

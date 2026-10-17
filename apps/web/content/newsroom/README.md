@@ -20,6 +20,8 @@ Each Markdown file here is one article at `gigacad.site/newsroom/<file name>`. T
 
    `kind` is `essay`, `roadmap`, or `news`. `date` is the day it goes out. `author` is a person for signed pieces and `GigaCAD Team` for everything else. When several articles share a date, an optional `order: <number>` sorts them, higher first.
 3. Write the body in Markdown, starting with `##` section headings (the title is the page's only top-level heading). Tables, lists, links, and code all work. Raw HTML is not rendered.
+
+   For images, put the files in `public/newsroom/<slug>/` and reference them as `![Caption](/newsroom/<slug>/file.png)` on a line of their own. The alt text becomes the caption. Keep images about 2000px wide.
 4. Preview it with `pnpm --filter @gigacad/web dev` at `localhost:3000/newsroom`. Drafts show there with a Draft badge.
 5. Remove `draft: true` (or set it to `false`) to publish. The next web deploy adds it to the newsroom and the RSS feed.
 

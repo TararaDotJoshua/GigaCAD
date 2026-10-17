@@ -18,6 +18,7 @@ const app = buildApp({
   storage,
   authenticate: createAuthenticator({ sql, supabaseUrl: config.SUPABASE_URL, jwtSecret: config.SUPABASE_JWT_SECRET }),
   webOrigin: config.WEB_ORIGIN,
+  trustProxyHops: config.TRUST_PROXY_HOPS,
   ...(mailer ? { mailer } : {}),
   ...(config.STRIPE_SECRET_KEY && config.STRIPE_WEBHOOK_SECRET
     ? { payments: createStripePayments({

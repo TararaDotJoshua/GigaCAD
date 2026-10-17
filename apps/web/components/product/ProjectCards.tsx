@@ -20,6 +20,7 @@ export function ProjectCards({ projects, showOwner = true }: { projects: readonl
               {showOwner && <span className="muted">{project.ownerHandle}/</span>}
               {project.name}
             </Link>
+            {project.isFork && <StatusBadge tone="quiet">Fork</StatusBadge>}
             {project.visibility === 'private' && <StatusBadge tone="quiet">Private</StatusBadge>}
           </div>
           {project.description && <p className="project-card-description">{project.description}</p>}

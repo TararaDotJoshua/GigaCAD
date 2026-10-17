@@ -3,21 +3,29 @@ import { EmptyState } from '../../../../../components/product/EmptyState';
 import { PageHead } from '../../../../../components/product/PageHead';
 import { RelativeTime } from '../../../../../components/product/RelativeTime';
 import { StatusBadge } from '../../../../../components/product/StatusBadge';
-import { REQUEST_STATUS_LABEL, requestTone } from '../../../../../lib/describe';
+import { requestBadge } from '../../../../../lib/describe';
 import { projectPath, releaseRequestPath } from '../../../../../lib/paths';
-import { getProject, getReleaseRequests } from '../../../../../lib/product';
+import type { ReleaseRequestDetail } from '../../../../../lib/api';
+import { getApprovalRules, getProject, getReleaseRequest, getReleaseRequests } from '../../../../../lib/product';
 import type { ProjectParams } from '../layout';
 
-export const metadata = { title: 'Release requests' };
+export async function generateMetadata({ params }: { params: Promise<ProjectParams> }) {
+  const { owner, project } = await params;
+  return { title: `Release requests · ${owner}/${project}` };
+}
 
 export default async function ReleaseRequests({ params, searchParams }: { params: Promise<ProjectParams>; searchParams: Promise<{ view?: string }> }) {
   const { owner, project: slug } = await params;
   const project = await getProject(owner, slug);
-  const [requests, { view }] = await Promise.all([getReleaseRequests(project.id), searchParams]);
+  const [requests, rules, { view }] = await Promise.all([getReleaseRequests(project.id), getApprovalRules(project.id), searchParams]);
   const active = requests.filter((request) => request.status === 'open' || request.status === 'candidate');
   const all = view === 'all';
   const shown = all ? requests : active;
   const base = projectPath(owner, slug, 'release-requests');
+  // Where each candidate stands on approvals, so approvers can see what's waiting without opening each one.
+  const candidates = shown.filter((request) => request.status === 'candidate');
+  const details = await Promise.all(candidates.map((request) => getReleaseRequest(request.id).catch(() => null)));
+  const approvals = new Map(details.flatMap((detail) => (detail ? [[detail.releaseRequest.id, approvalState(detail, rules.requiredCount)] as const] : [])));
   return (
     <div className="page">
       <PageHead
@@ -42,11 +50,14 @@ export default async function ReleaseRequests({ params, searchParams }: { params
                 <th scope="col">Branch</th>
                 <th scope="col">Opened by</th>
                 <th scope="col">Status</th>
+                <th scope="col">Approvals</th>
                 <th scope="col">Updated</th>
               </tr>
             </thead>
             <tbody>
-              {shown.map((request) => (
+              {shown.map((request) => {
+                const badge = requestBadge(request, rules.requireCleanRebuild);
+                return (
                 <tr key={request.id}>
                   <td>
                     <Link href={releaseRequestPath(owner, slug, request.number)}>
@@ -56,13 +67,15 @@ export default async function ReleaseRequests({ params, searchParams }: { params
                   <td className="mono">{request.branchName}</td>
                   <td>@{request.requesterHandle || 'unknown'}</td>
                   <td>
-                    <StatusBadge tone={requestTone(request.status)}>{REQUEST_STATUS_LABEL[request.status]}</StatusBadge>
+                    <StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>
                   </td>
+                  <td className="muted">{approvals.get(request.id) ?? (request.status === 'open' ? 'No candidate yet' : '—')}</td>
                   <td>
                     <RelativeTime value={request.updatedAt} />
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -76,4 +89,16 @@ export default async function ReleaseRequests({ params, searchParams }: { params
       )}
     </div>
   );
+}
+
+/** "1 of 2 approvals", or what else stands between the candidate and a release. */
+function approvalState(detail: ReleaseRequestDetail, required: number): string {
+  const evaluation = detail.approvals.evaluation;
+  // The status badge already says when the candidate needs regenerating.
+  if (!detail.candidate?.upToDate) return '—';
+  if (!evaluation) return '—';
+  if (evaluation.canRelease) return 'Ready to release';
+  if (evaluation.blockers.some((blocker) => blocker.kind === 'needs_approvals')) return `${evaluation.countedUserIds.length} of ${required} approvals`;
+  if (evaluation.blockers.some((blocker) => blocker.kind === 'not_enough_eligible_approvers')) return 'Not enough approvers';
+  return 'Needs a clean rebuild';
 }

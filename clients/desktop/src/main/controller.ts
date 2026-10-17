@@ -614,9 +614,10 @@ export class Controller {
     },
     rootFiles: async (projectId) =>
       (await apiClient(this.settings.apiUrl)).get(`/v1/projects/${projectId}/files?area=root&sort=modified&order=desc&limit=30`),
-    approveReleaseRequest: async (projectId, number) => {
+    // Approves the candidate the list showed, so a candidate regenerated since is refused rather than approved unseen.
+    approveReleaseRequest: async (projectId, number, candidateManifestId) => {
       const project = this.project(projectId);
-      await giga(['rr', 'approve', String(number), '--project', `${project.owner}/${project.slug}`], this.opts());
+      await giga(['rr', 'approve', String(number), '--project', `${project.owner}/${project.slug}`, '--candidate', candidateManifestId], this.opts());
     },
 
     // The window joins paths with `/`; Windows wants its own separators.

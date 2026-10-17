@@ -20,6 +20,8 @@ export interface ActionState {
   readonly message?: string;
   /** The form field the error is about, which the form focuses. */
   readonly field?: string;
+  /** The candidate a release request action left behind (null: none), so the page knows it as the viewer's own. */
+  readonly candidateManifestId?: string | null;
   /** Set when an upload was refused because the project owner's storage is full. */
   readonly storageFull?: { readonly usedBytes: number; readonly quotaBytes: number };
 }
@@ -386,22 +388,32 @@ export async function savePicks(requestId: string, picks: Picks): Promise<Action
   } catch (error) {
     return { error: messageFor(error) };
   }
+  // Saving picks clears the candidate; whatever is built next (or nothing) is this viewer's own doing.
   if (!detail.preview.ok || !detail.changesMain) {
     refresh();
-    return { message: detail.preview.ok ? 'Saved. These picks leave main as it is, so there’s nothing to release.' : 'Saved. Fix the pick errors to build the candidate.' };
+    return { message: detail.preview.ok ? 'Saved. These picks leave main as it is, so there’s nothing to release.' : 'Saved. Fix the pick errors to build the candidate.', candidateManifestId: null };
   }
+  let built: ReleaseRequestDetail;
   try {
-    await apiRequest(token, `/v1/release-requests/${id(requestId)}/candidate`, json('POST', {}));
+    built = await apiRequest<ReleaseRequestDetail>(token, `/v1/release-requests/${id(requestId)}/candidate`, json('POST', {}));
   } catch (error) {
     refresh();
-    return { error: `Saved, but the candidate didn’t build: ${messageFor(error)}` };
+    return { error: `Saved, but the candidate didn’t build: ${messageFor(error)}`, candidateManifestId: null };
   }
   refresh();
-  return { message: 'Saved and regenerated the candidate.' };
+  return { message: 'Saved and regenerated the candidate.', candidateManifestId: built.candidate?.manifestId ?? null };
 }
 
 export async function generateCandidate(requestId: string): Promise<ActionState> {
-  return mutate((token) => apiRequest(token, `/v1/release-requests/${id(requestId)}/candidate`, json('POST', {})), 'Built the candidate.');
+  const token = await requireAccessToken();
+  let built: ReleaseRequestDetail;
+  try {
+    built = await apiRequest<ReleaseRequestDetail>(token, `/v1/release-requests/${id(requestId)}/candidate`, json('POST', {}));
+  } catch (error) {
+    return failure(error);
+  }
+  refresh();
+  return { message: 'Built the candidate.', candidateManifestId: built.candidate?.manifestId ?? null };
 }
 
 /** A refusal because the candidate changed under the page: show the new one so it can be reviewed. */
@@ -413,10 +425,16 @@ function refreshIfStale(error: unknown): void {
  * Approves the candidate the viewer reviewed (`candidateManifestId`, sent by the page).
  * `releaser` names who can release it when the approver can't, so they know what happens next.
  */
-export async function approveCandidate(requestId: string, releaser: string | null, candidateManifestId: string): Promise<ActionState> {
+/** What the viewer reviewed: the candidate, and when its exports last changed, so a swapped export is refused as stale. */
+const reviewedBody = (candidateManifestId: string, exportsChangedAt: string | null) => ({
+  candidateManifestId: id(candidateManifestId),
+  exportsChangedAt: exportsChangedAt && !Number.isNaN(Date.parse(exportsChangedAt)) ? exportsChangedAt : null,
+});
+
+export async function approveCandidate(requestId: string, releaser: string | null, candidateManifestId: string, exportsChangedAt: string | null): Promise<ActionState> {
   const token = await requireAccessToken();
   try {
-    await apiRequest(token, `/v1/release-requests/${id(requestId)}/approvals`, json('POST', { candidateManifestId: id(candidateManifestId) }));
+    await apiRequest(token, `/v1/release-requests/${id(requestId)}/approvals`, json('POST', reviewedBody(candidateManifestId, exportsChangedAt)));
   } catch (error) {
     refreshIfStale(error);
     return { error: messageFor(error) };
@@ -442,10 +460,10 @@ export async function releaseCandidate(
   requestId: string,
   owner: string,
   slug: string,
-  input: { candidateManifestId: string; approve: boolean; notes: string },
+  input: { candidateManifestId: string; exportsChangedAt: string | null; approve: boolean; notes: string },
 ): Promise<ActionState> {
   const token = await requireAccessToken();
-  const reviewed = { candidateManifestId: id(input.candidateManifestId) };
+  const reviewed = reviewedBody(input.candidateManifestId, input.exportsChangedAt);
   let approved = false;
   let number: number;
   try {

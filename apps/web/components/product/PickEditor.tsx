@@ -65,7 +65,7 @@ export function PickEditor({
   const [pending, start] = useTransition();
   const [state, setState] = useState<ActionState>({});
   const [asking, setAsking] = useState(false);
-  const { setDirty, expectOwnChange } = useRequestDraft();
+  const { setDirty, expectOwnChange, ownChangeDone } = useRequestDraft();
   const dirty = !samePicks(rows, saved, draft);
   const changedElsewhere = !samePicks(rows, saved, incoming);
   if (changedElsewhere && (!dirty || samePicks(rows, incoming, draft))) {
@@ -97,7 +97,11 @@ export function PickEditor({
     setAsking(false);
     expectOwnChange();
     // A failed request keeps the draft and says so, instead of replacing the page with the error screen.
-    start(async () => setState(await safeAction(() => savePicks(requestId, picksFromDraft(rows, draft)))));
+    start(async () => {
+      const result = await safeAction(() => savePicks(requestId, picksFromDraft(rows, draft)));
+      ownChangeDone(result);
+      setState(result);
+    });
   };
 
   return (

@@ -53,7 +53,8 @@ describe('the next step on a release request', () => {
       text: 'Only 0 of the 1 required approvers can approve this request. Self-approval is off, so you can’t approve your own request. Change who can approve in the approval rules.',
       tone: 'caution',
       rules: true,
-    });    expect(nextStep({ ...stuck, canChangeRules: false }).text).toContain('Ask @olive to change who can approve in the approval rules.');
+    });
+    expect(nextStep({ ...stuck, canChangeRules: false }).text).toContain('Ask @olive to change who can approve in the approval rules.');
   });
 
   it('offers to build a missing candidate, and says when there is nothing to release', () => {

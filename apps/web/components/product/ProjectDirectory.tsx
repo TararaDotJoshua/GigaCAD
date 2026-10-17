@@ -27,6 +27,12 @@ import { UploadFiles } from './UploadFiles';
 
 const PAGE_SIZE = 100;
 
+/** The page of a folder the URL asks for, as getDirectory takes it. The tab title reads the same page, so they share one request. */
+export function directoryPaging(params: DirectoryParams) {
+  const { sort, order, offset } = readParams(params);
+  return { sort, order, offset, limit: PAGE_SIZE };
+}
+
 /** What the URL asks for: a folder, or a search, recent files, or favorites across the whole project. */
 export interface DirectoryParams {
   q?: string;
@@ -82,7 +88,7 @@ export async function ProjectDirectory({
   const slug = project.slug;
   const { q, tagIds, view, sort, order, offset, under, showReleased } = readParams(params);
   const searching = Boolean(q || tagIds.length || view);
-  const paging = { sort, order, offset, limit: PAGE_SIZE };
+  const paging = directoryPaging(params);
 
   const [listing, results, tags] = await Promise.all([
     searching ? null : getDirectory(project.id, path, paging),

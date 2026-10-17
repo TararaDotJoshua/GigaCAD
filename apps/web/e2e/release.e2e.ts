@@ -250,6 +250,7 @@ test('shares a public project: browse it signed out, star it, and fork it', asyn
   await expect(page.getByText(`${world.handle}/${slug} v1`)).toBeVisible();
   // The fork's root has Branches and Releases; its v1 holds the forked files.
   await page.getByRole('region', { name: 'Files' }).getByRole('link', { name: 'Releases', exact: true }).click();
+  await page.waitForURL('**/tree/Releases');
   await page.locator('#main').getByRole('link', { name: 'v1', exact: true }).click();
   await expect(page.locator('#main').getByText('Gearbox.SLDASM')).toBeVisible();
 });

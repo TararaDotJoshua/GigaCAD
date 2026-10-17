@@ -8,7 +8,7 @@ import { RelativeTime } from '../../../../../../components/product/RelativeTime'
 import { StatusBadge } from '../../../../../../components/product/StatusBadge';
 import { REQUEST_STATUS_LABEL, blockerText, eligibleApprovers, requestTone } from '../../../../../../lib/describe';
 import { branchPath, projectPath, releasePath } from '../../../../../../lib/paths';
-import { getApprovalRules, getMembers, getViewer, getProject, getRelease, getReleaseRequestByNumber, parseNumber } from '../../../../../../lib/product';
+import { getApprovalRules, getVisibleMembers, getViewer, isFullMember, getProject, getRelease, getReleaseRequestByNumber, parseNumber } from '../../../../../../lib/product';
 import type { ProjectParams } from '../../layout';
 
 type RequestParams = ProjectParams & { number: string };
@@ -31,9 +31,10 @@ export default async function RequestPage({ params }: { params: Promise<RequestP
   const finished = request.status === 'released' || request.status === 'closed';
   // Finished requests read against the main they targeted; active ones against the latest.
   const mainRelease = finished ? targetRelease : latestRelease;
-  const [me, members, rules, main] = await Promise.all([getViewer(), getMembers(project.id), getApprovalRules(project.id), mainRelease ? getRelease(project.id, mainRelease.number) : Promise.resolve(null)]);
+  const [me, members, rules, main] = await Promise.all([getViewer(), getVisibleMembers(project.id), getApprovalRules(project.id), mainRelease ? getRelease(project.id, mainRelease.number) : Promise.resolve(null)]);
   const canWrite = project.role === 'owner' || project.role === 'maintainer' || project.role === 'contributor';
-  const eligible = eligibleApprovers(members, rules, request.requesterId);
+  // Only members get ids and roles, so outsiders see who has approved rather than who may.
+  const eligible = project.role ? eligibleApprovers(members.filter(isFullMember), rules, request.requesterId) : approvals.given.map(({ userId, handle }) => ({ userId, handle }));
   const mayApprove = eligible.some((member) => member.userId === me?.id);
   const mine = approvals.given.find((approval) => approval.userId === me?.id && approval.candidateManifestId === request.candidateManifestId);
   const releaseNumber = latestRelease ? latestRelease.number + 1 : 1;
@@ -200,7 +201,7 @@ export default async function RequestPage({ params }: { params: Promise<RequestP
                 })}
               </ul>
             ) : (
-              <p className="muted">No eligible approvers under the current rules.</p>
+              <p className="muted">{project.role ? 'No eligible approvers under the current rules.' : 'No approvals yet.'}</p>
             )}
             {!finished && candidate?.upToDate && mayApprove && !approveAndRelease && (mine ? <ActionButton action={withdrawApproval.bind(null, request.id)}>Withdraw approval</ActionButton> : <ActionButton action={approveCandidate.bind(null, request.id)} className="btn btn-primary">Approve candidate</ActionButton>)}
           </section>

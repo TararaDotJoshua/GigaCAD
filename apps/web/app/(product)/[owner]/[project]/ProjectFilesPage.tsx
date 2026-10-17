@@ -9,7 +9,7 @@ import { StatusBadge } from '../../../../components/product/StatusBadge';
 import type { Project, Release } from '../../../../lib/api';
 import { collapseActivity, describeEvent, releaseName } from '../../../../lib/describe';
 import { projectPath, releaseDownloadPath, releasePath, treePath } from '../../../../lib/paths';
-import { getBranches, getEvents, getMembers, getProject, getRelease, getReleases, getTags, getViewer } from '../../../../lib/product';
+import { getBranches, getEvents, getVisibleMembers, getProject, getRelease, getReleases, getTags, getViewer, isFullMember } from '../../../../lib/product';
 
 /** How much of the feed the project page shows; the rest is on the activity page. */
 const ACTIVITY_SHOWN = 5;
@@ -164,9 +164,9 @@ async function LatestRelease({ project, release }: { project: Project; release: 
 
 /** Tags and a short activity feed, beside the root's files. */
 async function ProjectRail({ project }: { project: Project }) {
-  const [events, members, branches, tags] = await Promise.all([getEvents(project.id, 40), getMembers(project.id), getBranches(project.id), getTags(project.id)]);
+  const [events, members, branches, tags] = await Promise.all([getEvents(project.id, 40), getVisibleMembers(project.id), getBranches(project.id), getTags(project.id)]);
   // Events carry their actor's handle, so people who have left are still named.
-  const handles = new Map([...events.flatMap((event) => (event.actorId && event.actorHandle ? [[event.actorId, event.actorHandle] as const] : [])), ...members.map((member) => [member.userId, member.handle] as const)]);
+  const handles = new Map([...events.flatMap((event) => (event.actorId && event.actorHandle ? [[event.actorId, event.actorHandle] as const] : [])), ...members.filter(isFullMember).map((member) => [member.userId, member.handle] as const)]);
   const branchNames = new Map(branches.map((branch) => [branch.id, branch.name]));
   const names = {
     handle: (id: string | null) => (id && handles.has(id) ? `@${handles.get(id)}` : 'Someone'),

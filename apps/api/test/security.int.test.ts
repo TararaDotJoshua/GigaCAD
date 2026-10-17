@@ -186,6 +186,23 @@ describe('public projects', () => {
     expect((await asOwner.get(`/v1/branches/${branchId}`)).body.branch.checkedOutMachine).toBe('JOSHS-MACBOOK');
   });
 
+  it('list members to outsiders by handle only, without ids, roles, or named approvers', async () => {
+    const { projectId } = await project('public');
+    await asOwner.post(`/v1/projects/${projectId}/members`, { handle: teammate.handle, role: 'maintainer' });
+    const rules = { requiredCount: 1, approverUserIds: [teammate.id], approverRoles: ['owner'], allowSelfApproval: false, requireCleanRebuild: false };
+    expect((await asOwner.put(`/v1/projects/${projectId}/approval-rules`, rules)).status).toBe(200);
+
+    for (const outsider of [anonymous(), client(harness, await createUser(harness, 'passerby'))]) {
+      const members = (await outsider.get(`/v1/projects/${projectId}/members`)).body as Record<string, unknown>[];
+      expect(members.map((member) => member.handle)).toEqual([owner.handle, teammate.handle]);
+      for (const member of members) expect(Object.keys(member).sort()).toEqual(['avatarUrl', 'displayName', 'handle']);
+      expect((await outsider.get(`/v1/projects/${projectId}/approval-rules`)).body).toMatchObject({ requiredCount: 1, approverUserIds: [], approverRoles: ['owner'] });
+    }
+    const inside = (await asTeammate.get(`/v1/projects/${projectId}/members`)).body as { userId: string; role: string }[];
+    expect(inside.map((member) => member.role)).toEqual(['owner', 'maintainer']);
+    expect((await asTeammate.get(`/v1/projects/${projectId}/approval-rules`)).body.approverUserIds).toEqual([teammate.id]);
+  });
+
   it('keep membership changes out of the outsiders’ feed, and name each actor', async () => {
     const { projectId } = await project('public');
     await asOwner.post(`/v1/projects/${projectId}/members`, { handle: teammate.handle, role: 'viewer' });

@@ -18,6 +18,7 @@ import {
   type ProjectTag,
   type Commit,
   type Member,
+  type PublicMember,
   type Profile,
   type Project,
   type ProjectCard,
@@ -133,7 +134,12 @@ export const getReleaseRequestByNumber = cache(async (projectId: string, number:
 });
 
 export const getDeletedProjects = cache(() => get<DeletedProject[]>('/v1/me/deleted-projects'));
+/** Members with ids and roles, for the project's own members. Outsiders get `PublicMember`s; see `getVisibleMembers`. */
 export const getMembers = cache((projectId: string) => get<Member[]>(`/v1/projects/${projectId}/members`));
+/** Members as the viewer may see them: full `Member`s for members, handles only for everyone else. */
+export const getVisibleMembers = cache((projectId: string) => get<(Member | PublicMember)[]>(`/v1/projects/${projectId}/members`));
+/** Whether a member came with an id and role, which only the project's own members get. */
+export const isFullMember = (member: Member | PublicMember): member is Member => 'userId' in member;
 export const getApprovalRules = cache((projectId: string) => get<ApprovalRules>(`/v1/projects/${projectId}/approval-rules`));
 export const getEvents = cache((projectId: string, limit = 20) => get<ProjectEvent[]>(`/v1/projects/${projectId}/events?order=desc&limit=${limit}`));
 

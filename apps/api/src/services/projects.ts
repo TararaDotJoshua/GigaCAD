@@ -185,14 +185,19 @@ export interface MemberView {
   readonly role: ProjectRole;
 }
 
-export async function listMembers(sql: Sql, projectId: string, userId: string | null): Promise<MemberView[]> {
-  await projectAccess(sql, projectId, userId);
-  return sql<MemberView[]>`
+/** Who's on a public project, as anyone may see it: no user ids, and no roles. */
+export type PublicMemberView = Pick<MemberView, 'handle' | 'displayName' | 'avatarKey'>;
+
+export async function listMembers(sql: Sql, projectId: string, userId: string | null): Promise<MemberView[] | PublicMemberView[]> {
+  const { role } = await projectAccess(sql, projectId, userId);
+  const members = await sql<MemberView[]>`
     select m.user_id, p.handle, p.display_name, p.avatar_key, m.role
     from project_members m join profiles p on p.id = m.user_id
     where m.project_id = ${projectId}
     order by array_position(array['owner','maintainer','contributor','viewer']::project_role[], m.role), p.handle
   `;
+  if (role !== null) return members;
+  return members.map(({ handle, displayName, avatarKey }) => ({ handle, displayName, avatarKey }));
 }
 
 /** Someone just added to a project, with what's needed to tell them. */
@@ -299,9 +304,11 @@ export async function loadApprovalRules(db: Db, projectId: string): Promise<Appr
   return rules;
 }
 
+/** The rules for anyone who can see the project. Outsiders don't get the named approvers' user ids. */
 export async function getApprovalRules(sql: Sql, projectId: string, userId: string | null): Promise<ApprovalRules> {
-  await projectAccess(sql, projectId, userId);
-  return loadApprovalRules(sql, projectId);
+  const { role } = await projectAccess(sql, projectId, userId);
+  const rules = await loadApprovalRules(sql, projectId);
+  return role === null ? { ...rules, approverUserIds: [] } : rules;
 }
 
 export async function setApprovalRules(sql: Sql, projectId: string, userId: string, rules: ApprovalRules): Promise<ApprovalRules> {

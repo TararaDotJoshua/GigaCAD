@@ -2,7 +2,7 @@ import { PageHead } from '../../../../../components/product/PageHead';
 import { RelativeTime } from '../../../../../components/product/RelativeTime';
 import { collapseActivity, describeEvent } from '../../../../../lib/describe';
 import { projectPath } from '../../../../../lib/paths';
-import { getBranches, getEvents, getMembers, getProject } from '../../../../../lib/product';
+import { getBranches, getEvents, getVisibleMembers, getProject, isFullMember } from '../../../../../lib/product';
 import type { ProjectParams } from '../layout';
 
 export async function generateMetadata({ params }: { params: Promise<ProjectParams> }) {
@@ -14,9 +14,9 @@ export async function generateMetadata({ params }: { params: Promise<ProjectPara
 export default async function ActivityPage({ params }: { params: Promise<ProjectParams> }) {
   const { owner, project: slug } = await params;
   const project = await getProject(owner, slug);
-  const [events, members, branches] = await Promise.all([getEvents(project.id, 300), getMembers(project.id), getBranches(project.id)]);
+  const [events, members, branches] = await Promise.all([getEvents(project.id, 300), getVisibleMembers(project.id), getBranches(project.id)]);
   // Events carry their actor's handle, so people who have left are still named.
-  const handles = new Map([...events.flatMap((event) => (event.actorId && event.actorHandle ? [[event.actorId, event.actorHandle] as const] : [])), ...members.map((member) => [member.userId, member.handle] as const)]);
+  const handles = new Map([...events.flatMap((event) => (event.actorId && event.actorHandle ? [[event.actorId, event.actorHandle] as const] : [])), ...members.filter(isFullMember).map((member) => [member.userId, member.handle] as const)]);
   const branchNames = new Map(branches.map((branch) => [branch.id, branch.name]));
   const names = {
     handle: (id: string | null) => (id && handles.has(id) ? `@${handles.get(id)}` : 'Someone'),

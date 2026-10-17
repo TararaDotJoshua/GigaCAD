@@ -175,11 +175,16 @@ export interface DeletedProject {
   purgeAt: string;
 }
 
-export interface Member {
-  userId: string;
+/** A project member as anyone who can see the project may: no user id, no role. */
+export interface PublicMember {
   handle: string;
   displayName: string | null;
   avatarUrl: string | null;
+}
+
+/** A project member as the project's own members see them. */
+export interface Member extends PublicMember {
+  userId: string;
   role: ProjectRole;
 }
 

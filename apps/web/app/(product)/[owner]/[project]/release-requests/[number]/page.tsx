@@ -8,7 +8,8 @@ import { RelativeTime } from '../../../../../../components/product/RelativeTime'
 import { StatusBadge } from '../../../../../../components/product/StatusBadge';
 import { REQUEST_STATUS_LABEL, blockerText, eligibleApprovers, requestTone } from '../../../../../../lib/describe';
 import { branchPath, projectPath, releasePath } from '../../../../../../lib/paths';
-import { getApprovalRules, getMembers, getViewer, getProject, getRelease, getReleaseRequestByNumber, parseNumber } from '../../../../../../lib/product';
+import { isSolidWorks } from '../../../../../../lib/preview';
+import { getApprovalRules, getFileExports, getMembers, getViewer, getProject, getRelease, getReleaseRequestByNumber, parseNumber } from '../../../../../../lib/product';
 import type { ProjectParams } from '../../layout';
 
 type RequestParams = ProjectParams & { number: string };
@@ -33,6 +34,12 @@ export default async function RequestPage({ params }: { params: Promise<RequestP
   const mainRelease = finished ? targetRelease : latestRelease;
   const [me, members, rules, main] = await Promise.all([getViewer(), getMembers(project.id), getApprovalRules(project.id), mainRelease ? getRelease(project.id, mainRelease.number) : Promise.resolve(null)]);
   const canWrite = project.role === 'owner' || project.role === 'maintainer' || project.role === 'contributor';
+  // SolidWorks rows preview through their STEP and STL exports, main's and the branch's.
+  const solidWorks = preview.rows.filter((row) => isSolidWorks(row.path));
+  const exports = await getFileExports(project.id, [
+    ...solidWorks.flatMap((row) => (row.branchChange && row.branchChange.kind !== 'deleted' ? [row.branchChange.after.blob] : [])),
+    ...(main?.files ?? []).filter((file) => solidWorks.some((row) => row.itemId === file.itemId)).map((file) => file.blob),
+  ]);
   const eligible = eligibleApprovers(members, rules, request.requesterId);
   const mayApprove = eligible.some((member) => member.userId === me?.id);
   const mine = approvals.given.find((approval) => approval.userId === me?.id && approval.candidateManifestId === request.candidateManifestId);
@@ -114,6 +121,7 @@ export default async function RequestPage({ params }: { params: Promise<RequestP
               latestNumber={mainRelease?.number ?? null}
               nextNumber={finished ? null : releaseNumber}
               readOnly={finished || !canWrite}
+              exports={exports}
             />
           </section>
           {preview.warnings.length > 0 && (
@@ -179,7 +187,7 @@ export default async function RequestPage({ params }: { params: Promise<RequestP
                   </label>
                 </ActionForm>
               )}
-              {candidate && <p className="muted">{candidate.files.length} files in the candidate.</p>}
+              {candidate && <p className="muted">{candidate.files.length} {candidate.files.length === 1 ? 'file' : 'files'} in the candidate.</p>}
             </section>
           )}
           <section className="rail-card">

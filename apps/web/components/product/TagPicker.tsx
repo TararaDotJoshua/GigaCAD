@@ -5,7 +5,10 @@ import { setFileTags } from '../../app/(product)/actions';
 import type { Tag } from '../../lib/api';
 import { TagIcon } from '../icons';
 
-/** Chooses a file's tags from the project's tags. Tags stay with the file in every branch and release. */
+/**
+ * Chooses a file's tags from the project's tags. Tags stay with the file in every branch and release.
+ * Closing it without saving, with Cancel, Escape, or a click elsewhere, puts back the saved tags.
+ */
 export function TagPicker({ projectId, itemId, name, tags, selected }: { projectId: string; itemId: string; name: string; tags: Tag[]; selected: Tag[] }) {
   const [chosen, setChosen] = useState(() => new Set(selected.map((tag) => tag.id)));
   const [pending, start] = useTransition();
@@ -14,17 +17,35 @@ export function TagPicker({ projectId, itemId, name, tags, selected }: { project
   // Placed against the viewport, so the table's scrolling and rounded corners don't clip it.
   const [place, setPlace] = useState<CSSProperties>();
 
+  // A save refreshes the page with the new tags; start from them.
+  const saved = selected.map((tag) => tag.id).join();
+  useEffect(() => setChosen(new Set(saved ? saved.split(',') : [])), [saved]);
+
+  const dismiss = (restoreFocus = false) => {
+    menu.current?.removeAttribute('open');
+    if (restoreFocus) menu.current?.querySelector('summary')?.focus();
+  };
+
   useEffect(() => {
     if (!place) return;
     const close = (event: Event) => {
       if (event.target instanceof Node && menu.current?.contains(event.target)) return;
-      menu.current?.removeAttribute('open');
+      dismiss();
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      dismiss(true);
     };
     window.addEventListener('scroll', close, true);
     window.addEventListener('resize', close);
+    document.addEventListener('pointerdown', close, true);
+    document.addEventListener('keydown', escape);
     return () => {
       window.removeEventListener('scroll', close, true);
       window.removeEventListener('resize', close);
+      document.removeEventListener('pointerdown', close, true);
+      document.removeEventListener('keydown', escape);
     };
   }, [place]);
 
@@ -33,7 +54,12 @@ export function TagPicker({ projectId, itemId, name, tags, selected }: { project
       ref={menu}
       className="menu tag-picker"
       onToggle={(event) => {
-        if (!event.currentTarget.open) return setPlace(undefined);
+        if (!event.currentTarget.open) {
+          // Unsaved ticks don't outlive the picker.
+          setChosen(new Set(selected.map((tag) => tag.id)));
+          setError('');
+          return setPlace(undefined);
+        }
         const button = event.currentTarget.querySelector('summary')!.getBoundingClientRect();
         const right = Math.max(8, window.innerWidth - button.right);
         // Opens upward when there's more room above the button than below it.
@@ -76,15 +102,18 @@ export function TagPicker({ projectId, itemId, name, tags, selected }: { project
               type="button"
               className="btn btn-primary btn-small"
               disabled={pending}
-              onClick={(event) => {
+              onClick={() => {
                 start(async () => {
                   const result = await setFileTags(projectId, itemId, [...chosen]);
                   setError(result.error ?? '');
-                  if (!result.error) menu.current?.removeAttribute('open');
+                  if (!result.error) dismiss(true);
                 });
               }}
             >
-              Save tags
+              {pending ? 'Saving…' : 'Save tags'}
+            </button>
+            <button type="button" className="btn btn-secondary btn-small" onClick={() => dismiss(true)}>
+              Cancel
             </button>
             {error && (
               <span className="form-status is-error" role="alert">

@@ -25,7 +25,7 @@ export default async function Branches({ params }: { params: Promise<ProjectPara
         {releases.length > 0 && <label className="field"><span>Start from</span><select name="fromRelease">{releases.map(release => <option key={release.id} value={release.number}>v{release.number}</option>)}</select></label>}
       </ActionForm>
     </section>}
-    {branches.length === 0 ? <EmptyState title="No branches yet."><p>Create a branch to start work toward a release.</p></EmptyState> :
+    {branches.length === 0 ? <EmptyState title="No branches yet.">{canWrite ? <p>Create a branch above to start work toward a release.</p> : <p>Branches are where contributors work toward a release.</p>}</EmptyState> :
       <div className="table-wrap"><table className="data-table"><thead><tr><th>Branch</th><th>Status</th><th>From</th><th>Checked out by</th><th>Created</th></tr></thead><tbody>
         {branches.map(branch => <tr key={branch.id}><td><Link className="mono" href={branchPath(owner, slug, branch.name)}>{branch.name}</Link></td><td><StatusBadge tone={branchTone(branch.status)}>{BRANCH_STATUS_LABEL[branch.status]}</StatusBadge></td><td className="mono">{branch.baseReleaseNumber ? `v${branch.baseReleaseNumber}` : 'Empty'}</td><td>{me && branch.checkedOutBy === me.id ? 'You' : branch.checkedOutByHandle ? `@${branch.checkedOutByHandle} on ${branch.checkedOutMachine}` : '—'}</td><td><RelativeTime value={branch.createdAt} /></td></tr>)}
       </tbody></table></div>}

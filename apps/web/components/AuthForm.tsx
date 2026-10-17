@@ -172,7 +172,10 @@ export function AuthForm({ mode }: { mode: Mode }) {
       <div className="auth-card">
         <h1>{titles[mode]}</h1>
         <p className="auth-intro">
-          {mode === 'login' && 'Pick up where you left off with your projects and releases.'}
+          {mode === 'login' &&
+            (search.get('reason') === 'private'
+              ? 'This page is private or no longer exists. Log in to check whether you have access.'
+              : 'Pick up where you left off with your projects and releases.')}
           {mode === 'signup' && 'Start a project, work on branches, and keep every release locked.'}
           {mode === 'forgot' && 'Enter your account email and we’ll send a reset link.'}
           {mode === 'reset' && 'Your new password will be used the next time you log in.'}

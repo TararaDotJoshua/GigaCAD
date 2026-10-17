@@ -1,29 +1,36 @@
 import { diffManifests } from '@gigacad/core';
 import Link from 'next/link';
+import { permanentRedirect } from 'next/navigation';
 import { archiveBranch, forceReleaseLock, openReleaseRequest } from '../../../../actions';
 import { ActionButton } from '../../../../../../components/product/ActionButton';
 import { ActionForm } from '../../../../../../components/product/ActionForm';
 import { ChangeList, changeSummary } from '../../../../../../components/product/ChangeList';
 import { EmptyState } from '../../../../../../components/product/EmptyState';
 import { PageHead } from '../../../../../../components/product/PageHead';
-import { ProjectDirectory } from '../../../../../../components/product/ProjectDirectory';
+import { ProjectDirectory, type DirectoryParams } from '../../../../../../components/product/ProjectDirectory';
 import { RelativeTime } from '../../../../../../components/product/RelativeTime';
 import { StatusBadge } from '../../../../../../components/product/StatusBadge';
 import { sites } from '../../../../../../lib/hosts';
 import { BRANCH_STATUS_LABEL, branchTone, groupTimeline } from '../../../../../../lib/describe';
-import { commitPath, projectPath, releasePath, releaseRequestPath } from '../../../../../../lib/paths';
+import { branchPath, commitPath, projectPath, releasePath, releaseRequestPath } from '../../../../../../lib/paths';
 import { getBranchByName, getBranchDetail, getCommits, getProject, getRelease, getReleaseRequests, getViewer } from '../../../../../../lib/product';
 import type { ProjectParams } from '../../layout';
 
 export async function generateMetadata({ params }: { params: Promise<ProjectParams & { branch: string }> }) {
-  const { owner, project, branch } = await params;
-  return { title: `${decodeURIComponent(branch)} · ${owner}/${project}` };
+  const { owner, project: slug, branch: name } = await params;
+  // The branch's own spelling, whatever the address said. A missing branch 404s from the page itself.
+  const branch = await getProject(owner, slug)
+    .then((project) => getBranchByName(project.id, name))
+    .catch(() => null);
+  return { title: `${branch?.name ?? name} · ${owner}/${slug}` };
 }
 
-export default async function BranchPage({ params }: { params: Promise<ProjectParams & { branch: string }> }) {
-  const { owner, project: slug, branch: name } = await params;
+export default async function BranchPage({ params, searchParams }: { params: Promise<ProjectParams & { branch: string }>; searchParams: Promise<DirectoryParams> }) {
+  const [{ owner, project: slug, branch: name }, { sort, order, offset }] = await Promise.all([params, searchParams]);
   const project = await getProject(owner, slug);
   const branch = await getBranchByName(project.id, name);
+  // Branch names match case-insensitively; the address settles on the branch's own spelling.
+  if (branch.name !== name) permanentRedirect(branchPath(owner, slug, branch.name));
   const [detail, commits, requests, viewer] = await Promise.all([getBranchDetail(branch.id), getCommits(branch.id), getReleaseRequests(project.id), getViewer()]);
   const base = branch.baseReleaseNumber ? await getRelease(project.id, branch.baseReleaseNumber) : null;
   const changes = diffManifests(base?.files ?? [], detail.files);
@@ -61,7 +68,15 @@ export default async function BranchPage({ params }: { params: Promise<ProjectPa
           </section>
           <section className="section">
             <h2>Files</h2>
-            <ProjectDirectory project={project} path={`Branches/${branch.name}`} params={{}} signedIn={!!viewer} viewerHandle={viewer?.handle ?? null} embedded />
+            <ProjectDirectory
+              project={project}
+              path={`Branches/${branch.name}`}
+              params={{ sort, order, offset }}
+              signedIn={!!viewer}
+              viewerHandle={viewer?.handle ?? null}
+              embedded
+              basePath={branchPath(owner, slug, branch.name)}
+            />
           </section>
           <section className="section">
             <h2>Version history</h2>
@@ -156,7 +171,7 @@ export default async function BranchPage({ params }: { params: Promise<ProjectPa
           {canManage && branch.status === 'open' && (
             <section className="rail-card">
               <h2>Archive branch</h2>
-              <p className="muted">Archived branches are read-only and hidden from the branch list. Their history stays.</p>
+              <p className="muted">Archived branches are read-only and hidden from the Branches folder and the sidebar. Their history stays.</p>
               <ActionButton action={archiveBranch.bind(null, branch.id)} className="btn btn-danger btn-small" confirm={`Archive ${branch.name}? It becomes read-only.`}>
                 Archive
               </ActionButton>

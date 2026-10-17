@@ -1,23 +1,27 @@
 import { formatBytes } from '@gigacad/core';
 import Link from 'next/link';
-import { createFolder, createTag, deleteTag, renameTag } from '../../app/(product)/actions';
-import type { DirectoryFile, DirectoryItem, DirectoryListing, FilePage, Project, ProjectTag } from '../../lib/api';
+import { redirect } from 'next/navigation';
+import { createFolder, createTag } from '../../app/(product)/actions';
+import type { DirectoryFile, DirectoryItem, DirectoryListing, FileExport, FilePage, Project, ProjectTag } from '../../lib/api';
 import { BRANCH_STATUS_LABEL, branchTone } from '../../lib/describe';
-import { exportFilename, isSolidWorks, previewFormat } from '../../lib/preview';
+import { pager } from '../../lib/directory';
+import { hasModel } from '../../lib/models';
+import { isSolidWorks } from '../../lib/preview';
 import { branchPath, entryPath, projectPath, releasePath, treePath } from '../../lib/paths';
-import { getDirectory, getFileExports, getReadme, getRootFolders, getTags, getThumbnails, searchFiles, type FileQuery } from '../../lib/product';
+import { getBilling, getDirectory, getFileExports, getReadme, getRootFolders, getTags, getThumbnailLinks, searchFiles, type FileQuery } from '../../lib/product';
 import { BranchIcon, FolderIcon, LockIcon, MoreIcon, SearchIcon } from '../icons';
-import { ActionButton } from './ActionButton';
 import { ActionForm } from './ActionForm';
-import { DownloadButton } from './DownloadButton';
 import { DropZone } from './DropZone';
 import { EntryMenu } from './EntryMenu';
 import { EmptyState } from './EmptyState';
 import { FavoriteButton } from './FavoriteButton';
+import { FileActions } from './FileActions';
 import { FileGlyph } from './FileGlyph';
 import { GettingStarted } from './GettingStarted';
-import { PreviewButton } from './PreviewButton';
+import { IntentLink } from './IntentLink';
+import { ManageTag } from './ManageTag';
 import { ProjectReadme } from './ProjectReadme';
+import { RefreshSoon } from './RefreshSoon';
 import { RelativeTime } from './RelativeTime';
 import { StatusBadge } from './StatusBadge';
 import { TagPicker } from './TagPicker';
@@ -35,8 +39,10 @@ export interface DirectoryParams {
   offset?: string;
   /** Search inside this folder only. */
   under?: string;
-  /** `released` shows released and archived branches in the Branches folder. */
+  /** `released` shows released and archived branches in the Branches folder, and in search, tags, and favorites. */
   show?: string;
+  /** The name of a file or folder just deleted from its own page, to say so here. */
+  deleted?: string;
 }
 
 type Sort = NonNullable<FileQuery['sort']>;
@@ -65,6 +71,7 @@ export async function ProjectDirectory({
   viewerHandle,
   counts,
   embedded = false,
+  basePath,
 }: {
   project: Project;
   path: string;
@@ -75,6 +82,8 @@ export async function ProjectDirectory({
   counts?: { branches: number; releases: number };
   /** Inside another page (a branch or release page) that has its own heading: just the files. */
   embedded?: boolean;
+  /** The page an embedded listing sits on, so sorting and paging stay there instead of opening the folder. */
+  basePath?: string;
 }) {
   const owner = project.ownerHandle;
   const slug = project.slug;
@@ -85,7 +94,7 @@ export async function ProjectDirectory({
   const [listing, results, tags] = await Promise.all([
     searching ? null : getDirectory(project.id, path, paging),
     searching
-      ? searchFiles(project.id, { ...paging, q, tags: tagIds.join(','), favorites: view === 'favorites', under: view ? undefined : under })
+      ? searchFiles(project.id, { ...paging, q, tags: tagIds.join(','), favorites: view === 'favorites', under: view ? undefined : under, history: showReleased })
       : null,
     getTags(project.id),
   ]);
@@ -103,7 +112,7 @@ export async function ProjectDirectory({
       ? await getReadme(project.id, listing.entries, offset === 0 && listing.nextOffset === null)
       : null;
   const canTag = project.role !== null && project.role !== 'viewer';
-  const here = searching ? projectPath(owner, slug) : treePath(owner, slug, listing!.location.path);
+  const here = basePath ?? (searching ? projectPath(owner, slug) : treePath(owner, slug, listing!.location.path));
 
   /** A link to this view with some parameters changed. */
   const href = (changes: Partial<Record<keyof DirectoryParams, string | undefined>>) => {
@@ -126,8 +135,14 @@ export async function ProjectDirectory({
   const scope = searching ? (q || tagIds.length ? under : '') : (listing?.location.path ?? '');
   const writable = !searching && Boolean(listing?.location.writable);
   const storageOwner = { handle: owner, isYou: viewerHandle === owner };
+  // The root's Branches and Releases folders sit above the first page; they aren't files to count.
+  const shown = page.entries.filter((entry) => !(entry.kind === 'folder' && (entry.virtual === 'branches' || entry.virtual === 'releases'))).length;
+  const pages = pager({ offset, shown, total: page.total, pageSize: PAGE_SIZE, nextOffset: page.nextOffset });
+  // Past the last page, as after deleting the last rows of it: go to the last page there is.
+  if (shown === 0 && pages.last !== null) redirect(href({ offset: pages.last ? String(pages.last) : undefined }));
+  const destination = listing?.location.path ? listing.location.path.split('/').pop()! : project.name;
 
-  return (
+  const directory = (
     <div className="directory">
       {!embedded && (
       <div className="toolbar directory-toolbar">
@@ -151,28 +166,41 @@ export async function ProjectDirectory({
 
       {searching ? (
         <p className="toolbar-note directory-summary">
-          {page.total} {page.total === 1 ? 'file' : 'files'}
-          {view === 'favorites' ? ' in your favorites' : view === 'recent' ? ', most recently changed first' : ''}
-          {q && <> matching “{q}”</>}
-          {under && (q || tagIds.length > 0) && (
-            <>
-              {' '}in <span className="mono">{under}</span> (<Link href={href({ under: undefined })}>search the whole project</Link>)
-            </>
-          )}
-          {tagIds.length > 0 && (
-            <>
-              {' '}tagged{' '}
-              {tagIds.map((tagId) => (
-                <Link key={tagId} href={href({ tags: tagIds.filter((other) => other !== tagId).join(',') })} className="tag-chip is-removable" title="Remove this filter">
-                  {tagNames.get(tagId) ?? 'a deleted tag'} ×
-                </Link>
-              ))}
-            </>
-          )}
-          . <Link href={projectPath(owner, slug)}>Back to all files</Link>
+          <span>
+            {page.total} {page.total === 1 ? 'file' : 'files'}
+            {view === 'favorites' ? ' in your favorites' : view === 'recent' ? ', most recently changed first' : ''}
+            {q && <> matching “{q}”</>}
+            {under && (q || tagIds.length > 0) && (
+              <>
+                {' '}in <span className="mono">{under}</span> (<Link href={href({ under: undefined })}>search the whole project</Link>)
+              </>
+            )}
+            {tagIds.length > 0 && (
+              <>
+                {' '}tagged{' '}
+                {tagIds.map((tagId) => (
+                  <Link key={tagId} href={href({ tags: tagIds.filter((other) => other !== tagId).join(',') })} className="tag-chip is-removable" title="Remove this filter">
+                    {tagNames.get(tagId) ?? 'a deleted tag'} ×
+                  </Link>
+                ))}
+              </>
+            )}
+          </span>
+          <Link href={href({ show: showReleased ? undefined : 'released' })}>
+            {showReleased ? 'Hide released and archived branches' : 'Include released and archived branches'}
+          </Link>
+          <Link href={projectPath(owner, slug)}>
+            Back to all files
+          </Link>
         </p>
       ) : (
         !embedded && <FolderBar project={project} listing={listing!} owner={storageOwner} />
+      )}
+
+      {params.deleted && !searching && (
+        <p className="notice" role="status">
+          Deleted <span className="mono">{params.deleted.slice(0, 255)}</span>.
+        </p>
       )}
 
       {/* A brand-new project: nothing at the root but the two built-in folders, and no releases. */}
@@ -181,15 +209,8 @@ export async function ProjectDirectory({
       )}
 
       {page.entries.length === 0 ? (
-        writable ? (
-          <DropZone>
-            <EmptyFolder searching={searching} view={view} listing={listing} />
-          </DropZone>
-        ) : (
-          <EmptyFolder searching={searching} view={view} listing={listing} />
-        )
+        <EmptyFolder searching={searching} view={view} listing={listing} hiddenBranches={hiddenBranches} newBranch={canTag ? projectPath(owner, slug, 'branches') : null} />
       ) : (
-        <MaybeDropZone enabled={writable}>
         <DirectoryTable
           project={project}
           entries={page.entries}
@@ -208,7 +229,6 @@ export async function ProjectDirectory({
           tagLink={(tagId) => href({ tags: [...new Set([...tagIds, tagId])].join(','), offset: undefined })}
           counts={counts}
         />
-        </MaybeDropZone>
       )}
 
       {hiddenBranches > 0 && (
@@ -219,16 +239,14 @@ export async function ProjectDirectory({
 
       {(offset > 0 || page.nextOffset !== null) && (
         <nav className="pager" aria-label="Pages">
-          <span className="muted">
-            {offset + 1}–{offset + page.entries.length} of {page.total}
-          </span>
-          {offset > 0 && (
-            <Link className="btn btn-secondary btn-small" href={href({ offset: String(Math.max(0, offset - PAGE_SIZE)) })}>
+          {pages.label && <span className="muted">{pages.label}</span>}
+          {pages.previous !== null && (
+            <Link className="btn btn-secondary btn-small" href={href({ offset: pages.previous ? String(pages.previous) : undefined })} prefetch={false}>
               Previous
             </Link>
           )}
-          {page.nextOffset !== null && (
-            <Link className="btn btn-secondary btn-small" href={href({ offset: String(page.nextOffset) })}>
+          {pages.next !== null && (
+            <Link className="btn btn-secondary btn-small" href={href({ offset: String(pages.next) })} prefetch={false}>
               Next
             </Link>
           )}
@@ -238,16 +256,23 @@ export async function ProjectDirectory({
       {readme && <ProjectReadme project={project} readme={readme} />}
     </div>
   );
+  // Files dropped anywhere on a writable folder, its README and getting-started card included, upload here.
+  return writable ? <DropZone destination={destination}>{directory}</DropZone> : directory;
 }
 
 /** Breadcrumbs for the folder, what can be done here, and the branch or release it belongs to. */
-function FolderBar({ project, listing, owner: storageOwner }: { project: Project; listing: DirectoryListing; owner: { handle: string; isYou: boolean } }) {
+async function FolderBar({ project, listing, owner: storageOwner }: { project: Project; listing: DirectoryListing; owner: { handle: string; isYou: boolean } }) {
   const owner = project.ownerHandle;
   const slug = project.slug;
   const { location } = listing;
   const existing = Object.fromEntries(
     listing.entries.flatMap((entry) => (entry.kind === 'file' && entry.entryId ? [[entry.name.toLowerCase(), entry.entryId]] : [])),
   );
+  // Your own storage is the only one you can see; it's already loaded for the shell's banner.
+  const storageFull =
+    location.writable && storageOwner.isYou ? await getBilling().then((billing) => billing.quotaBytes > 0 && billing.usedBytes >= billing.quotaBytes, () => false) : false;
+  // The built-in Branches and Releases folders read as words; real folder, branch, and release names are mono.
+  const builtIn = location.area !== 'root';
   return (
     <div className="folder-bar">
       {/* At the root, the page heading already names the project. */}
@@ -258,11 +283,11 @@ function FolderBar({ project, listing, owner: storageOwner }: { project: Project
           <span key={crumb.path}>
             <span className="crumb-sep"> / </span>
             {index === location.crumbs.length - 1 ? (
-              <span aria-current="page" className={index > 0 ? 'mono' : undefined}>
+              <span aria-current="page" className={builtIn && index === 0 ? undefined : 'mono'}>
                 {crumb.name}
               </span>
             ) : (
-              <Link href={treePath(owner, slug, crumb.path)} className={index > 0 ? 'mono' : undefined}>
+              <Link href={treePath(owner, slug, crumb.path)} className={builtIn && index === 0 ? undefined : 'mono'}>
                 {crumb.name}
               </Link>
             )}
@@ -287,7 +312,7 @@ function FolderBar({ project, listing, owner: storageOwner }: { project: Project
               </ActionForm>
             </div>
           </details>
-          <UploadFiles projectId={project.id} parentId={location.folderId} existing={existing} owner={storageOwner} />
+          <UploadFiles projectId={project.id} parentId={location.folderId} folderPath={location.path} existing={existing} owner={storageOwner} storageFull={storageFull} />
         </div>
       )}
 
@@ -312,7 +337,20 @@ function FolderBar({ project, listing, owner: storageOwner }: { project: Project
   );
 }
 
-function EmptyFolder({ searching, view, listing }: { searching: boolean; view: string | null; listing: DirectoryListing | null }) {
+function EmptyFolder({
+  searching,
+  view,
+  listing,
+  hiddenBranches,
+  newBranch,
+}: {
+  searching: boolean;
+  view: string | null;
+  listing: DirectoryListing | null;
+  hiddenBranches: number;
+  /** Where to start a branch, for people who can. */
+  newBranch: string | null;
+}) {
   if (searching) {
     return (
       <EmptyState title={view === 'favorites' ? 'No favorites yet.' : 'No files match.'}>
@@ -321,7 +359,17 @@ function EmptyFolder({ searching, view, listing }: { searching: boolean; view: s
     );
   }
   const area = listing?.location.area;
-  if (area === 'branches') return <EmptyState title="No branches yet." />;
+  if (area === 'branches') {
+    return (
+      <EmptyState title={hiddenBranches > 0 ? 'No open branches.' : 'No branches yet.'}>
+        {newBranch && (
+          <p>
+            <Link href={newBranch}>Create a branch</Link> to start work toward a release.
+          </p>
+        )}
+      </EmptyState>
+    );
+  }
   if (area === 'releases') return <EmptyState title="No releases yet." />;
   return (
     <EmptyState title="This folder is empty.">
@@ -356,8 +404,8 @@ async function DirectoryTable({
   const files = entries.filter((entry): entry is DirectoryFile => entry.kind === 'file');
   // Contributors get a right-click menu on root files and folders.
   const editable = canTag && entries.some((entry) => entry.entryId);
-  const [thumbnails, exports, folders] = await Promise.all([
-    getThumbnails(project.id, files.filter((file) => previewFormat(file.name) || isSolidWorks(file.name)).map((file) => file.blob)),
+  const [{ thumbnails, pending }, exports, folders] = await Promise.all([
+    getThumbnailLinks(project.id, files.filter((file) => hasModel(file.name)).map((file) => file.blob)),
     getFileExports(project.id, files.filter((file) => isSolidWorks(file.name)).map((file) => file.blob)),
     editable ? getRootFolders(project.id) : [],
   ]);
@@ -374,8 +422,8 @@ async function DirectoryTable({
   const header = (column: Sort, label: string) => {
     const link = sortLink(column);
     return (
-      <th scope="col" aria-sort={link.active}>
-        <Link href={link.href} className="sort-link">
+      <th scope="col" aria-sort={link.active} className={column === 'modified' ? 'col-modified' : undefined}>
+        <Link href={link.href} className="sort-link" prefetch={false}>
           {label}
           {link.active && <span aria-hidden="true">{link.active === 'ascending' ? ' ↑' : ' ↓'}</span>}
         </Link>
@@ -389,7 +437,11 @@ async function DirectoryTable({
         <thead>
           <tr>
             {header('name', 'Name')}
-            {showLocation && <th scope="col">Location</th>}
+            {showLocation && (
+              <th scope="col" className="col-location">
+                Location
+              </th>
+            )}
             {header('modified', 'Modified')}
             {header('size', 'Size')}
             <th scope="col">
@@ -412,9 +464,9 @@ async function DirectoryTable({
                         <FolderIcon className="icon" />
                       )}
                     </span>
-                    <Link href={treePath(owner, slug, entry.path)} className={entry.virtual === 'branches' || entry.virtual === 'releases' ? 'folder-name' : 'folder-name mono'}>
+                    <IntentLink href={treePath(owner, slug, entry.path)} className={entry.virtual === 'branches' || entry.virtual === 'releases' ? 'folder-name' : 'folder-name mono'}>
                       {entry.name}
-                    </Link>
+                    </IntentLink>
                     {entry.branch && (
                       <>
                         <StatusBadge tone={branchTone(entry.branch.status)}>{BRANCH_STATUS_LABEL[entry.branch.status]}</StatusBadge>
@@ -433,8 +485,8 @@ async function DirectoryTable({
                     )}
                   </span>
                 </td>
-                {showLocation && <td />}
-                <td className="muted">
+                {showLocation && <td className="col-location" />}
+                <td className="muted col-modified">
                   <RelativeTime value={entry.modifiedAt} />
                 </td>
                 <td className="muted nowrap">
@@ -460,11 +512,13 @@ async function DirectoryTable({
           )}
         </tbody>
       </table>
+      {/* Thumbnails render in the background; look again for a minute while any are on their way. */}
+      {pending.length > 0 && <RefreshSoon key={pending.join()} times={12} everyMs={5000} />}
     </div>
   );
   if (!editable) return table;
   return (
-    <EntryMenu projectId={project.id} folders={folders}>
+    <EntryMenu projectId={project.id} owner={owner} slug={slug} folders={folders}>
       {table}
       <p className="muted entry-menu-hint">Right-click a file or folder, or use its ⋯ button, to rename, move, or delete it.</p>
     </EntryMenu>
@@ -496,16 +550,19 @@ function FileRow({
   signedIn: boolean;
   showLocation: boolean;
   thumbnailUrl: string | undefined;
-  fileExports: { format: 'stl' | 'step'; sha256: string }[];
+  fileExports: FileExport[];
   tagLink: (tagId: string) => string;
   menuData: Record<string, string>;
 }) {
   const owner = project.ownerHandle;
   const slug = project.slug;
-  const format = previewFormat(file.name);
-  // A SolidWorks file previews from its STL export, or else its STEP export.
-  const model = fileExports.find((entry) => entry.format === 'stl') ?? fileExports.find((entry) => entry.format === 'step');
   const folder = locationLabel(file);
+  const elsewhere = file.alsoIn ?? 0;
+  const location = (
+    <IntentLink href={treePath(owner, slug, folder)} className="mono muted location-link">
+      {folder || project.name}
+    </IntentLink>
+  );
   return (
     <tr {...menuData}>
       <td>
@@ -513,17 +570,24 @@ function FileRow({
           <FileGlyph path={file.name} thumbnailUrl={thumbnailUrl} />
           <span className="file-name-block">
             {file.entryId ? (
-              <Link href={entryPath(owner, slug, file.entryId)} className="mono">
+              <IntentLink href={entryPath(owner, slug, file.entryId)} className="mono">
                 {file.name}
-              </Link>
+              </IntentLink>
             ) : (
               <span className="mono">{file.name}</span>
             )}
-            {(file.tags.length > 0 || file.revision !== null) && (
+            {/* On phones the Location column folds in under the name. */}
+            {showLocation && <span className="file-location-inline">{location}</span>}
+            {(file.tags.length > 0 || file.revision !== null || elsewhere > 0) && (
               <span className="file-meta">
                 {file.revision !== null && file.revision > 1 && <span className="muted">Revision {file.revision}</span>}
+                {elsewhere > 0 && (
+                  <span className="muted">
+                    Also in {elsewhere} other {elsewhere === 1 ? 'place' : 'places'}
+                  </span>
+                )}
                 {file.tags.map((tag) => (
-                  <Link key={tag.id} href={tagLink(tag.id)} className="tag-chip">
+                  <Link key={tag.id} href={tagLink(tag.id)} className="tag-chip" prefetch={false}>
                     {tag.name}
                   </Link>
                 ))}
@@ -532,35 +596,14 @@ function FileRow({
           </span>
         </span>
       </td>
-      {showLocation && (
-        <td>
-          <Link href={treePath(owner, slug, folder)} className="mono muted location-link">
-            {folder || project.name}
-          </Link>
-        </td>
-      )}
-      <td className="muted">
+      {showLocation && <td className="col-location">{location}</td>}
+      <td className="muted col-modified">
         <RelativeTime value={file.modifiedAt} />
         {file.modifiedByHandle && <span className="modified-by"> by @{file.modifiedByHandle}</span>}
       </td>
       <td className="muted nowrap">{formatBytes(file.size)}</td>
       <td className="cell-action">
-        {format ? (
-          <PreviewButton projectId={project.id} sha256={file.blob} path={file.name} format={format} />
-        ) : (
-          model && <PreviewButton projectId={project.id} sha256={model.sha256} path={file.name} format={model.format} />
-        )}
-        {fileExports.map((entry) => (
-          <DownloadButton
-            key={entry.format}
-            projectId={project.id}
-            sha256={entry.sha256}
-            path={file.name}
-            filename={exportFilename(file.name, entry.format)}
-            label={entry.format.toUpperCase()}
-          />
-        ))}
-        <DownloadButton projectId={project.id} sha256={file.blob} path={file.name} />
+        <FileActions projectId={project.id} path={file.name} blob={file.blob} size={file.size} exports={fileExports} />
         {signedIn && <FavoriteButton projectId={project.id} itemId={file.itemId} favorite={file.favorite} name={file.name} />}
         {canTag && <TagPicker key={file.tags.map((tag) => tag.id).join()} projectId={project.id} itemId={file.itemId} name={file.name} tags={tags} selected={file.tags} />}
         {menuData['data-entry-id'] && <RowMenuButton name={file.name} />}
@@ -599,21 +642,7 @@ export function TagsCard({ project, tags }: { project: Project; tags: ProjectTag
             </label>
           </ActionForm>
           {tags.map((tag) => (
-            <div key={tag.id} className="manage-tag">
-              <ActionForm action={renameTag.bind(null, project.id, tag.id)} submitLabel="Rename" submitClassName="btn btn-secondary btn-small" className="form form-inline">
-                <label className="field">
-                  <span className="sr-only">Name for {tag.name}</span>
-                  <input name="name" required maxLength={50} defaultValue={tag.name} autoComplete="off" />
-                </label>
-              </ActionForm>
-              <ActionButton
-                action={deleteTag.bind(null, project.id, tag.id)}
-                className="btn btn-danger btn-small"
-                confirm={`Delete the tag ${tag.name}? It comes off ${tag.fileCount} ${tag.fileCount === 1 ? 'file' : 'files'}.`}
-              >
-                Delete
-              </ActionButton>
-            </div>
+            <ManageTag key={tag.id} projectId={project.id} tag={tag} />
           ))}
         </details>
       )}
@@ -628,8 +657,4 @@ function RowMenuButton({ name }: { name: string }) {
       <MoreIcon className="icon" />
     </button>
   );
-}
-
-function MaybeDropZone({ enabled, children }: { enabled: boolean; children: React.ReactNode }) {
-  return enabled ? <DropZone>{children}</DropZone> : <>{children}</>;
 }

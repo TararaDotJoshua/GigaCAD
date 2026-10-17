@@ -12,9 +12,10 @@ export function ProjectCards({ projects, showOwner = true }: { projects: readonl
     <ul className="project-cards">
       {projects.map((project) => (
         <li key={project.id} className="project-card">
-          <div className="project-card-cover">
-            {project.thumbnailUrl ? <ZoomableThumbnail src={project.thumbnailUrl} size={96} /> : <PartIcon className="icon" />}
-          </div>
+          {/* The cover is the card's biggest target, so it opens the project too. The name link is the one announced. */}
+          <Link href={projectPath(project.ownerHandle, project.slug)} className="project-card-cover" tabIndex={-1} aria-hidden="true" prefetch={false}>
+            {project.thumbnailUrl ? <ZoomableThumbnail src={project.thumbnailUrl} size={96} label={`${project.name} cover`} standalone={false} /> : <PartIcon className="icon" />}
+          </Link>
           <div className="project-card-head">
             <Link href={projectPath(project.ownerHandle, project.slug)} className="project-card-name">
               {showOwner && <span className="muted">{project.ownerHandle}/</span>}

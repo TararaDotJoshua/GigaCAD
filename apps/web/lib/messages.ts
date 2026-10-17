@@ -25,6 +25,8 @@ export function messageFor(error: unknown): string {
     if (error.code === 'forbidden' || error.code === 'invalid_request' || error.code === 'owner_role_fixed' || error.code === 'single_owner') {
       return detailMessage(error) ?? error.message;
     }
+    // A project that's gone missing mid-visit: removed from it, or it was deleted or made private.
+    if (error.code === 'not_found' && error.message === 'Project not found') return 'You no longer have access to this project. Refresh the page.';
     return MESSAGES[error.code] ?? error.message;
   }
   return 'Something went wrong. Try again.';

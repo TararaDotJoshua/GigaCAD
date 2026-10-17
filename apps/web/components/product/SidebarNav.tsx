@@ -9,6 +9,7 @@ import { createClient } from '../../lib/supabase/client';
 import { BranchIcon, LockIcon, LogOutIcon, MenuIcon, SearchIcon, StarIcon } from '../icons';
 import { Logo } from '../Logo';
 import { Avatar } from './Avatar';
+import { IntentLink } from './IntentLink';
 
 export interface NavProject {
   readonly owner: string;
@@ -81,9 +82,9 @@ export function SidebarNav({
         <ul className="app-nav">
           {shown.map((p) => (
             <li key={`${p.owner}/${p.slug}`} className={isCurrent(p) ? 'is-current' : undefined}>
-              <Link href={projectPath(p.owner, p.slug)} onClick={() => setOpen(false)}>
-                {p.name}
-              </Link>
+              <IntentLink href={projectPath(p.owner, p.slug)} onClick={() => setOpen(false)} title={p.name}>
+                <span className="app-nav-project-name">{p.name}</span>
+              </IntentLink>
               {isCurrent(p) && current && <ProjectSections project={current} pathname={pathname} onNavigate={() => setOpen(false)} />}
             </li>
           ))}
@@ -143,7 +144,7 @@ function ProjectSections({ project, pathname, onNavigate }: { project: NavProjec
         const active = pathname === `${base}/branches/${branch.name}`;
         return (
           <li key={branch.name} className={`app-nav-branch${active ? ' is-active' : ''}`}>
-            <Link href={href} onClick={onNavigate}>
+            <IntentLink href={href} onClick={onNavigate}>
               <BranchIcon className="icon" />
               <span className="mono app-nav-branch-name">{branch.name}</span>
               {branch.holder === 'you' ? (
@@ -154,7 +155,7 @@ function ProjectSections({ project, pathname, onNavigate }: { project: NavProjec
                   {branch.age && <span className="app-nav-age"> · {branch.age}</span>}
                 </span>
               ) : null}
-            </Link>
+            </IntentLink>
           </li>
         );
       })}

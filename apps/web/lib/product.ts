@@ -9,6 +9,7 @@ import {
   type Branch,
   type BranchDetail,
   type CommitDetail,
+  type DeletedProject,
   type DirectoryFile,
   type DirectoryItem,
   type DirectoryListing,
@@ -29,7 +30,6 @@ import {
   type FileExport,
   type UserPage,
 } from './api';
-import { mediaKind, type EmbeddedFile } from './readme';
 import { currentPath, loginPath } from './current-path';
 import { getAccessToken } from './session';
 
@@ -60,19 +60,23 @@ export const getExplore = cache((q: string, sort: 'stars' | 'recent') =>
 );
 export const getUserPage = cache((handle: string) => orNotFound(get<UserPage>(`/v1/users/${encodeURIComponent(handle)}`)));
 export const getUserStars = cache((handle: string) => orNotFound(get<ProjectCard[]>(`/v1/users/${encodeURIComponent(handle)}/stars`)));
-/** Thumbnail links for a project's files. They're a nicety, so a failure shows file glyphs instead of an error. */
-export async function getThumbnails(projectId: string, sha256s: readonly string[]): Promise<Record<string, string>> {
-  if (sha256s.length === 0) return {};
+/**
+ * Thumbnail links for a project's files, and which are still being rendered. They're a nicety,
+ * so a failure shows file glyphs instead of an error.
+ */
+export async function getThumbnailLinks(projectId: string, sha256s: readonly string[]): Promise<ThumbnailLinks> {
+  if (sha256s.length === 0) return { thumbnails: {}, pending: [] };
   try {
     const links = await apiRequest<ThumbnailLinks>(await getAccessToken(), `/v1/projects/${projectId}/thumbnails`, {
       method: 'POST',
       body: JSON.stringify({ sha256s: [...new Set(sha256s)].slice(0, 1000) }),
     });
-    return links.thumbnails;
+    return { thumbnails: links.thumbnails, pending: links.pending ?? [] };
   } catch {
-    return {};
+    return { thumbnails: {}, pending: [] };
   }
 }
+export const getThumbnails = async (projectId: string, sha256s: readonly string[]) => (await getThumbnailLinks(projectId, sha256s)).thumbnails;
 /** STEP and STL exports of a project's SolidWorks files, by file hash. Like thumbnails, a failure just leaves them out. */
 export async function getFileExports(projectId: string, sha256s: readonly string[]): Promise<Record<string, FileExport[]>> {
   if (sha256s.length === 0) return {};
@@ -87,6 +91,8 @@ export async function getFileExports(projectId: string, sha256s: readonly string
   }
 }
 export const getBilling = cache(() => get<Billing>('/v1/me/billing'));
+/** Projects the signed-in user deleted that can still be restored. */
+export const getDeletedProjects = cache(() => get<DeletedProject[]>('/v1/me/deleted-projects'));
 export const getMyProjects = cache(() => get<Project[]>('/v1/projects'));
 
 export const getProject = cache(async (owner: string, slug: string) => {
@@ -94,9 +100,10 @@ export const getProject = cache(async (owner: string, slug: string) => {
     return await get<Project>(`/v1/users/${encodeURIComponent(owner)}/projects/${encodeURIComponent(slug)}`);
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
-      // Private projects look missing to outsiders. A signed-out visitor may just need to log in.
-      // Keep the whole path (a branch, a release, a folder), not just the project.
-      if (!(await getAccessToken())) redirect(await loginPath((await currentPath()) ?? `/${owner}/${slug}`));
+      // Private projects look missing to outsiders. A signed-out visitor may just need to log in,
+      // unless there's no such person, when no account would help. Keep the whole path (a branch,
+      // a release, a folder), not just the project.
+      if (!(await getAccessToken()) && (await handleTaken(owner))) redirect(`${await loginPath((await currentPath()) ?? `/${owner}/${slug}`)}&reason=private`);
       notFound();
     }
     throw error;
@@ -150,18 +157,15 @@ export const getDirectory = cache((projectId: string, path: string, query: FileQ
   orNotFound(get<DirectoryListing>(`/v1/projects/${projectId}/directory?${fileQuery({ path, ...query })}`)),
 );
 export const searchFiles = cache(
-  (projectId: string, query: FileQuery & { q?: string; tags?: string; favorites?: boolean; area?: 'root' | 'branch' | 'release'; under?: string }) =>
+  (projectId: string, query: FileQuery & { q?: string; tags?: string; favorites?: boolean; area?: 'root' | 'branch' | 'release'; under?: string; history?: boolean }) =>
     get<FilePage<DirectoryFile>>(`/v1/projects/${projectId}/files?${fileQuery(query)}`),
 );
 /** Root files that serve as the project's readme, best first. */
 const README_NAMES = ['readme.md', 'readme.txt'];
-const MAX_README_BYTES = 512 * 1024;
+export const MAX_README_BYTES = 512 * 1024;
 
-export interface Readme {
-  file: DirectoryFile;
-  markdown: boolean;
-  text: string;
-}
+/** A README's text, or, when it's over MAX_README_BYTES, just the file, so the page can say it's too large to show. */
+export type Readme = { file: DirectoryFile; tooLarge: false; markdown: boolean; text: string } | { file: DirectoryFile; tooLarge: true };
 
 /**
  * The README at the project root, from the files already listed or, when the root spans
@@ -175,7 +179,8 @@ export async function getReadme(projectId: string, listed: readonly DirectoryIte
       .sort((a, b) => README_NAMES.indexOf(a.name.toLowerCase()) - README_NAMES.indexOf(b.name.toLowerCase()))[0];
   try {
     const file = pick(listed) ?? (complete ? undefined : pick((await searchFiles(projectId, { q: 'readme', area: 'root', limit: 100 })).entries));
-    if (!file || file.size > MAX_README_BYTES) return null;
+    if (!file) return null;
+    if (file.size > MAX_README_BYTES) return { file, tooLarge: true };
     const plan = await apiRequest<{ downloads: { sha256: string; url: string }[] }>(await getAccessToken(), `/v1/projects/${projectId}/blobs/downloads`, {
       method: 'POST',
       body: JSON.stringify({ sha256s: [file.blob] }),
@@ -184,56 +189,75 @@ export async function getReadme(projectId: string, listed: readonly DirectoryIte
     if (!url) return null;
     const response = await fetch(url, { cache: 'no-store' });
     if (!response.ok) return null;
-    return { file, markdown: file.name.toLowerCase().endsWith('.md'), text: await response.text() };
+    return { file, tooLarge: false, markdown: file.name.toLowerCase().endsWith('.md'), text: await response.text() };
+  } catch {
+    return null;
+  }
+}
+
+/** Text files a root file's page shows inline, beside Markdown. */
+const TEXT_FILE = /\.(txt|text|csv|tsv|json|ya?ml|xml|ini|cfg|conf|toml|log|gcode|nc|ngc)$/i;
+export const isTextFile = (name: string) => TEXT_FILE.test(name);
+export const isMarkdownFile = (name: string) => /\.(md|markdown)$/i.test(name);
+
+/** A small text file's contents, for showing it on its page; null past MAX_README_BYTES or on any failure. */
+export async function getFileText(projectId: string, sha256: string, size: number): Promise<string | null> {
+  if (size > MAX_README_BYTES) return null;
+  try {
+    const plan = await apiRequest<{ downloads: { sha256: string; url: string }[] }>(await getAccessToken(), `/v1/projects/${projectId}/blobs/downloads`, {
+      method: 'POST',
+      body: JSON.stringify({ sha256s: [sha256] }),
+    });
+    const url = plan.downloads[0]?.url;
+    const response = url ? await fetch(url, { cache: 'no-store' }) : null;
+    return response?.ok ? await response.text() : null;
   } catch {
     return null;
   }
 }
 
 /**
- * Links for the images and videos a README embeds, by the project paths it names, like
- * `photos/bench.jpg` or `Releases/v2/clip.mp4`. Files that aren't there are left out.
+ * The project files a README links to or embeds, by the paths it names, like `Docs/notes.txt`,
+ * `photos/bench.jpg` or `Releases/v2/clip.mp4`. Paths that aren't files, like folders, are left
+ * out, and so is anything past the first 50. Images and videos load through mediaPath, so no
+ * storage link is made here.
  */
-export async function getReadmeMedia(projectId: string, paths: readonly string[]): Promise<Record<string, EmbeddedFile>> {
-  try {
-    const files = await Promise.all(
-      paths.slice(0, 50).map(async (path) => {
-        const name = path.slice(path.lastIndexOf('/') + 1);
+export async function getReadmeFiles(projectId: string, paths: readonly string[]): Promise<Record<string, DirectoryFile>> {
+  const files = await Promise.all(
+    paths.slice(0, 50).map(async (path) => {
+      const name = path.slice(path.lastIndexOf('/') + 1);
+      try {
         const matches = (await searchFiles(projectId, { q: name, limit: 100 })).entries.filter((file) => file.path.toLowerCase() === path.toLowerCase());
         return [path, matches.find((file) => file.path === path) ?? matches[0]] as const;
-      }),
-    );
-    const found = files.flatMap(([path, file]) => {
-      const kind = file && mediaKind(file.name);
-      return file && kind ? [{ path, file, kind }] : [];
-    });
-    if (found.length === 0) return {};
-    const plan = await apiRequest<{ downloads: { sha256: string; url: string }[] }>(await getAccessToken(), `/v1/projects/${projectId}/blobs/downloads`, {
-      method: 'POST',
-      body: JSON.stringify({
-        sha256s: found.map(({ file }) => file.blob),
-        filenames: Object.fromEntries(found.map(({ file }) => [file.blob, file.name])),
-        inline: true,
-      }),
-    });
-    const urls = new Map(plan.downloads.map((download) => [download.sha256, download.url]));
-    return Object.fromEntries(found.flatMap(({ path, file, kind }) => (urls.has(file.blob) ? [[path, { url: urls.get(file.blob)!, kind }]] : [])));
-  } catch {
-    return {};
-  }
+      } catch {
+        return [path, undefined] as const;
+      }
+    }),
+  );
+  return Object.fromEntries(files.flatMap(([path, file]) => (file ? [[path, file]] : [])));
 }
 
 export const getTags = cache((projectId: string) => get<ProjectTag[]>(`/v1/projects/${projectId}/tags`));
 export const getRootFolders = cache((projectId: string) => get<{ id: string; path: string }[]>(`/v1/projects/${projectId}/directory/folders`));
-export const getEntry = cache((projectId: string, entryId: string) => {
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(entryId)) notFound();
-  return orNotFound(get<EntryDetail>(`/v1/projects/${projectId}/directory/entries/${entryId}`));
+/** A root file or folder, or null when there's none with that id (it may have been deleted). */
+export const findEntry = cache(async (projectId: string, entryId: string): Promise<EntryDetail | null> => {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(entryId)) return null;
+  try {
+    return await get<EntryDetail>(`/v1/projects/${projectId}/directory/entries/${entryId}`);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
 });
+export const getEntry = cache(async (projectId: string, entryId: string) => (await findEntry(projectId, entryId)) ?? notFound());
+
+/** The largest number the database stores for a release or request. */
+const MAX_NUMBER = 2_147_483_647;
 
 /** A positive integer from a URL segment, or the not-found page. */
 export function parseNumber(value: string): number {
   const number = Number(value.replace(/^v/i, ''));
-  if (!Number.isInteger(number) || number < 1) notFound();
+  if (!Number.isInteger(number) || number < 1 || number > MAX_NUMBER) notFound();
   return number;
 }
 

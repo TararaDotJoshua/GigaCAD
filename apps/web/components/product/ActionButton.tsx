@@ -1,6 +1,6 @@
 'use client';
 
-import { useLayoutEffect, useRef, useState, useTransition } from 'react';
+import { useId, useLayoutEffect, useRef, useState, useTransition } from 'react';
 import type { ActionState } from '../../app/(product)/actions';
 import { keepFocusNear } from '../../lib/focus';
 import { pendingText } from '../../lib/pending';
@@ -16,6 +16,7 @@ import { announce } from './Announcer';
  *
  * Success messages go to the page's status region, because a refresh often removes the
  * row the button sat in. If it does, focus moves to the nearest heading instead of the page.
+ * With `onResult`, the result goes to the caller (for one status line shared by a table) instead.
  */
 export function ActionButton({
   action,
@@ -24,6 +25,8 @@ export function ActionButton({
   confirm,
   pendingLabel,
   disabled,
+  ariaLabel,
+  onResult,
 }: {
   action: () => Promise<ActionState>;
   children: React.ReactNode;
@@ -31,6 +34,9 @@ export function ActionButton({
   confirm?: string;
   pendingLabel?: string;
   disabled?: boolean;
+  /** A name for screen readers when the visible label is the same on every row, e.g. "Remove @sam". */
+  ariaLabel?: string;
+  onResult?: (state: ActionState) => void;
 }) {
   const root = useRef<HTMLSpanElement>(null);
   const button = useRef<HTMLButtonElement>(null);
@@ -38,6 +44,7 @@ export function ActionButton({
   const [pending, start] = useTransition();
   const [state, setState] = useState<ActionState>({});
   const [asking, setAsking] = useState(false);
+  const confirmId = useId();
   // Where focus goes when the confirm row closes: back to the button, unless nothing asked.
   const refocus = useRef(false);
 
@@ -64,6 +71,7 @@ export function ActionButton({
     if (asking) close();
     start(async () => {
       const result = await safeAction(action);
+      if (onResult) return onResult(result);
       // Errors stay beside the button; successes are announced where they outlive it.
       setState(result.error || !result.message || !announce(result.message) ? result : {});
     });
@@ -71,12 +79,14 @@ export function ActionButton({
   const label = pending ? (pendingLabel ?? pendingText(children)) : children;
 
   return (
-    <span ref={root} className={asking ? 'action confirm-inline' : 'action'} role={asking ? 'group' : undefined}>
+    <span ref={root} className={asking ? 'action confirm-inline' : 'action'} role={asking ? 'group' : undefined} aria-labelledby={asking ? confirmId : undefined}>
       {asking ? (
         <>
-          <span className="confirm-text">{confirm}</span>
+          <span className="confirm-text" id={confirmId}>
+            {confirm}
+          </span>
           <span className="confirm-buttons">
-            <button type="button" className={className} onClick={run}>
+            <button type="button" className={className} onClick={run} aria-label={ariaLabel}>
               {children}
             </button>
             <button ref={cancel} type="button" className="btn btn-secondary btn-small" onClick={() => close()}>
@@ -91,6 +101,7 @@ export function ActionButton({
             type="button"
             className={className}
             disabled={disabled}
+            aria-label={ariaLabel}
             aria-disabled={pending || undefined}
             aria-busy={pending || undefined}
             onClick={() => (pending ? undefined : confirm ? setAsking(true) : run())}

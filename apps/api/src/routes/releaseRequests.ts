@@ -15,7 +15,7 @@ import {
   updateCandidateFiles,
   withdrawApproval,
 } from '../services/releaseRequests.js';
-import { notifyReleaseRequest, type RequestNotice } from '../services/notices.js';
+import { approvedAlready, notifyReleaseRequest, type RequestNotice } from '../services/notices.js';
 
 const picks = z.object({
   actions: z.record(z.uuid(), z.enum(['take_branch', 'keep_main'])).optional(),
@@ -33,7 +33,9 @@ export function releaseRequestRoutes(app: FastifyInstance, { sql, mailer, webOri
     const { id } = parse(idParams, request.params);
     const input = parse(z.object({ title: z.string().trim().min(1).max(200), body: z.string().max(20_000).optional() }), request.body);
     reply.status(201);
-    return openReleaseRequest(sql, id, requireCaller(request).userId, input);
+    const opened = await openReleaseRequest(sql, id, requireCaller(request).userId, input);
+    // Approvers hear once the request has a candidate to review.
+    return notify(request, 'candidate', opened.releaseRequest.id, opened);
   });
 
   app.get('/v1/projects/:id/release-requests', async (request) => {
@@ -85,7 +87,9 @@ export function releaseRequestRoutes(app: FastifyInstance, { sql, mailer, webOri
 
   app.post('/v1/release-requests/:id/approvals', async (request) => {
     const { id } = parse(idParams, request.params);
-    return notify(request, 'approved', id, await approve(sql, id, requireCaller(request).userId));
+    const repeat = await approvedAlready(sql, id, requireCaller(request).userId);
+    const result = await approve(sql, id, requireCaller(request).userId);
+    return repeat ? result : notify(request, 'approved', id, result);
   });
 
   app.delete('/v1/release-requests/:id/approvals', async (request) => {

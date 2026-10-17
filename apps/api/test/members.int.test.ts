@@ -45,8 +45,9 @@ describe('adding a member', () => {
     expect(notices[0]!.text).toContain('as a viewer');
     expect(notices[0]!.text).toContain(`http://localhost:3000/${owner.handle}/`);
 
-    // Changing the role isn't news.
+    // A new role gets its own short notice, not a second welcome.
     await asOwner.put(`/v1/projects/${projectId}/members`, { handle: teammate.handle, role: 'contributor' });
-    expect(sent.filter((message) => message.subject.includes('Team bench'))).toHaveLength(1);
+    expect(sent.filter((message) => message.subject.includes('added you to Team bench'))).toHaveLength(1);
+    expect(sent.filter((message) => message.subject === "You're now a contributor on Team bench")).toHaveLength(1);
   });
 });

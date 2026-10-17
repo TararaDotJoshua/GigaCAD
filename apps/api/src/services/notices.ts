@@ -4,9 +4,9 @@ import type { Mailer } from '../mail.js';
 import { loadApprovalRules } from './projects.js';
 
 /**
- * Short emails telling people about changes someone else made to their work or access:
- * a lock taken back, being removed from a project, a project deleted, and a release request
- * moving on. They're sent after the change commits, and a mail failure never undoes it.
+ * Short emails telling people about changes someone else made to their access or work:
+ * a new role, being removed from a project, a project deleted, and a release request moving
+ * on. (Locks that someone else releases are told from branches.ts.) They're sent after the change commits, and a mail failure never undoes it.
  */
 
 interface Place {
@@ -19,29 +19,23 @@ interface Place {
 const link = (webOrigin: string, place: Place, ...rest: string[]) =>
   [webOrigin, place.ownerHandle, place.slug, ...rest.map(encodeURIComponent)].join('/');
 
-/** Tells the person whose lock a maintainer force-released. */
-export async function notifyLockForceReleased(sql: Sql, mailer: Mailer, webOrigin: string, released: { branchId: string; holderId: string; actorId: string }): Promise<void> {
-  if (released.holderId === released.actorId) return;
-  const [row] = await sql<(Place & { email: string | null; branchName: string })[]>`
-    select u.email, b.name as branch_name, p.name as project_name, o.handle as owner_handle, p.slug, a.handle as actor_handle
-    from branches b
-    join projects p on p.id = b.project_id
+/** Tells a member their role changed, since it changes what they can do. */
+export async function notifyRoleChanged(sql: Sql, mailer: Mailer, webOrigin: string, change: { projectId: string; handle: string; role: string; actorId: string }): Promise<void> {
+  const [row] = await sql<(Place & { email: string | null; userId: string })[]>`
+    select u.email, m.id as user_id, p.name as project_name, o.handle as owner_handle, p.slug, a.handle as actor_handle
+    from profiles m
+    join projects p on p.id = ${change.projectId}
     join profiles o on o.id = p.owner_id
-    join profiles a on a.id = ${released.actorId}
-    left join auth.users u on u.id = ${released.holderId}
-    where b.id = ${released.branchId}
+    join profiles a on a.id = ${change.actorId}
+    left join auth.users u on u.id = m.id
+    where m.handle = ${change.handle}
   `;
-  if (!row?.email) return;
+  if (!row?.email || row.userId === change.actorId) return;
+  const role = change.role === 'viewer' ? 'a viewer' : `a ${change.role}`;
   await mailer.send({
     to: row.email,
-    subject: `@${row.actorHandle} took back your lock on ${row.branchName}`,
-    text: [
-      `@${row.actorHandle} force-released your checkout of ${row.branchName} in ${row.projectName}, so you can't save to it until you check it out again.`,
-      '',
-      'Your autosaves and versions are still on the branch. Check it out again to keep working.',
-      '',
-      link(webOrigin, row, 'branches', row.branchName),
-    ].join('\n'),
+    subject: `You're now ${role} on ${row.projectName}`,
+    text: [`@${row.actorHandle} made you ${role} on ${row.projectName} on GigaCAD.`, '', link(webOrigin, row)].join('\n'),
   });
 }
 
@@ -86,6 +80,15 @@ export async function notifyProjectDeleted(sql: Sql, mailer: Mailer, deleted: { 
 }
 
 export type RequestNotice = 'candidate' | 'approved' | 'released' | 'closed';
+
+/** Whether this person already approved the request's current candidate, so approving again isn't news. */
+export async function approvedAlready(sql: Sql, requestId: string, userId: string): Promise<boolean> {
+  const [row] = await sql`
+    select 1 from approvals a join release_requests r on r.id = a.release_request_id
+    where a.release_request_id = ${requestId} and a.user_id = ${userId} and a.candidate_manifest_id = r.candidate_manifest_id
+  `;
+  return Boolean(row);
+}
 
 /** A rebuilt candidate within this long of the last one doesn't email the approvers again. */
 const CANDIDATE_QUIET_MINUTES = 30;

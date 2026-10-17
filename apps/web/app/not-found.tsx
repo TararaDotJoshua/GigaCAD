@@ -1,14 +1,13 @@
+import { AccountLink } from '../components/AccountLink';
 import { Logo } from '../components/Logo';
 import { APP_URL } from '../components/site';
 import { dashboardPath, sites } from '../lib/hosts';
-import { getAccessToken } from '../lib/session';
 
 export const metadata = { title: 'Page not found' };
 
 // Addresses that match no page at all. Styled like the sign-in pages: Forest, one card.
-export default async function NotFound() {
+export default function NotFound() {
   const { siteUrl } = sites();
-  const signedIn = Boolean(await getAccessToken());
   return (
     <>
       <header className="auth-nav">
@@ -20,7 +19,7 @@ export default async function NotFound() {
           <p className="auth-intro">There’s nothing at this address. It may have moved, or the link may be mistyped.</p>
           <div className="auth-links">
             <a href={siteUrl}>GigaCAD home</a>
-            {signedIn ? <a href={dashboardPath()}>Your projects</a> : <a href={`${APP_URL}/login`}>Log in</a>}
+            <AccountLink dashboard={dashboardPath()} login={`${APP_URL}/login`} />
           </div>
         </div>
       </main>

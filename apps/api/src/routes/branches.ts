@@ -14,14 +14,13 @@ import {
   listBranches,
   listCommits,
 } from '../services/branches.js';
-import { notifyLockForceReleased } from '../services/notices.js';
 
 const branchName = z
   .string()
   .regex(/^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$/, 'Use letters, digits, dots, dashes, or underscores');
 const machine = z.string().min(1).max(200);
 
-export function branchRoutes(app: FastifyInstance, { sql, mailer, webOrigin }: AppDeps): void {
+export function branchRoutes(app: FastifyInstance, { sql }: AppDeps): void {
   app.post('/v1/projects/:id/branches', async (request, reply) => {
     const { id } = parse(idParams, request.params);
     const input = parse(z.object({ name: branchName, fromRelease: z.number().int().positive().optional() }), request.body);
@@ -52,11 +51,7 @@ export function branchRoutes(app: FastifyInstance, { sql, mailer, webOrigin }: A
 
   app.post('/v1/branches/:id/force-release', async (request) => {
     const { id } = parse(idParams, request.params);
-    const actorId = requireCaller(request).userId;
-    let holderId: string | undefined;
-    const view = await forceRelease(sql, id, actorId, (holder) => (holderId = holder));
-    if (holderId && mailer) await notifyLockForceReleased(sql, mailer, webOrigin, { branchId: id, holderId, actorId }).catch((error: unknown) => request.log.warn(error, 'lock notice not sent'));
-    return view;
+    return forceRelease(sql, id, requireCaller(request).userId);
   });
 
   app.post('/v1/branches/:id/archive', async (request) => {

@@ -19,7 +19,7 @@ import {
   setMember,
   updateProject,
 } from '../services/projects.js';
-import { notifyMemberRemoved, notifyProjectDeleted } from '../services/notices.js';
+import { notifyMemberRemoved, notifyProjectDeleted, notifyRoleChanged } from '../services/notices.js';
 import { getRelease, listReleases, releaseArchive } from '../services/releases.js';
 import { contentDisposition } from '../storage.js';
 
@@ -89,8 +89,14 @@ export function projectRoutes(app: FastifyInstance, { sql, storage, mailer, webO
   app.put('/v1/projects/:id/members', async (request) => {
     const { id } = parse(idParams, request.params);
     const input = parse(z.object({ handle: z.string().min(1).max(39), role }), request.body);
+    const [before] = await sql<{ role: string }[]>`
+      select m.role from project_members m join profiles p on p.id = m.user_id where m.project_id = ${id} and p.handle = ${input.handle}
+    `;
     const added = await setMember(sql, id, requireCaller(request).userId, input.handle, input.role);
     if (added && mailer) await notifyNewMember(mailer, webOrigin, added).catch((error: unknown) => request.log.warn(error, 'member notice not sent'));
+    if (before && before.role !== input.role && mailer) {
+      await notifyRoleChanged(sql, mailer, webOrigin, { projectId: id, handle: input.handle, role: input.role, actorId: requireCaller(request).userId }).catch((error: unknown) => request.log.warn(error, 'role notice not sent'));
+    }
     return withAvatars(storage, await listMembers(sql, id, requireCaller(request).userId));
   });
 

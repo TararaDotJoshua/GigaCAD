@@ -38,8 +38,8 @@ export default async function BranchPage({ params }: { params: Promise<ProjectPa
   const canWrite = canManage || project.role === 'contributor';
   const timeline = groupTimeline(commits);
   const { siteUrl } = sites();
-  // A branch nobody has worked on yet gets one next step instead of three empty sections.
-  const fresh = canWrite && branch.status === 'open' && changes.length === 0 && !commits.some((commit) => commit.kind === 'version');
+  // Nothing done on it yet beyond the commit it started from: one next step instead of empty sections.
+  const fresh = canWrite && branch.status === 'open' && changes.length === 0 && commits.every((commit) => commit.parentId === null);
 
   return (
     <div className="page">
@@ -62,7 +62,7 @@ export default async function BranchPage({ params }: { params: Promise<ProjectPa
       />
       <div className="page-grid">
         <div className="stack">
-          {fresh && (
+          {fresh ? (
             <section className="section card start-branch">
               <h2>
                 Start working on <span className="mono">{branch.name}</span>
@@ -75,61 +75,61 @@ export default async function BranchPage({ params }: { params: Promise<ProjectPa
                 A typical session with the CLI
               </a>
             </section>
+          ) : (
+            <section className="section">
+              <h2>{branch.baseReleaseNumber ? `Changes from v${branch.baseReleaseNumber}` : 'Changes'}</h2>
+              {changes.length > 0 && <p className="change-summary">{changeSummary(changes)}</p>}
+              <ChangeList projectId={project.id} changes={changes} empty={branch.baseReleaseNumber ? `Nothing has changed since v${branch.baseReleaseNumber}.` : 'No files yet.'} />
+            </section>
           )}
-          {!fresh && (
-            <>
-              <section className="section">
-                <h2>{branch.baseReleaseNumber ? `Changes from v${branch.baseReleaseNumber}` : 'Changes'}</h2>
-                {changes.length > 0 && <p className="change-summary">{changeSummary(changes)}</p>}
-                <ChangeList projectId={project.id} changes={changes} empty={branch.baseReleaseNumber ? `Nothing has changed since v${branch.baseReleaseNumber}.` : 'No files yet.'} />
-              </section>
-              <section className="section">
-                <h2>Files</h2>
-                <ProjectDirectory project={project} path={`Branches/${branch.name}`} params={{}} signedIn={!!viewer} viewerHandle={viewer?.handle ?? null} embedded />
-              </section>
-              <section className="section">
-                <h2>Version history</h2>
-                {timeline.length ? (
-                  <ol className="timeline">
-                    {timeline.map((entry, index) => (
-                      <li key={entry.kind === 'version' ? entry.commit.id : `autosaves-${index}`} className="timeline-item">
-                        <span className="timeline-node" />
-                        <div className="timeline-body">
-                          {entry.kind === 'version' ? (
-                            <>
-                              <Link className="timeline-title" href={commitPath(owner, slug, entry.commit.id)}>
-                                {entry.commit.message || entry.commit.versionLabel || 'Version'}
-                              </Link>
-                              <p className="timeline-meta">
-                                <StatusBadge tone="quiet">{entry.commit.versionLabel || 'Version'}</StatusBadge> @{entry.commit.authorHandle || 'unknown'} · <RelativeTime value={entry.commit.createdAt} />
-                              </p>
-                            </>
-                          ) : (
-                            <details>
-                              <summary>
-                                Unsaved work · {entry.commits.length} autosave{entry.commits.length === 1 ? '' : 's'}
-                              </summary>
-                              <ul>
-                                {entry.commits.map((commit) => (
-                                  <li key={commit.id}>
-                                    <Link href={commitPath(owner, slug, commit.id)}>
-                                      <RelativeTime value={commit.createdAt} />
-                                    </Link>
-                                  </li>
-                                ))}
-                              </ul>
-                            </details>
-                          )}
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-                ) : (
-                  <EmptyState title="No versions yet." />
-                )}
-              </section>
-            </>
+          {/* A fresh branch of an empty project has no files to list yet. */}
+          {!(fresh && !branch.baseReleaseNumber) && (
+            <section className="section">
+              <h2>Files</h2>
+              <ProjectDirectory project={project} path={`Branches/${branch.name}`} params={{}} signedIn={!!viewer} viewerHandle={viewer?.handle ?? null} embedded />
+            </section>
           )}
+          <section className="section">
+            <h2>Version history</h2>
+            {timeline.length ? (
+              <ol className="timeline">
+                {timeline.map((entry, index) => (
+                  <li key={entry.kind === 'version' ? entry.commit.id : `autosaves-${index}`} className="timeline-item">
+                    <span className="timeline-node" />
+                    <div className="timeline-body">
+                      {entry.kind === 'version' ? (
+                        <>
+                          <Link className="timeline-title" href={commitPath(owner, slug, entry.commit.id)}>
+                            {entry.commit.message || entry.commit.versionLabel || 'Version'}
+                          </Link>
+                          <p className="timeline-meta">
+                            <StatusBadge tone="quiet">{entry.commit.versionLabel || 'Version'}</StatusBadge> @{entry.commit.authorHandle || 'unknown'} · <RelativeTime value={entry.commit.createdAt} />
+                          </p>
+                        </>
+                      ) : (
+                        <details>
+                          <summary>
+                            Unsaved work · {entry.commits.length} autosave{entry.commits.length === 1 ? '' : 's'}
+                          </summary>
+                          <ul>
+                            {entry.commits.map((commit) => (
+                              <li key={commit.id}>
+                                <Link href={commitPath(owner, slug, commit.id)}>
+                                  <RelativeTime value={commit.createdAt} />
+                                </Link>
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <EmptyState title="No versions yet." />
+            )}
+          </section>
         </div>
         <aside className="request-rail">
           <section className="rail-card">

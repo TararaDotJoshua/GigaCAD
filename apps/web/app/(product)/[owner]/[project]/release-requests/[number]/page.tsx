@@ -220,7 +220,7 @@ export default async function RequestPage({ params }: { params: Promise<RequestP
                           <RelativeTime value={request.rebuildReport.reportedAt} />
                         </>
                       )}
-                      {request.rebuildReport.via === 'device' ? ` from “${request.rebuildReport.deviceName ?? 'a desktop sign-in'}”` : ' from the website'}
+                      {request.rebuildReport.via !== 'device' ? ' from the website' : request.rebuildReport.deviceName ? ` from “${request.rebuildReport.deviceName}”` : ' from a desktop sign-in'}
                       {request.rebuildReport.reportedBy.userId === request.requesterId && ', who opened this request'}.
                     </p>
                   )}

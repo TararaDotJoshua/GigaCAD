@@ -170,8 +170,13 @@ async function evaluate(db: Db, request: ReleaseRequestRow): Promise<ApprovalEva
 
 export async function getReleaseRequest(sql: Sql, id: string, userId: string | null): Promise<ReleaseRequestDetail> {
   const request = await loadRequest(sql, id);
-  await projectAccess(sql, request.projectId, userId);
-  return detail(sql, request);
+  const { role } = await projectAccess(sql, request.projectId, userId);
+  const view = await detail(sql, request);
+  // A device's name is often its owner's computer name, so outsiders only learn it was a desktop sign-in.
+  const report = view.releaseRequest.rebuildReport;
+  if (role !== null || !report?.deviceName) return view;
+  const { deviceName: _hidden, ...rest } = report;
+  return { ...view, releaseRequest: { ...view.releaseRequest, rebuildReport: rest } };
 }
 
 async function detail(db: Db, request: ReleaseRequestRow): Promise<ReleaseRequestDetail> {

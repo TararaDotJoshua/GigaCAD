@@ -269,5 +269,10 @@ describe('rebuild reports', () => {
       via: 'device',
       deviceName: 'GigaCAD add-in on SW-PC',
     });
+    // Outsiders of a public project learn it came from a desktop sign-in, not which computer.
+    await asOwner.patch(`/v1/projects/${projectId}`, { visibility: 'public' });
+    const outside = (await anonymous().get(`/v1/release-requests/${requestId}`)).body.releaseRequest.rebuildReport;
+    expect(outside).toMatchObject({ via: 'device', reportedBy: { handle: owner.handle } });
+    expect(outside.deviceName).toBeUndefined();
   });
 });

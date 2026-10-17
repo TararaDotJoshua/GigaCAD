@@ -77,8 +77,8 @@ export function parseArticle(slug: string, source: string): Article {
 
   return {
     slug,
-    title: required('title'),
-    summary: required('summary'),
+    title: smartQuotes(required('title')),
+    summary: smartQuotes(required('summary')),
     kind: kind as ArticleKind,
     date,
     author: required('author'),
@@ -130,4 +130,50 @@ export function headingId(text: string): string {
     .replace(/[’']/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '');
+}
+
+/**
+ * Straight quotes to curly ones, as the rest of the site is written: "Git for CAD" and
+ * Here's become “Git for CAD” and Here’s. `before` is the character just ahead of `text`,
+ * for text that continues earlier text.
+ */
+export function smartQuotes(text: string, before = ''): string {
+  let out = '';
+  let previous = before;
+  for (const char of text) {
+    if (char === '"' || char === "'") {
+      // A quote opens at the start, or after a space or an opening bracket or dash; otherwise it closes.
+      const opens = previous === '' || /[\s([{\u2014\u2013-]/.test(previous);
+      out += char === '"' ? (opens ? '\u201c' : '\u201d') : opens ? '\u2018' : '\u2019';
+    } else {
+      out += char;
+    }
+    previous = char;
+  }
+  return out;
+}
+
+interface MarkdownNode {
+  type: string;
+  value?: string;
+  children?: MarkdownNode[];
+}
+
+/** A remark plugin that applies `smartQuotes` to the article's prose, leaving code as written. */
+export function remarkSmartQuotes() {
+  return (tree: MarkdownNode) => {
+    let previous = '';
+    const walk = (node: MarkdownNode) => {
+      if (node.type === 'text' && node.value !== undefined) {
+        node.value = smartQuotes(node.value, previous);
+        previous = node.value.slice(-1);
+      } else if (node.type === 'inlineCode' || node.type === 'code') {
+        previous = 'x';
+      } else if (node.type === 'paragraph' || node.type === 'heading' || node.type === 'listItem' || node.type === 'tableCell') {
+        previous = '';
+      }
+      node.children?.forEach(walk);
+    };
+    walk(tree);
+  };
 }

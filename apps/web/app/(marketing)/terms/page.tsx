@@ -6,6 +6,7 @@ import { SUPPORT_EMAIL } from "../../../components/site";
 export const metadata: Metadata = {
   title: "Terms of Service",
   description: "The terms for using GigaCAD, its website, and its desktop software.",
+  alternates: { canonical: "/terms" },
 };
 
 const sections: LegalSection[] = [
@@ -16,8 +17,8 @@ const sections: LegalSection[] = [
       <>
         <p>
           These terms cover your use of GigaCAD: the website at gigacad.site, the app at
-          app.gigacad.site, the Windows drive and tray app, the SolidWorks add-in, the command-line
-          tool, and the API (together, “the service”). By creating an account or using the service,
+          app.gigacad.site, the GigaCAD desktop apps for Windows and Mac once they’re available, the
+          SolidWorks add-in, the command-line tool, and the API (together, “the service”). By creating an account or using the service,
           you agree to them.
         </p>
         <p>
@@ -103,12 +104,12 @@ const sections: LegalSection[] = [
   },
   {
     id: "collaboration",
-    title: "Check-outs and team projects",
+    title: "Checking out and team projects",
     body: (
       <>
         <p>
           Checking out a branch gives one person write access to it. A project’s owners and maintainers
-          can force-release a check-out, for example when someone is away. Force-releases are logged and
+          can release someone’s lock on a branch, for example when they’re away. Force-releases are logged and
           the holder is notified. Changes the holder hasn’t uploaded yet stay on their computer.
         </p>
         <p>
@@ -181,16 +182,20 @@ const sections: LegalSection[] = [
     body: (
       <>
         <p>
+          <strong>Organization plans aren’t available yet.</strong> This section applies once they
+          launch; until then, every account is a personal account on the plans on the{" "}
+          <a href="/pricing">pricing page</a>.
+        </p>
+        <p>
           An organization is an account that a team shares. If you create one, you agree to these terms
           for the organization, and you confirm you’re allowed to. The organization owns its projects.
           Its owners and admins decide who belongs to it, what role each person has, and how it’s billed.
         </p>
         <p>
           Organization plans are billed per editor seat, monthly or yearly in advance, at the prices on
-          the <a href="/pricing">pricing page</a> when you subscribe, plus any sales tax or VAT. An
-          editor is anyone who can change the organization’s projects, including its owners and admins.
-          Viewers and reviewers, who can read, comment, and approve release requests but not change
-          files, are free. Storage packs add storage for a separate price. Stripe, through Link, is the
+          the pricing page when you subscribe, plus any sales tax or VAT. An editor is anyone who can
+          change the organization’s projects, including its owners and admins. Viewers, who can read
+          files and approve release requests but not change them, are free. Storage packs add storage for a separate price. Stripe, through Link, is the
           seller of record, as it is for personal plans.
         </p>
         <ul>
@@ -235,7 +240,7 @@ const sections: LegalSection[] = [
     title: "Desktop software",
     body: (
       <p>
-        We give you a personal, non-transferable license to install and use the GigaCAD drive, tray app,
+        We give you a personal, non-transferable license to install and use the GigaCAD desktop apps,
         SolidWorks add-in, and command-line tool with the service. They update themselves to stay
         compatible with the service. Don’t reverse-engineer them, except where the law allows it.
         SolidWorks is a product of Dassault Systèmes; GigaCAD isn’t affiliated with it.
@@ -248,8 +253,9 @@ const sections: LegalSection[] = [
     body: (
       <>
         <p>
-          You can delete your account at any time in your settings. Projects you own are deleted with it,
-          with the same 30-day restore window as a project deletion.
+          You can close your account at any time by emailing{" "}
+          <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a> from its address, and we’ll delete it.
+          Projects you own are deleted with it, with the same 30-day restore window as a project deletion.
         </p>
         <p>
           We may suspend or close an account that seriously or repeatedly breaks these terms. If we ever
@@ -304,7 +310,7 @@ export default function TermsPage() {
   return (
     <LegalPage
       title="Terms of Service"
-      updated="October 8, 2026"
+      updated="October 16, 2026"
       summary={[
         "Your files are yours. We only use them to run GigaCAD for you and the people you share with.",
         "Public projects can be viewed and forked by anyone, under the license you choose.",

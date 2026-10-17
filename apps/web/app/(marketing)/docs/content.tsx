@@ -2,6 +2,11 @@
 // The docs table of contents. Each page lists the headings it will cover;
 // pages without `body` render those headings as unwritten sections.
 
+import { APP_URL } from "../../../components/site";
+
+/** The app's address as people type it, like app.gigacad.site. */
+const APP_HOST = new URL(APP_URL).host;
+
 export interface DocPage {
   slug: string;
   title: string;
@@ -190,7 +195,7 @@ function ProjectFiles() {
 
 function Command({ children }: { children: string }) {
   return (
-    <pre>
+    <pre tabIndex={0} role="region" aria-label="Command example">
       <code>{children}</code>
     </pre>
   );
@@ -223,8 +228,8 @@ function FirstProject() {
 
       <h2 id="create-a-project">Create a project</h2>
       <p>
-        Sign in at <a href="https://app.gigacad.site">app.gigacad.site</a>. The first time, choose a handle:
-        it starts every project address, like <code>app.gigacad.site/alex/robot-arm</code>. Then choose{" "}
+        Log in at <a href={APP_URL}>{APP_HOST}</a>. The first time, choose a handle: it starts every
+        project address, like <code>{APP_HOST}/alex/robot-arm</code>. Then choose{" "}
         <strong>New project</strong>, give it a name, and pick who can see it. Private projects are visible
         only to their members. Public projects can be viewed by anyone, but only members can change them.
       </p>
@@ -259,9 +264,9 @@ giga commit -m "First upload" --label "rev A"`}</Command>
       </p>
       <p>
         On the release request, every file shows up as new on the branch, set to <strong>Add as new</strong>.
-        Choose <strong>Generate candidate</strong>, then <strong>Approve candidate</strong>. New projects
-        need one approval from an owner or maintainer, and you may approve your own request. Once the
-        approval is in, choose <strong>Release v1</strong>. Main now shows your files, locked as v1.
+        Choose <strong>Build candidate</strong>, then approve it. New projects need one approval from an
+        owner or maintainer, and you can approve your own request. Once the approval is in, release it as
+        v1. Main now shows your files, locked as v1.
       </p>
 
       <h2 id="invite-people">Invite people</h2>
@@ -334,7 +339,7 @@ function PublicProjects() {
       <p>
         A public project can be seen by anyone, with or without an account: its files, releases, branches,
         and release requests. Only its members can change it. Public projects are listed on{" "}
-        <a href="https://app.gigacad.site/explore">Explore</a> and on their owner’s profile page.
+        <a href={`${APP_URL}/explore`}>Explore</a> and on their owner’s profile page.
       </p>
 
       <h2 id="make-a-project-public">Make a project public</h2>
@@ -431,7 +436,7 @@ function PlansAndStorage() {
 
       <h2 id="change-or-cancel-a-plan">Change or cancel a plan</h2>
       <p>
-        Choose a plan in <strong>Plan and storage</strong>, or open <strong>Manage billing</strong> to switch,
+        Choose a plan in <strong>Plan and storage</strong>, or choose <strong>Change or cancel in Stripe</strong> to switch,
         cancel, update your card, or download invoices. Switching takes effect right away, and the difference
         is charged or credited for the rest of the period. Canceling keeps your plan until the end of the
         period you paid for. Stripe sells plans for GigaCAD through Link and adds any sales tax or VAT at
@@ -457,10 +462,10 @@ function Cli() {
       <Command>{`npm install -g @gigacad/cli
 giga --version`}</Command>
 
-      <h2 id="sign-in">Sign in</h2>
+      <h2 id="log-in">Log in</h2>
       <Command>giga login</Command>
       <p>
-        This opens <code>app.gigacad.site/device</code> in your browser with a code. Check that the code
+        This opens <code>{APP_HOST}/device</code> in your browser with a code. Check that the code
         matches your terminal, then approve it. <code>giga</code> saves a device token for this computer in{" "}
         <code>~/.config/giga</code> on macOS and Linux, or <code>%APPDATA%\giga</code> on Windows. Use{" "}
         <code>giga login --no-browser</code> to print the link instead of opening it.
@@ -926,7 +931,7 @@ export const docs: DocSection[] = [
         slug: "references",
         title: "References and folder layout",
         summary: "How GigaCAD keeps assembly and drawing references intact.",
-        outline: ["The drive’s folder layout", "Relative references", "Moving and renaming files"],
+        outline: ["The GigaCAD folder’s layout", "Relative references", "Moving and renaming files"],
       },
     ],
   },
@@ -935,9 +940,9 @@ export const docs: DocSection[] = [
     pages: [
       {
         slug: "drive-layout",
-        title: "Drive folders",
-        summary: "Every folder the GigaCAD drive shows, and what you can do in each.",
-        outline: ["main", "releases", "branches", "candidates", "Status icons"],
+        title: "The GigaCAD folder",
+        summary: "Coming with the desktop apps. Every folder in the GigaCAD folder on your computer, and what you can do in each.",
+        outline: ["Root files", "Branches", "Releases", "Status icons"],
       },
       {
         slug: "ignored-files",
@@ -950,14 +955,14 @@ export const docs: DocSection[] = [
         slug: "cli",
         title: "Command-line tool",
         summary: "Work with GigaCAD from a terminal, and script it, with the giga command.",
-        outline: ["Install", "Sign in", "Workspaces", "A typical session", "Release from the command line", "Commands", "Scripting"],
+        outline: ["Install", "Log in", "Workspaces", "A typical session", "Release from the command line", "Commands", "Scripting"],
         body: Cli,
       },
       {
         slug: "troubleshooting",
         title: "Troubleshooting",
         summary: "Fixes for sync, sign-in, and rebuild problems.",
-        outline: ["Files aren’t syncing", "The drive is missing from File Explorer", "The add-in doesn’t load", "Contact support"],
+        outline: ["Files aren’t syncing", "The GigaCAD folder is missing", "The add-in doesn’t load", "Contact support"],
       },
     ],
   },

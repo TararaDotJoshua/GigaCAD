@@ -6,13 +6,14 @@ export const metadata: Metadata = {
   title: "Pricing",
   description:
     "Every GigaCAD plan includes every feature and unlimited collaborators. Plans differ only in storage, from 5 GB free to 2 TB.",
+  alternates: { canonical: "/pricing" },
 };
 
 const questions = [
   ["Changing plans", "Switch plans any time from Account settings. Stripe charges or credits the difference for the rest of the billing period."],
   ["Canceling", "Your plan stays until the end of the period you paid for, then moves to Free. Nothing is deleted; if you store more than Free allows, uploads pause until you’re under it."],
   ["Paying", "Stripe sells paid plans for us through Link, and adds sales tax or VAT at checkout where it applies. Pay by card, Link, or a local payment method. Your statement shows LINK.COM* GIGACAD."],
-  ["Teams", "There are no seats. Invite as many collaborators as you like; their uploads to your projects use your storage."],
+  ["Teams", "Personal plans have no seats. Invite as many collaborators as you like; their uploads to your projects use your storage. Organization plans, priced per editor, are coming."],
 ];
 
 export default function PricingPage() {

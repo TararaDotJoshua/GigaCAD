@@ -13,8 +13,18 @@ type Props = { params: Promise<{ slug: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const found = findPage((await params).slug);
-  return found ? { title: `${found.page.title} | Docs`, description: found.page.summary } : {};
+  return found ? { title: `${found.page.title} | Docs`, description: found.page.summary, alternates: { canonical: `/docs/${found.page.slug}` } } : {};
 }
+
+/** For an unwritten page, the written page that covers the most of it in the meantime. */
+const meanwhile: Record<string, { slug: string; title: string }> = {
+  "Get started": { slug: "concepts", title: "Concepts" },
+  "Everyday work": { slug: "cli", title: "Command-line tool" },
+  Releasing: { slug: "first-project", title: "Your first project" },
+  "Projects and teams": { slug: "first-project", title: "Your first project" },
+  SolidWorks: { slug: "concepts", title: "Concepts" },
+  Reference: { slug: "cli", title: "Command-line tool" },
+};
 
 const anchor = (heading: string) =>
   heading.toLowerCase().replace(/[’']/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -42,6 +52,11 @@ export default async function DocPage({ params }: Props) {
                 <h2 id={anchor(heading)}>{heading}</h2>
               </section>
             ))}
+            {meanwhile[page.section] && meanwhile[page.section]!.slug !== page.slug && (
+              <p className="doc-meanwhile">
+                Meanwhile, <Link href={`/docs/${meanwhile[page.section]!.slug}`}>{meanwhile[page.section]!.title}</Link> covers the basics.
+              </p>
+            )}
           </>
         )}
       </div>

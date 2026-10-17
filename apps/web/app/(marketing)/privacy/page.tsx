@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { LegalPage, type LegalSection } from "../../../components/LegalPage";
-import { PRIVACY_EMAIL } from "../../../components/site";
+import { PRIVACY_EMAIL, SUPPORT_EMAIL } from "../../../components/site";
 
 export const metadata: Metadata = {
   title: "Privacy Policy",
   description: "What GigaCAD collects, why, who can see it, and how to delete it.",
+  alternates: { canonical: "/privacy" },
 };
 
 const sections: LegalSection[] = [
@@ -15,8 +16,8 @@ const sections: LegalSection[] = [
     body: (
       <p>
         This policy explains how GigaCAD handles personal data when you use gigacad.site,
-        app.gigacad.site, the Windows drive and tray app, the SolidWorks add-in, the command-line tool,
-        and the API. The <Link href="/terms">Terms of Service</Link> cover the rest of our agreement
+        app.gigacad.site, the GigaCAD desktop apps for Windows and Mac once they’re available, the
+        SolidWorks add-in, the command-line tool, and the API. The <Link href="/terms">Terms of Service</Link> cover the rest of our agreement
         with you.
       </p>
     ),
@@ -28,7 +29,7 @@ const sections: LegalSection[] = [
       <>
         <h3>Your account</h3>
         <p>
-          Your email address, username, and password (stored only as a secure hash). If you sign in with
+          Your email address, handle, and password (stored only as a secure hash). If you sign in with
           GitHub or Google, we receive your name, email address, and profile picture from them.
         </p>
         <h3>Your projects</h3>
@@ -56,7 +57,7 @@ const sections: LegalSection[] = [
     body: (
       <>
         <ul>
-          <li>to run GigaCAD: sync your files, show previews, enforce check-outs, and record releases;</li>
+          <li>to run GigaCAD: sync your files, show previews, enforce branch locks, and record releases;</li>
           <li>to sign you in and keep your account secure;</li>
           <li>to send emails about your account and projects, such as sign-in links and release requests awaiting your approval;</li>
           <li>to find and fix bugs, and to prevent abuse.</li>
@@ -76,15 +77,15 @@ const sections: LegalSection[] = [
         <ul>
           <li>
             <strong>Private projects</strong> are visible only to their members. Members see each other’s
-            usernames, the project’s history, and who has each branch checked out, including the computer
+            handles, the project’s history, and who has each branch checked out, including the computer
             name.
           </li>
           <li>
             <strong>Public projects</strong> are visible to everyone, including their files, releases,
-            history, and the usernames of the people who contributed.
+            history, and the handles of the people who contributed.
           </li>
           <li>
-            <strong>Your profile</strong> shows your username, profile picture, and public projects.
+            <strong>Your profile</strong> shows your handle, profile picture, and public projects.
             Your email address is never shown publicly.
           </li>
         </ul>
@@ -134,8 +135,9 @@ const sections: LegalSection[] = [
     title: "Cookies",
     body: (
       <p>
-        We use cookies only to keep you signed in and to protect your session. We don’t use advertising
-        or cross-site tracking cookies.
+        We use cookies only to keep you signed in, to protect your session, and to let gigacad.site
+        show a link to your projects while you’re signed in. We don’t use advertising or cross-site
+        tracking cookies.
       </p>
     ),
   },
@@ -164,15 +166,19 @@ const sections: LegalSection[] = [
       <>
         <p>You can:</p>
         <ul>
-          <li>update your email address, username, and profile picture in your settings;</li>
+          <li>update your email address, handle, and profile picture in your settings;</li>
           <li>download any file or release from projects you can see;</li>
           <li>make a project private, or delete it;</li>
-          <li>delete your account, which also deletes the projects you own.</li>
+          <li>
+            ask us to delete your account by emailing <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>{" "}
+            from its address. The projects you own are deleted with it, with the same 30-day restore
+            window as a project deletion.
+          </li>
         </ul>
         <p>
           Depending on where you live, you may also have the right to access, correct, export, or delete
           your personal data, or to object to how we use it. Email us to use any of these rights. Some
-          things stay by design: your username stays in the history of other people’s projects you
+          things stay by design: your handle stays in the history of other people’s projects you
           contributed to, and existing forks of your public projects belong to the people who made them.
         </p>
       </>
@@ -224,12 +230,12 @@ export default function PrivacyPage() {
   return (
     <LegalPage
       title="Privacy Policy"
-      updated="September 25, 2026"
+      updated="October 16, 2026"
       summary={[
         "We collect what’s needed to run GigaCAD: your account, your projects, and a log of project activity.",
         "Private projects are visible only to their members. Public projects are visible to everyone.",
         "We don’t sell data, show ads, or train models on your files.",
-        "You can delete a project or your whole account at any time.",
+        "You can delete a project at any time, and ask us to delete your whole account.",
       ]}
       sections={sections}
     />

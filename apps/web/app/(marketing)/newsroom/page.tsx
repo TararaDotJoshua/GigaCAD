@@ -7,7 +7,7 @@ export const dynamic = "force-static";
 export const metadata: Metadata = {
   title: "Newsroom",
   description: "Essays, roadmaps, and news from the people building GigaCAD.",
-  alternates: { types: { "application/rss+xml": "/newsroom/feed.xml" } },
+  alternates: { canonical: "/newsroom", types: { "application/rss+xml": "/newsroom/feed.xml" } },
 };
 
 export default function NewsroomPage() {

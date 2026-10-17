@@ -3,6 +3,7 @@ import type { AppState, ProjectState, ReleasesToKeep } from '../../shared/types.
 import { platformWords } from '../../shared/platform.js';
 import { act, ago, call, toast, useLoad } from '../api.js';
 import { BranchIcon, DownloadIcon, ExternalIcon, FolderIcon, MergeIcon, PlusIcon, TagIcon } from '../icons.js';
+import { approvableCandidate, candidateChangedSinceReview, shortCandidate } from '../review.js';
 import { projectUrl, requestUrl } from '../urls.js';
 import { ActionButton } from './ActionButton.js';
 import { MoreMenu } from './Menu.js';
@@ -227,6 +228,8 @@ interface RequestSummary {
   readonly branchName: string;
   readonly requesterHandle: string | null;
   readonly updatedAt: string;
+  /** The candidate this list shows; approving names it, so a newer one isn't approved unseen. */
+  readonly candidateManifestId?: string | null;
 }
 
 function ReleaseRequests({ state, project }: { state: AppState; project: ProjectState }) {
@@ -236,6 +239,8 @@ function ReleaseRequests({ state, project }: { state: AppState; project: Project
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [opening, setOpening] = useState(false);
+  // The candidate each request showed when Review opened it on the web; Approve names that one.
+  const [reviewed, setReviewed] = useState<ReadonlyMap<number, string>>(new Map());
   const url = (number: number) => requestUrl(state, project, number);
   const chosen = branch || openable[0]?.name || '';
 
@@ -274,18 +279,33 @@ function ReleaseRequests({ state, project }: { state: AppState; project: Project
                 <span className="grow">
                   {request.title}
                   <span className="faint"> · {request.branchName}</span>
+                  {request.status === 'candidate' && request.candidateManifestId && (
+                    <span className="faint mono" title={`Candidate ${request.candidateManifestId}`}>
+                      {' '}
+                      · candidate {shortCandidate(request.candidateManifestId)} · {ago(request.updatedAt)}
+                    </span>
+                  )}
                 </span>
                 <span className={`badge${request.status === 'candidate' ? ' badge-caution' : ''}`}>{request.status === 'candidate' ? 'awaiting approval' : request.status}</span>
-                {request.status === 'candidate' && canEdit(project) ? (
+                {canEdit(project) && candidateChangedSinceReview(request, reviewed) ? <span className="faint">Changed since you opened it. Review it again.</span> : null}
+                {canEdit(project) && approvableCandidate(request, reviewed) ? (
                   <button
                     type="button"
                     className="btn btn-secondary btn-small"
-                    onClick={() => void act('approveReleaseRequest', project.id, request.number).then((done) => done && requests.reload())}
+                    onClick={() => void act('approveReleaseRequest', project.id, request.number, approvableCandidate(request, reviewed)!).then((done) => done && requests.reload())}
                   >
-                    Approve
+                    Approve {shortCandidate(request.candidateManifestId!)}
                   </button>
                 ) : null}
-                <button type="button" className="link" onClick={() => void act('openExternal', url(request.number))}>
+                <button
+                  type="button"
+                  className="link"
+                  onClick={() => {
+                    const candidate = request.candidateManifestId;
+                    if (candidate) setReviewed((current) => new Map(current).set(request.number, candidate));
+                    void act('openExternal', url(request.number));
+                  }}
+                >
                   Review
                 </button>
               </li>

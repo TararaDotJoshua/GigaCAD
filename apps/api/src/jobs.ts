@@ -1,5 +1,6 @@
 import type { Sql } from './db.js';
 import type { Mailer } from './mail.js';
+import { snapshotReleaseExports } from './services/exports.js';
 import { blobKey, stagingKey, thumbnailKey, type BlobStorage } from './storage.js';
 
 /**
@@ -25,6 +26,9 @@ export interface JobReport {
   deletedBlobs: number;
   clearedUploads: number;
   staleNotices: number;
+  snapshottedReleases: number;
+  purgedDeviceCodes: number;
+  resetThumbnails: number;
 }
 
 /**
@@ -58,6 +62,8 @@ export async function purgeDeletedProjects(sql: Sql, options: JobOptions = {}): 
         set target_release_id = null, candidate_manifest_id = null, rebuild_manifest_id = null, released_release_id = null
         where project_id = ${id}
       `;
+      await tx`delete from release_exports where project_id = ${id}`;
+      await tx`delete from release_export_snapshots where release_id in (select id from releases where project_id = ${id})`;
       await tx`delete from releases where project_id = ${id}`;
       await tx`delete from release_requests where project_id = ${id}`;
       await tx`delete from commits where branch_id in (select id from branches where project_id = ${id})`;
@@ -91,6 +97,8 @@ export async function unlinkUnusedBlobs(sql: Sql, options: JobOptions = {}): Pro
         and not exists (select 1 from root_file_revisions rv where rv.project_id = pb.project_id and rv.blob_sha256 = pb.sha256)
         -- Exports stay while their source file does; unlinking the source removes the export row.
         and not exists (select 1 from file_exports x where x.project_id = pb.project_id and x.blob_sha256 = pb.sha256)
+        -- Releases keep the exports they were made with.
+        and not exists (select 1 from release_exports x where x.project_id = pb.project_id and x.blob_sha256 = pb.sha256)
       limit ${batch}
     ),
     refs as (
@@ -186,6 +194,46 @@ export async function notifyStaleCheckouts(sql: Sql, mailer: Mailer, webOrigin: 
   return sent;
 }
 
+/**
+ * Copies the exports of releases that have no copy yet: ones an API from before release_exports
+ * made while the new schema was already in place. Each release is copied once.
+ */
+export async function snapshotMissingReleaseExports(sql: Sql, options: JobOptions = {}): Promise<number> {
+  const { batch } = { ...DEFAULTS, ...options };
+  const missing = await sql<{ id: string; projectId: string; manifestId: string }[]>`
+    select r.id, r.project_id, r.manifest_id from releases r
+    where not exists (select 1 from release_export_snapshots s where s.release_id = r.id)
+    order by r.created_at limit ${batch}
+  `;
+  for (const release of missing) await sql.begin((tx) => snapshotReleaseExports(tx, release.projectId, release.id, release.manifestId));
+  return missing.length;
+}
+
+/** Removes device sign-in codes a day after they expired; used ones expire within minutes too. */
+export async function purgeDeviceCodes(sql: Sql, options: JobOptions = {}): Promise<number> {
+  const { batch } = { ...DEFAULTS, ...options };
+  const purged = await sql`
+    delete from device_codes where device_code_hash in (
+      select device_code_hash from device_codes where expires_at < now() - interval '1 day' limit ${batch}
+    )
+  `;
+  return purged.count;
+}
+
+/**
+ * Puts back thumbnails that an older API drew from one project's export onto the shared row
+ * (thumbnails.model_sha256), which every project holding the file would show. Migration
+ * 20261016093000 resets them, but an API from before it could write more until it's replaced.
+ * Remove this along with the model_* columns.
+ */
+export async function resetExportDrawnThumbnails(sql: Sql): Promise<number> {
+  const reset = await sql`
+    update thumbnails set model_sha256 = null, model_format = null, status = 'pending', attempts = 0, error = null, updated_at = now()
+    where model_sha256 is not null
+  `;
+  return reset.count;
+}
+
 /** One pass of every job. Holds an advisory lock so two API instances never run at once. */
 export async function runJobs(deps: { sql: Sql; storage: BlobStorage; mailer?: Mailer; webOrigin: string }, options: JobOptions = {}): Promise<JobReport | null> {
   const { sql } = deps;
@@ -194,12 +242,16 @@ export async function runJobs(deps: { sql: Sql; storage: BlobStorage; mailer?: M
     const [lock] = await reserved<{ locked: boolean }[]>`select pg_try_advisory_lock(hashtext('gigacad.jobs')) as locked`;
     if (!lock?.locked) return null;
     try {
+      // First, so a failure in the storage jobs below can't hold it up.
+      const resetThumbnails = await resetExportDrawnThumbnails(sql);
       const purgedProjects = await purgeDeletedProjects(sql, options);
       const unlinkedBlobs = await unlinkUnusedBlobs(sql, options);
       const deletedBlobs = await deleteOrphanBlobs(sql, deps.storage, options);
       const clearedUploads = await clearAbandonedUploads(sql, deps.storage, options);
       const staleNotices = deps.mailer ? await notifyStaleCheckouts(sql, deps.mailer, deps.webOrigin, options) : 0;
-      return { purgedProjects, unlinkedBlobs, deletedBlobs, clearedUploads, staleNotices };
+      const snapshottedReleases = await snapshotMissingReleaseExports(sql, options);
+      const purgedDeviceCodes = await purgeDeviceCodes(sql, options);
+      return { purgedProjects, unlinkedBlobs, deletedBlobs, clearedUploads, staleNotices, snapshottedReleases, purgedDeviceCodes, resetThumbnails };
     } finally {
       await reserved`select pg_advisory_unlock(hashtext('gigacad.jobs'))`;
     }

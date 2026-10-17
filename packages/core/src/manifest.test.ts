@@ -56,3 +56,15 @@ describe('diffManifests', () => {
     expect(diffManifests(manifest, [...manifest])).toEqual([]);
   });
 });
+
+describe('validateManifest strictNames', () => {
+  const entry = (path: string) => ({ itemId: path, path, blob: 'b' });
+  it('refuses only names Windows can’t store when asked for Windows-safe names', () => {
+    const manifest = [entry('parts/Aux.SLDPRT'), entry('notes./a.txt'), entry('a|b.txt'), entry(' leading.txt'), entry('right\u202eleft.txt'), entry('ok/Bracket.SLDPRT')];
+    expect(validateManifest(manifest)).toEqual([]);
+    // A leading space or a text direction control is refused in new commits, but Windows stores it,
+    // so a branch or release that already holds one still clones and exports there.
+    expect(validateManifest(manifest, { strictNames: true }).map((issue) => issue.kind === 'invalid_path' && issue.path)).toEqual(['parts/Aux.SLDPRT', 'notes./a.txt', 'a|b.txt']);
+  });
+});
+

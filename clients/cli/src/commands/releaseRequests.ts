@@ -27,9 +27,11 @@ Typical flow (inside a workspace):
   giga rr open --title "Swap the gripper"
   giga rr diff
   giga rr picks --file picks.json
-  giga rr candidate
-  giga rr approve
-  giga rr release`,
+  giga rr show                          # review it; note the candidate id
+  giga rr approve --candidate <id>
+  giga rr release --candidate <id>
+Approving and releasing name the candidate you reviewed, so a newer one is never
+approved or released by mistake.`,
     );
   const project = (command: Command) => command.option('--project <owner/project>', 'Project (default: this workspace’s project)');
   /** A subcommand that acts on one release request. */
@@ -77,9 +79,12 @@ Report file:
   }`,
     )
     .action(bind(rebuildReport));
-  onRequest('approve', 'Approve the current candidate').action(bind(approve));
+  onRequest('approve', 'Approve the candidate you reviewed')
+    .option('--candidate <manifestId>', 'The candidate you reviewed (from `giga rr show`); refused if it has changed since. Required')
+    .action(bind(approve));
   onRequest('unapprove', 'Withdraw your approval').action(bind(unapprove));
   onRequest('release', 'Publish the approved candidate as the next permanent release')
+    .option('--candidate <manifestId>', 'The candidate you reviewed (from `giga rr show`); refused if it has changed since. Required')
     .option('--notes <text>', 'Release notes')
     .action(bind(release));
   onRequest('close', 'Close without releasing; the branch unfreezes').action(bind(close));
@@ -128,9 +133,10 @@ function describeRequest(detail: ReleaseRequestDetail): string[] {
   lines.push(`Diff: ${plural(preview.rows.length, 'changed item')}, ${plural(preview.warnings.length, 'warning')}, ${plural(preview.errors.length, 'error')}`);
   if (candidate) {
     lines.push(`Candidate: ${candidate.manifestId} (${plural(candidate.files.length, 'file')})${candidate.upToDate ? '' : ' — out of date: main has a newer release'}`);
+    for (const file of candidate.rebuilt ?? []) lines.push(`  rebuilt after the candidate was built: ${file.path}`);
     if (request.rebuildStatus && request.rebuildManifestId === candidate.manifestId) lines.push(`Rebuild report: ${request.rebuildStatus}`);
   } else if (request.status === 'open') {
-    lines.push('Candidate: not generated yet. Run `giga rr candidate`.');
+    lines.push(detail.changesMain === false ? 'Candidate: none. These picks leave main as it is, so there is nothing to release.' : 'Candidate: not generated yet. Run `giga rr candidate`.');
   }
   if (approvals.given.length > 0) {
     lines.push(
@@ -140,8 +146,10 @@ function describeRequest(detail: ReleaseRequestDetail): string[] {
     );
   }
   const evaluation = approvals.evaluation;
-  if (evaluation) {
-    lines.push(evaluation.canRelease ? 'Ready to release.' : 'Blocked:', ...evaluation.blockers.map((blocker) => `  ${describeBlocker(blocker)}`));
+  // A finished request has nothing left to block; one closed before verdicts were kept has an empty one.
+  if (evaluation && (request.status === 'open' || request.status === 'candidate')) {
+    if (evaluation.canRelease) lines.push('Ready to release.');
+    else if (evaluation.blockers.length > 0) lines.push('Blocked:', ...evaluation.blockers.map((blocker) => `  ${describeBlocker(blocker)}`));
   }
   return lines;
 }
@@ -169,7 +177,11 @@ async function openRequest(rt: Runtime, options: ProjectOption & { title?: strin
   rt.out.result(detail, [
     `Opened release request #${detail.releaseRequest.number} for ${branchName}. The branch is frozen until it is released or closed.`,
     ...diffLines(detail),
-    'Next: review with `giga rr diff`, then `giga rr candidate`.',
+    detail.candidate
+      ? `Built the candidate ${detail.candidate.manifestId} from the default picks. Next: review with \`giga rr show\`, change picks with \`giga rr picks\` if needed, then \`giga rr approve --candidate ${detail.candidate.manifestId}\`.`
+      : detail.preview.ok
+        ? 'These picks leave main as it is, so there is nothing to release yet. Change picks with `giga rr picks`.'
+        : 'Fix the pick errors above with `giga rr picks`, then `giga rr candidate`.',
   ]);
 }
 
@@ -358,13 +370,33 @@ async function rebuildReport(rt: Runtime, input: string | undefined, options: Pr
     status: report.status,
     messages: report.messages ?? [],
   });
-  rt.out.result(detail, [`Recorded a ${String(report.status)} rebuild report for #${detail.releaseRequest.number}.`, ...describeRequest(detail).slice(1)]);
+  // The API raises a report's status to match its messages, so say what it stored.
+  const stored = detail.releaseRequest.rebuildStatus ?? String(report.status);
+  rt.out.result(detail, [`Recorded a ${stored.replace(/_/g, ' ')} rebuild report for #${detail.releaseRequest.number}.`, ...describeRequest(detail).slice(1)]);
 }
 
-async function approve(rt: Runtime, input: string | undefined, options: ProjectOption): Promise<void> {
+/**
+ * The candidate to approve or release, which the caller must name with --candidate: the one
+ * they reviewed, not whatever is current when the command runs. The API refuses it if the
+ * candidate has changed since. Without it, the error names the current candidate and the command to run.
+ */
+async function reviewedCandidate(api: Api, id: string, given: string | undefined, verb: 'approve' | 'release'): Promise<string> {
+  if (given) return given;
+  const detail = await api.get<ReleaseRequestDetail>(`/v1/release-requests/${id}`);
+  const number = detail.releaseRequest.number;
+  if (!detail.candidate) throw new CliError('no_candidate', `#${number} has no candidate yet`, { hint: 'Build one with `giga rr candidate`.' });
+  const { manifestId, files } = detail.candidate;
+  throw new CliError('candidate_required', `Name the candidate you reviewed to ${verb} #${number}`, {
+    hint: `Its current candidate is ${manifestId} (${plural(files.length, 'file')}). Check it with \`giga rr show ${number}\`, then run \`giga rr ${verb} ${number} --candidate ${manifestId}\`.`,
+    details: { candidateManifestId: manifestId },
+  });
+}
+
+async function approve(rt: Runtime, input: string | undefined, options: ProjectOption & { candidate?: string }): Promise<void> {
   const { api, id } = await target(rt, input, options);
-  const detail = await api.post<ReleaseRequestDetail>(`/v1/release-requests/${id}/approvals`);
-  rt.out.result(detail, [`Approved the candidate of #${detail.releaseRequest.number}.`, ...describeRequest(detail).slice(1)]);
+  const candidateManifestId = await reviewedCandidate(api, id, options.candidate, 'approve');
+  const detail = await api.post<ReleaseRequestDetail>(`/v1/release-requests/${id}/approvals`, { candidateManifestId });
+  rt.out.result(detail, [`Approved candidate ${shortId(candidateManifestId)} of #${detail.releaseRequest.number}.`, ...describeRequest(detail).slice(1)]);
 }
 
 async function unapprove(rt: Runtime, input: string | undefined, options: ProjectOption): Promise<void> {
@@ -373,11 +405,12 @@ async function unapprove(rt: Runtime, input: string | undefined, options: Projec
   rt.out.result(detail, `Withdrew your approval of #${detail.releaseRequest.number}.`);
 }
 
-async function release(rt: Runtime, input: string | undefined, options: ProjectOption & { notes?: string }): Promise<void> {
+async function release(rt: Runtime, input: string | undefined, options: ProjectOption & { candidate?: string; notes?: string }): Promise<void> {
   const { api, id } = await target(rt, input, options);
+  const candidateManifestId = await reviewedCandidate(api, id, options.candidate, 'release');
   const result = await api.post<{ release: { id: string; number: number }; releaseRequest: ReleaseRequestDetail }>(
     `/v1/release-requests/${id}/release`,
-    options.notes ? { notes: options.notes } : {},
+    { candidateManifestId, ...(options.notes ? { notes: options.notes } : {}) },
   );
   rt.out.result(result, `Released v${result.release.number} from #${result.releaseRequest.releaseRequest.number}. It is permanently locked.`);
 }

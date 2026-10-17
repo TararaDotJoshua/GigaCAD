@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from 'react';
 import { authMessage } from '../../lib/auth-messages';
 import { createClient } from '../../lib/supabase/client';
+import { useHydrated } from '../../lib/use-hydrated';
 
 type Status = { error?: string; message?: string };
 
@@ -17,6 +18,7 @@ function Status({ status }: { status: Status }) {
  * the change happens once both have confirmed.
  */
 export function EmailForm({ current }: { current: string | null }) {
+  const hydrated = useHydrated();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status>({});
 
@@ -34,14 +36,14 @@ export function EmailForm({ current }: { current: string | null }) {
   }
 
   return (
-    <form className="form" onSubmit={submit}>
+    <form className="form" method="post" onSubmit={submit}>
       <label className="field">
         <span>Email address</span>
         <input name="email" type="email" autoComplete="email" defaultValue={current ?? ''} required />
         <small className="field-hint">You log in with it, and GigaCAD sends notices to it.</small>
       </label>
       <div className="form-actions">
-        <button type="submit" className="btn btn-secondary" disabled={busy}>
+        <button type="submit" className="btn btn-secondary" disabled={busy || !hydrated}>
           {busy ? 'Sending…' : 'Change email'}
         </button>
         <Status status={status} />
@@ -50,7 +52,9 @@ export function EmailForm({ current }: { current: string | null }) {
   );
 }
 
-export function PasswordForm() {
+/** Changing the password asks for the current one, so a browser left signed in isn't enough to take the account. */
+export function PasswordForm({ email }: { email: string | null }) {
+  const hydrated = useHydrated();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status>({});
 
@@ -58,19 +62,36 @@ export function PasswordForm() {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
+    const current = String(data.get('current') ?? '');
     const password = String(data.get('password') ?? '');
     if (password !== data.get('confirm')) return setStatus({ error: 'The passwords don’t match.' });
+    if (!email) return setStatus({ error: 'Your session expired. Log in again.' });
     setBusy(true);
     setStatus({});
-    const { error } = await createClient().auth.updateUser({ password });
+    const supabase = createClient();
+    const check = await supabase.auth.signInWithPassword({ email, password: current });
+    if (check.error) {
+      setBusy(false);
+      return setStatus({ error: check.error.code === 'invalid_credentials' ? 'Your current password is wrong.' : authMessage(check.error) });
+    }
+    // Supabase checks the current password itself where "Require current password" is on (hosted).
+    const { error } = await supabase.auth.updateUser({ password, current_password: current });
     setBusy(false);
-    if (error) return setStatus({ error: authMessage(error) });
+    if (error) return setStatus({ error: error.code === 'reauthentication_needed' ? 'For your security, log out and log in again, then change your password.' : authMessage(error) });
     form.reset();
     setStatus({ message: 'Password changed.' });
   }
 
+  // Posted, and disabled until hydrated, so an early Enter never puts passwords in the address bar.
   return (
-    <form className="form" onSubmit={submit}>
+    <form className="form" method="post" onSubmit={submit}>
+      <label className="field">
+        <span>Current password</span>
+        <input name="current" type="password" autoComplete="current-password" required />
+        <small className="field-hint">
+          Forgot it? <a href="/forgot-password">Reset it by email</a>.
+        </small>
+      </label>
       <label className="field">
         <span>New password</span>
         <input name="password" type="password" autoComplete="new-password" minLength={8} required />
@@ -81,7 +102,7 @@ export function PasswordForm() {
         <input name="confirm" type="password" autoComplete="new-password" minLength={8} required />
       </label>
       <div className="form-actions">
-        <button type="submit" className="btn btn-secondary" disabled={busy}>
+        <button type="submit" className="btn btn-secondary" disabled={busy || !hydrated}>
           {busy ? 'Saving…' : 'Change password'}
         </button>
         <Status status={status} />

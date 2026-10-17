@@ -27,9 +27,11 @@ Typical flow (inside a workspace):
   giga rr open --title "Swap the gripper"
   giga rr diff
   giga rr picks --file picks.json
-  giga rr show
-  giga rr approve
-  giga rr release`,
+  giga rr show                          # review it; note the candidate id
+  giga rr approve --candidate <id>
+  giga rr release --candidate <id>
+Approving and releasing name the candidate you reviewed, so a newer one is never
+approved or released by mistake.`,
     );
   const project = (command: Command) => command.option('--project <owner/project>', 'Project (default: this workspace’s project)');
   /** A subcommand that acts on one release request. */
@@ -144,8 +146,10 @@ function describeRequest(detail: ReleaseRequestDetail): string[] {
     );
   }
   const evaluation = approvals.evaluation;
-  if (evaluation) {
-    lines.push(evaluation.canRelease ? 'Ready to release.' : 'Blocked:', ...evaluation.blockers.map((blocker) => `  ${describeBlocker(blocker)}`));
+  // A finished request has nothing left to block; one closed before verdicts were kept has an empty one.
+  if (evaluation && (request.status === 'open' || request.status === 'candidate')) {
+    if (evaluation.canRelease) lines.push('Ready to release.');
+    else if (evaluation.blockers.length > 0) lines.push('Blocked:', ...evaluation.blockers.map((blocker) => `  ${describeBlocker(blocker)}`));
   }
   return lines;
 }

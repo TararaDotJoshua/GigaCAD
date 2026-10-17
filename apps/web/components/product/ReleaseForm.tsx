@@ -20,14 +20,14 @@ export function ReleaseForm({
   blocked,
   caution,
 }: {
-  action: (input: { candidateManifestId: string; approve: boolean; notes: string }) => Promise<ActionState>;
+  action: (input: { candidateManifestId: string; exportsChangedAt: string | null; approve: boolean; notes: string }) => Promise<ActionState>;
   releaseNumber: number;
   fileCount: number;
   approve: boolean;
   blocked: string | null;
   caution: string | null;
 }) {
-  const { dirty, changed, reviewedId } = useRequestDraft();
+  const { dirty, changed, reviewedId, reviewedExports } = useRequestDraft();
   const [notes, setNotes] = useState('');
   const [asking, setAsking] = useState(false);
   const [pending, start] = useTransition();
@@ -44,7 +44,7 @@ export function ReleaseForm({
 
   const submit = () => {
     setAsking(false);
-    if (reviewedId) start(async () => setState(await action({ candidateManifestId: reviewedId, approve, notes })));
+    if (reviewedId) start(async () => setState(await action({ candidateManifestId: reviewedId, exportsChangedAt: reviewedExports, approve, notes })));
   };
 
   return (

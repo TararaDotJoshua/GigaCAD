@@ -12,6 +12,7 @@ import {
   rebuildReportPage,
   release,
   reportRebuild,
+  reportStatus,
   setPicks,
   updateCandidateFiles,
   withdrawApproval,
@@ -88,16 +89,22 @@ export function releaseRequestRoutes(app: FastifyInstance, { sql, mailer, webOri
   app.post('/v1/release-requests/:id/rebuild-report', async (request) => {
     const { id } = parse(idParams, request.params);
     const input = parse(
-      z.object({
-        candidateManifestId: z.uuid(),
-        status: z.enum(['passed', 'passed_with_warnings', 'failed']),
-        messages: z
-          .array(z.object({ level: z.enum(['info', 'warning', 'error']), message: reportText(2000), path: reportText(1024).optional() }))
-          // Installed 0.1.0 CLIs and add-ins send up to 5,000; the web pages through them all.
-          .max(5000)
-          // They forward the add-in's messages as they are, so a blank one (or a blank path) is left out, not refused.
-          .transform((messages) => messages.flatMap(({ level, message, path }) => (message ? [{ level, message, ...(path ? { path } : {}) }] : []))),
-      }),
+      z
+        .object({
+          candidateManifestId: z.uuid(),
+          status: z.enum(['passed', 'passed_with_warnings', 'failed']),
+          messages: z
+            .array(z.object({ level: z.enum(['info', 'warning', 'error']), message: reportText(2000), path: reportText(1024).optional() }))
+            // Installed 0.1.0 CLIs and add-ins send up to 5,000; the web pages through them all.
+            .max(5000),
+        })
+        // They forward the add-in's messages as they are, so a blank one (or a blank path) is left out, not
+        // refused. Its level still counts first: a blank error still makes the rebuild a failed one.
+        .transform(({ status, messages, ...report }) => ({
+          ...report,
+          status: reportStatus(status, messages),
+          messages: messages.flatMap(({ level, message, path }) => (message ? [{ level, message, ...(path ? { path } : {}) }] : [])),
+        })),
       request.body,
     );
     const caller = requireCaller(request);

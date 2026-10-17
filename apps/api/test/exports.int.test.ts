@@ -185,6 +185,41 @@ describe('SolidWorks exports', () => {
     expect((await api.post(`/v1/release-requests/${requestId}/release`, { candidateManifestId, exportsChangedAt: current })).status).toBe(201);
   });
 
+  it('make an approval wait for an export swap in progress, and then refuse it as stale', async () => {
+    const { projectId, branchId, part } = await project();
+    const [first, second] = (await upload(harness, api, projectId, [tetrahedron(), tetrahedron()])) as [string, string];
+    await api.put(`/v1/projects/${projectId}/exports`, { source: sha256(part), format: 'stl', blob: first });
+    const opened = await api.post(`/v1/branches/${branchId}/release-requests`, { title: 'Race' });
+    const requestId = opened.body.releaseRequest.id as string;
+    const candidateManifestId = (await api.post(`/v1/release-requests/${requestId}/candidate`)).body.candidate.manifestId;
+    const seen = (await api.get(`/v1/release-requests/${requestId}`)).body.approvals.exportsChangedAt as string;
+
+    // An export swap holds the project lock and has written its row, but hasn't committed.
+    let commit!: () => void;
+    let written!: () => void;
+    const until = new Promise<void>((resolve) => (commit = resolve));
+    const ready = new Promise<void>((resolve) => (written = resolve));
+    const swap = harness.sql.begin(async (tx) => {
+      await tx`select 1 from projects where id = ${projectId} for update`;
+      await tx`
+        update file_exports set blob_sha256 = ${second}, created_at = clock_timestamp()
+        where project_id = ${projectId} and source_sha256 = ${sha256(part)} and format = 'stl'
+      `;
+      written();
+      await until;
+    });
+    await ready;
+    const approving = api.post(`/v1/release-requests/${requestId}/approvals`, { candidateManifestId, exportsChangedAt: seen });
+    // The approval can't get past the lock while the swap is open.
+    const early = await Promise.race([approving.then(() => 'answered'), new Promise((resolve) => setTimeout(() => resolve('waiting'), 500))]);
+    expect(early).toBe('waiting');
+    commit();
+    await swap;
+    const approved = await approving;
+    expect(approved.status).toBe(409);
+    expect(approved.body.error.code).toBe('stale_candidate');
+  });
+
   it('still approve for installed clients that send no exports version', async () => {
     const { projectId, branchId, part } = await project();
     const [stl] = (await upload(harness, api, projectId, [tetrahedron()])) as [string];

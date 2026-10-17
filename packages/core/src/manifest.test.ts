@@ -56,3 +56,13 @@ describe('diffManifests', () => {
     expect(diffManifests(manifest, [...manifest])).toEqual([]);
   });
 });
+
+describe('validateManifest strictNames', () => {
+  const entry = (path: string) => ({ itemId: path, path, blob: 'b' });
+  it('allows names other systems store unless asked for Windows-safe names', () => {
+    const manifest = [entry('parts/Aux.SLDPRT'), entry(' leading.txt'), entry('ok/Bracket.SLDPRT')];
+    expect(validateManifest(manifest)).toEqual([]);
+    expect(validateManifest(manifest, { strictNames: true }).map((issue) => issue.kind === 'invalid_path' && issue.path)).toEqual(['parts/Aux.SLDPRT', ' leading.txt']);
+  });
+});
+

@@ -64,6 +64,9 @@ The web app decides which site to serve from the request's host (`apps/web/lib/h
    - Turn on email confirmation.
    - Set up custom SMTP, then copy `supabase/templates/confirmation.html` and `recovery.html` into the matching email templates. Local templates in `supabase/config.toml` are not applied to hosted projects.
    - Create GitHub and Google OAuth apps using the callback URL each provider's Supabase settings page shows. Keep the client secrets only in Supabase.
+   - Password changes: turn on **Secure password change** and **Require current password when updating**, so a signed-in browser alone can't change the password. Account settings sends the current password with every change. Recovery sessions from a reset link still set a new one; check that once after turning the setting on.
+   - Security notices: turn on the *password changed* and *email changed* notifications and paste in `supabase/templates/password_changed_notification.html` and `email_changed_notification.html`.
+   - JWT expiry: 600 seconds, matching `supabase/config.toml`. The API checks that a session still exists, and this bounds Realtime.
 4. Note the connection string for the **Supavisor session-mode pooler** (port 5432 on the pooler host). The API uses postgres.js, which needs session mode for prepared statements, and the direct database host is IPv6-only, which Railway can't reach.
 5. Hosted projects sign sessions with asymmetric keys, which the API verifies through JWKS. Leave `SUPABASE_JWT_SECRET` unset in production.
 6. Check that Realtime is on for `project_events`. The migration adds the table to the `supabase_realtime` publication, and the web app uses it for live updates.
@@ -89,6 +92,7 @@ The service builds from `Dockerfile.api` at the repo root. It installs only the 
    | `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | R2 token from step 2 |
    | `S3_FORCE_PATH_STYLE` | `true` |
    | `WEB_ORIGIN` | `https://app.gigacad.site`. Device sign-in links and CORS use it |
+   | `TRUST_PROXY_HOPS` | How many proxies sit in front of the API: `1` for Railway's edge, `2` if Cloudflare also proxies `api.gigacad.site`. Device sign-in rate limits key on the client address, so with `0` every client shares one limit |
 
    Railway sets `PORT` itself. The image already sets `HOST=0.0.0.0` and `NODE_ENV=production`.
 4. Add the custom domain `api.gigacad.site` in Railway. In Cloudflare, create the CNAME Railway shows, set to **DNS only** (grey cloud) so Railway can issue the certificate.

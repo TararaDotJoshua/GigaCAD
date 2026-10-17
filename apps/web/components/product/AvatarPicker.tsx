@@ -1,13 +1,15 @@
 'use client';
 
 import { useActionState, useRef } from 'react';
-import { uploadAvatar } from '../../app/(product)/actions';
+import { uploadAvatar, type ActionState } from '../../app/(product)/actions';
+import { safeAction } from '../../lib/safe-action';
 import { FormStatus } from './ActionButton';
 
 /** One step: choosing an image uploads it. */
 export function AvatarPicker({ hasAvatar }: { hasAvatar: boolean }) {
   const form = useRef<HTMLFormElement>(null);
-  const [state, action, pending] = useActionState(uploadAvatar, {});
+  // A failed request (offline, say) shows here instead of replacing Settings with the error page.
+  const [state, action, pending] = useActionState((previous: ActionState, data: FormData) => safeAction(() => uploadAvatar(previous, data)), {});
   return (
     <form ref={form} action={action} className="avatar-picker">
       <label className={`btn btn-secondary${pending ? ' is-disabled' : ''}`}>

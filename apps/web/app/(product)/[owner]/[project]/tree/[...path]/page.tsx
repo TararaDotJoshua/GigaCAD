@@ -1,5 +1,5 @@
 import { directoryPaging, type DirectoryParams } from '../../../../../../components/product/ProjectDirectory';
-import { findDirectory, getProject } from '../../../../../../lib/product';
+import { findDirectory, findProject } from '../../../../../../lib/product';
 import type { ProjectParams } from '../../layout';
 import { ProjectFilesPage } from '../../ProjectFilesPage';
 
@@ -22,10 +22,12 @@ export async function generateMetadata({ params, searchParams }: { params: Promi
   const [{ owner, project, path }, query] = await Promise.all([params, searchParams]);
   // A missing folder, or a project that's missing or private to this viewer, 404s from the page;
   // its title says only that, without repeating the path from the address. Any other failure
-  // isn't a "Not found", and the page shows its own error.
-  const found = await getProject(owner, project).catch(() => null);
-  if (!found || (await findDirectory(found.id, folderPath(path), directoryPaging(query)).catch(() => undefined)) === null) return { title: 'Not found' };
-  return { title: `${folderPath(path)} · ${owner}/${project}` };
+  // (undefined here) isn't a "Not found": the tab keeps the folder's title over the page's error.
+  const title = { title: `${folderPath(path)} · ${owner}/${project}` };
+  const found = await findProject(owner, project).catch(() => undefined);
+  if (found === null) return { title: 'Not found' };
+  if (found === undefined) return title;
+  return (await findDirectory(found.id, folderPath(path), directoryPaging(query)).catch(() => undefined)) === null ? { title: 'Not found' } : title;
 }
 
 /** A folder in the project directory: a root folder, or inside Branches or Releases. */

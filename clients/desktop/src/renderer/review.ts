@@ -18,8 +18,9 @@ export function approvableCandidate(request: ReviewableRequest, reviewed: Readon
   return reviewed.get(request.number) === request.candidateManifestId ? request.candidateManifestId : null;
 }
 
-/** Whether the request's candidate changed after this view opened it for review. */
+/** Whether the request's candidate changed after this view opened it for review. A finished request has nothing left to review. */
 export function candidateChangedSinceReview(request: ReviewableRequest, reviewed: ReadonlyMap<number, string>): boolean {
+  if (request.status !== 'candidate') return false;
   const seen = reviewed.get(request.number);
   return Boolean(seen && request.candidateManifestId && seen !== request.candidateManifestId);
 }

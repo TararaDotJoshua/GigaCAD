@@ -347,6 +347,29 @@ describe('forking a private project', () => {
 });
 
 describe('rebuild reports', () => {
+  it('leave out blank messages from installed clients instead of refusing the report', async () => {
+    const { projectId, branchId } = await project();
+    await commitVersion(harness, asOwner, projectId, branchId, { 'Part.SLDPRT': `part ${randomUUID()}` });
+    const opened = await asOwner.post(`/v1/branches/${branchId}/release-requests`, { title: 'Blank lines' });
+    const requestId = opened.body.releaseRequest.id as string;
+    const candidateManifestId = (await asOwner.post(`/v1/release-requests/${requestId}/candidate`)).body.candidate.manifestId;
+    const reported = await asOwner.post(`/v1/release-requests/${requestId}/rebuild-report`, {
+      candidateManifestId,
+      status: 'passed_with_warnings',
+      messages: [
+        { level: 'warning', message: '  ' },
+        { level: 'warning', message: 'Mate is over-defined', path: '' },
+        { level: 'info', message: 'Rebuilt', path: 'Part.SLDPRT' },
+      ],
+    });
+    expect(reported.status).toBe(200);
+    const page = (await asOwner.get(`/v1/release-requests/${requestId}/rebuild-report`)).body;
+    expect(page.total).toBe(2);
+    expect(page.messages).toEqual(
+      expect.arrayContaining([{ level: 'warning', message: 'Mate is over-defined' }, { level: 'info', message: 'Rebuilt', path: 'Part.SLDPRT' }]),
+    );
+  });
+
   it('record who sent them, when, and from where', async () => {
     const { projectId, branchId } = await project();
     await commitVersion(harness, asOwner, projectId, branchId, { 'Part.SLDPRT': `part ${randomUUID()}` });

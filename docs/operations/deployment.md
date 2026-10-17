@@ -93,6 +93,7 @@ The service builds from `Dockerfile.api` at the repo root. It installs only the 
    | `S3_FORCE_PATH_STYLE` | `true` |
    | `WEB_ORIGIN` | `https://app.gigacad.site`. Device sign-in links and CORS use it |
    | `TRUST_PROXY_HOPS` | How many proxies sit in front of the API: `1` for Railway's edge, `2` if Cloudflare also proxies `api.gigacad.site`. Device sign-in rate limits key on the client address, so with `0` every client shares one limit |
+   | `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` | `25`. How long Railway waits after SIGTERM before killing the old instance on a redeploy. The API uses up to 15 s of it to finish emails already on their way, then closes the database (5 s). Railway's default is 0, which loses those emails |
 
    Railway sets `PORT` itself. The image already sets `HOST=0.0.0.0` and `NODE_ENV=production`.
 4. Add the custom domain `api.gigacad.site` in Railway. In Cloudflare, create the CNAME Railway shows, set to **DNS only** (grey cloud) so Railway can issue the certificate.

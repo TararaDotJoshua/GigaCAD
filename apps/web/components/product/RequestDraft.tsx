@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { ActionState } from '../../app/(product)/actions';
-import { candidateChanged, reconcile, settleOwnChange, type Review } from '../../lib/request-review';
+import { exportsMoved, reconcile, reviewChanged, settleOwnChange, type Review } from '../../lib/request-review';
 import { safeAction } from '../../lib/safe-action';
 import { ActionButton } from './ActionButton';
 
@@ -23,8 +23,12 @@ interface RequestDraft {
   readonly notice: string | null;
   readonly setNotice: (notice: string | null) => void;
   readonly reviewedId: string | null;
-  /** The candidate on the page isn't the one the viewer was reviewing. */
+  /** When an export of a candidate file last changed, as the viewer reviewed it (null: none). */
+  readonly reviewedExports: string | null;
+  /** The candidate on the page, or its exports, isn't what the viewer was reviewing. */
   readonly changed: boolean;
+  /** Only an export changed, on the same candidate. */
+  readonly exportChanged: boolean;
   readonly acknowledge: () => void;
   /** An action of this viewer's that changes the candidate is starting. */
   readonly expectOwnChange: () => void;
@@ -38,7 +42,9 @@ const Context = createContext<RequestDraft>({
   notice: null,
   setNotice: () => undefined,
   reviewedId: null,
+  reviewedExports: null,
   changed: false,
+  exportChanged: false,
   acknowledge: () => undefined,
   expectOwnChange: () => undefined,
   ownChangeDone: () => undefined,
@@ -48,15 +54,17 @@ export const useRequestDraft = () => useContext(Context);
 
 const LEAVE = 'You have unsaved picks. Leave this page and lose them?';
 
-export function RequestDraftProvider({ candidateId, children }: { candidateId: string | null; children: React.ReactNode }) {
+export function RequestDraftProvider({ candidateId, exportsChangedAt, children }: { candidateId: string | null; exportsChangedAt: string | null; children: React.ReactNode }) {
   const [dirty, setDirty] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [review, setReview] = useState<Review>({ reviewedId: candidateId, own: null });
+  const shown = useMemo(() => ({ candidateId, exportsChangedAt }), [candidateId, exportsChangedAt]);
+  const [review, setReview] = useState<Review>({ reviewed: shown, own: null });
   // The candidate the viewer's own action built becomes the one under review once it's on the page.
-  const reconciled = reconcile(review, candidateId);
+  const reconciled = reconcile(review, shown);
   if (reconciled !== review) setReview(reconciled);
-  const { reviewedId } = review;
-  const changed = candidateChanged(review, candidateId);
+  const { candidateId: reviewedId, exportsChangedAt: reviewedExports } = review.reviewed;
+  const changed = reviewChanged(review, shown);
+  const exportChanged = changed && exportsMoved(review, shown);
   useEffect(() => {
     if (!dirty) return;
     const beforeUnload = (event: BeforeUnloadEvent) => {
@@ -89,15 +97,17 @@ export function RequestDraftProvider({ candidateId, children }: { candidateId: s
       notice,
       setNotice,
       reviewedId,
+      reviewedExports,
       changed,
+      exportChanged,
       acknowledge: () => {
-        setReview({ reviewedId: candidateId, own: null });
+        setReview({ reviewed: shown, own: null });
         setNotice(null);
       },
       expectOwnChange: () => setReview((current) => ({ ...current, own: 'running' })),
       ownChangeDone: (result: ActionState) => setReview((current) => ({ ...current, own: settleOwnChange(result) })),
     }),
-    [dirty, notice, reviewedId, changed, candidateId],
+    [dirty, notice, reviewedId, reviewedExports, changed, exportChanged, shown],
   );
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
@@ -107,12 +117,21 @@ export function RequestDraftProvider({ candidateId, children }: { candidateId: s
  * they're saved. `action` is a control that belongs with the sentence, like Build candidate.
  */
 export function NextStep({ tone, children, action, change }: { tone: 'plain' | 'ready' | 'caution'; children: React.ReactNode; action?: React.ReactNode; change?: string | null }) {
-  const { dirty, notice, changed, acknowledge } = useRequestDraft();
+  const { dirty, notice, changed, exportChanged, acknowledge } = useRequestDraft();
   if (changed && !dirty) {
     return (
       <div className="next-step is-waiting" role="alert">
         <p>
-          <strong>The candidate changed.</strong> {change ? `${change} while you were reviewing. ` : ''}Review it again: approving and releasing wait until you have.
+          {exportChanged ? (
+            <>
+              <strong>An export changed.</strong> A STEP or STL of a file in the candidate was replaced while you were reviewing.{' '}
+            </>
+          ) : (
+            <>
+              <strong>The candidate changed.</strong> {change ? `${change} while you were reviewing. ` : ''}
+            </>
+          )}
+          Review it again: approving and releasing wait until you have.
         </p>
         <button type="button" className="btn btn-secondary btn-small" onClick={acknowledge}>
           I’ve reviewed the new candidate
@@ -190,15 +209,15 @@ export function RequestActionButton({
  * Approves the candidate the viewer reviewed, which may not be the newest one on the page. If
  * the API says it's stale, the page reloads with the new candidate and asks for another look.
  */
-export function ApproveButton({ action }: { action: (candidateManifestId: string) => Promise<ActionState> }) {
-  const { dirty, changed, reviewedId, setNotice } = useRequestDraft();
+export function ApproveButton({ action }: { action: (candidateManifestId: string, exportsChangedAt: string | null) => Promise<ActionState> }) {
+  const { dirty, changed, reviewedId, reviewedExports, setNotice } = useRequestDraft();
   return (
     <>
       <ActionButton
         className="btn btn-primary"
         disabled={dirty || changed || !reviewedId}
         action={async () => {
-          const result = await action(reviewedId!);
+          const result = await action(reviewedId!, reviewedExports);
           if (result.error) return result;
           setNotice(result.message ?? null);
           return {};

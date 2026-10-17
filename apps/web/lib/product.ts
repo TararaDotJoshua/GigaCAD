@@ -94,9 +94,19 @@ export async function getFileExports(projectId: string, sha256s: readonly string
 export const getBilling = cache(() => get<Billing>('/v1/me/billing'));
 export const getMyProjects = cache(() => get<Project[]>('/v1/projects'));
 
+/** One request per project per page render, shared by getProject and findProject. */
+const fetchProject = cache((owner: string, slug: string) => get<Project>(`/v1/users/${encodeURIComponent(owner)}/projects/${encodeURIComponent(slug)}`));
+
+/** A project, or null when it's missing or private to this viewer. Other failures (a server error, say) still throw. */
+export const findProject = (owner: string, slug: string) =>
+  fetchProject(owner, slug).catch((error: unknown) => {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  });
+
 export const getProject = cache(async (owner: string, slug: string) => {
   try {
-    return await get<Project>(`/v1/users/${encodeURIComponent(owner)}/projects/${encodeURIComponent(slug)}`);
+    return await fetchProject(owner, slug);
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
       // Private projects look missing to outsiders. A signed-out visitor may just need to log in.

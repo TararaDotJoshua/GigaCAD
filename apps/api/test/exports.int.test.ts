@@ -162,6 +162,40 @@ describe('SolidWorks exports', () => {
     expect(kept.body.exports[sha256(part)]).toEqual([expect.objectContaining({ format: 'stl', sha256: stlHash })]);
   });
 
+  it('refuse an approval or release that saw an older export, when the reviewer says which they saw', async () => {
+    const { projectId, branchId, part } = await project();
+    const [first, second] = (await upload(harness, api, projectId, [tetrahedron(), tetrahedron()])) as [string, string];
+    await api.put(`/v1/projects/${projectId}/exports`, { source: sha256(part), format: 'stl', blob: first });
+    const opened = await api.post(`/v1/branches/${branchId}/release-requests`, { title: 'Swap' });
+    const requestId = opened.body.releaseRequest.id as string;
+    const candidateManifestId = (await api.post(`/v1/release-requests/${requestId}/candidate`)).body.candidate.manifestId;
+    const seen = (await api.get(`/v1/release-requests/${requestId}`)).body.approvals.exportsChangedAt as string;
+    expect(seen).toEqual(expect.any(String));
+
+    // The STL is swapped after the page loaded and before Approve is pressed.
+    await api.put(`/v1/projects/${projectId}/exports`, { source: sha256(part), format: 'stl', blob: second });
+    const stale = await api.post(`/v1/release-requests/${requestId}/approvals`, { candidateManifestId, exportsChangedAt: seen });
+    expect(stale.status).toBe(409);
+    expect(stale.body.error.code).toBe('stale_candidate');
+    expect((await api.post(`/v1/release-requests/${requestId}/release`, { candidateManifestId, exportsChangedAt: seen })).body.error.code).toBe('stale_candidate');
+
+    // Reviewing again gives the new version, which approves and releases.
+    const current = (await api.get(`/v1/release-requests/${requestId}`)).body.approvals.exportsChangedAt as string;
+    expect((await api.post(`/v1/release-requests/${requestId}/approvals`, { candidateManifestId, exportsChangedAt: current })).status).toBe(200);
+    expect((await api.post(`/v1/release-requests/${requestId}/release`, { candidateManifestId, exportsChangedAt: current })).status).toBe(201);
+  });
+
+  it('still approve for installed clients that send no exports version', async () => {
+    const { projectId, branchId, part } = await project();
+    const [stl] = (await upload(harness, api, projectId, [tetrahedron()])) as [string];
+    await api.put(`/v1/projects/${projectId}/exports`, { source: sha256(part), format: 'stl', blob: stl });
+    const opened = await api.post(`/v1/branches/${branchId}/release-requests`, { title: 'Old client' });
+    const requestId = opened.body.releaseRequest.id as string;
+    const candidateManifestId = (await api.post(`/v1/release-requests/${requestId}/candidate`)).body.candidate.manifestId;
+    expect((await api.post(`/v1/release-requests/${requestId}/approvals`, { candidateManifestId })).status).toBe(200);
+    expect((await api.post(`/v1/release-requests/${requestId}/approvals`, {})).status).toBe(200);
+  });
+
   it('keep approvals when the same export is attached again, and count a re-approval after a change as new', async () => {
     const { projectId, branchId, part } = await project();
     const [first, second] = (await upload(harness, api, projectId, [tetrahedron(), tetrahedron()])) as [string, string];

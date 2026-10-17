@@ -213,6 +213,22 @@ function requireCandidate(request: ReleaseRequestRow, reviewed: string | undefin
   return request.candidateManifestId;
 }
 
+/**
+ * With `seen` (the exports version the reviewer was shown: when an export of a candidate file
+ * last changed, or null for none), refuses an approval or release once that has changed, so a
+ * swapped STEP or STL is never approved or released unseen. Installed clients send none.
+ */
+async function requireExportsSeen(db: Db, request: ReleaseRequestRow, seen: string | null | undefined): Promise<void> {
+  if (seen === undefined) return;
+  const changedAt = await exportsChangedAt(db, request);
+  if ((changedAt?.getTime() ?? null) !== (seen === null ? null : new Date(seen).getTime())) {
+    throw conflict('stale_candidate', 'An export of a file in the candidate changed since you reviewed it; review it again', {
+      candidateManifestId: request.candidateManifestId,
+      exportsChangedAt: changedAt,
+    });
+  }
+}
+
 /** True when a candidate would leave main exactly as the latest release has it. */
 function leavesMainAsIs(candidate: Manifest, latestMain: Manifest): boolean {
   return diffManifests(latestMain, candidate).length === 0;
@@ -764,12 +780,18 @@ export async function reportRebuild(
  * Approves the candidate the approver reviewed, which must still be the current one and
  * built on the latest main. The approval stops counting if the candidate changes.
  */
-export async function approve(sql: Sql, id: string, userId: string, input: { candidateManifestId?: string | undefined }): Promise<ReleaseRequestDetail> {
+export async function approve(
+  sql: Sql,
+  id: string,
+  userId: string,
+  input: { candidateManifestId?: string | undefined; exportsChangedAt?: string | null | undefined },
+): Promise<ReleaseRequestDetail> {
   return sql.begin(async (tx) => {
     const request = await loadRequest(tx, id, true);
     const { role } = await projectAccess(tx, request.projectId, userId);
     await requireActive(tx, request);
     const manifestId = requireCandidate(request, input.candidateManifestId);
+    await requireExportsSeen(tx, request, input.exportsChangedAt);
     const latest = await latestRelease(tx, request.projectId);
     if ((latest?.id ?? null) !== request.targetReleaseId) {
       throw conflict('main_moved', `Main is now at v${latest?.number}; the candidate needs regenerating before it can be approved`, {
@@ -837,7 +859,7 @@ export async function release(
   sql: Sql,
   id: string,
   userId: string,
-  input: { candidateManifestId?: string | undefined; notes?: string | undefined },
+  input: { candidateManifestId?: string | undefined; exportsChangedAt?: string | null | undefined; notes?: string | undefined },
 ): Promise<{ release: { id: string; number: number }; releaseRequest: ReleaseRequestDetail }> {
   return sql.begin(async (tx) => {
     const request = await loadRequest(tx, id, true);
@@ -846,6 +868,7 @@ export async function release(
     requireDriver(access, request, userId);
     await requireActive(tx, request);
     const manifestId = requireCandidate(request, input.candidateManifestId);
+    await requireExportsSeen(tx, request, input.exportsChangedAt);
 
     const latest = await latestRelease(tx, request.projectId);
     if ((latest?.id ?? null) !== request.targetReleaseId) {

@@ -225,7 +225,9 @@ describe('rebuilds', () => {
     const candidateManifestId = detail.candidate.manifestId;
     const report = (status: string, messages: object[]) => asCam.post(`/v1/release-requests/${id}/rebuild-report`, { candidateManifestId, status, messages });
 
-    expect((await report('passed', [{ level: 'info', message: '   ' }])).status).toBe(400);
+    // A blank message (as installed 0.1.0 clients may forward) is left out, not a reason to refuse the report.
+    expect((await report('passed', [{ level: 'info', message: '   ' }])).status).toBe(200);
+    expect((await asCam.get(`/v1/release-requests/${id}/rebuild-report`)).body.total).toBe(0);
     const messages = [
       ...Array.from({ length: 60 }, (_, index) => ({ level: 'info', message: `Note ${index}` })),
       { level: 'warning', message: 'Mate is over-defined', path: 'Robot.SLDASM' },

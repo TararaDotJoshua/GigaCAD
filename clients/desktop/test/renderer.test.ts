@@ -77,4 +77,9 @@ describe('approving from the release request list', () => {
     expect(candidateChangedSinceReview(request, reviewed)).toBe(true);
     expect(approvableCandidate({ ...request, status: 'released' }, new Map([[7, 'cand-b']]))).toBeNull();
   });
+
+  it('asks nothing of a request that was released or closed after it changed', () => {
+    const reviewed = new Map([[7, 'cand-a']]);
+    for (const status of ['released', 'closed']) expect(candidateChangedSinceReview({ ...request, status }, reviewed)).toBe(false);
+  });
 });

@@ -54,11 +54,13 @@ export async function setFileExport(
       where project_id = ${projectId} and source_sha256 = ${input.source} and format = ${input.format}
       for update
     `;
+    // Stamped when it commits, not when the transaction began: it may have waited on the project
+    // lock behind an approval, and must not look older than that approval.
     await tx`
-      insert into file_exports (project_id, source_sha256, format, blob_sha256, created_by)
-      values (${projectId}, ${input.source}, ${input.format}, ${input.blob}, ${userId})
+      insert into file_exports (project_id, source_sha256, format, blob_sha256, created_by, created_at)
+      values (${projectId}, ${input.source}, ${input.format}, ${input.blob}, ${userId}, clock_timestamp())
       on conflict (project_id, source_sha256, format)
-      do update set blob_sha256 = excluded.blob_sha256, created_by = excluded.created_by, created_at = now()
+      do update set blob_sha256 = excluded.blob_sha256, created_by = excluded.created_by, created_at = clock_timestamp()
       -- Attaching the same export again changes nothing, so it mustn't look newer than the approvals it would void.
       where file_exports.blob_sha256 is distinct from excluded.blob_sha256
     `;

@@ -425,10 +425,16 @@ function refreshIfStale(error: unknown): void {
  * Approves the candidate the viewer reviewed (`candidateManifestId`, sent by the page).
  * `releaser` names who can release it when the approver can't, so they know what happens next.
  */
-export async function approveCandidate(requestId: string, releaser: string | null, candidateManifestId: string): Promise<ActionState> {
+/** What the viewer reviewed: the candidate, and when its exports last changed, so a swapped export is refused as stale. */
+const reviewedBody = (candidateManifestId: string, exportsChangedAt: string | null) => ({
+  candidateManifestId: id(candidateManifestId),
+  exportsChangedAt: exportsChangedAt && !Number.isNaN(Date.parse(exportsChangedAt)) ? exportsChangedAt : null,
+});
+
+export async function approveCandidate(requestId: string, releaser: string | null, candidateManifestId: string, exportsChangedAt: string | null): Promise<ActionState> {
   const token = await requireAccessToken();
   try {
-    await apiRequest(token, `/v1/release-requests/${id(requestId)}/approvals`, json('POST', { candidateManifestId: id(candidateManifestId) }));
+    await apiRequest(token, `/v1/release-requests/${id(requestId)}/approvals`, json('POST', reviewedBody(candidateManifestId, exportsChangedAt)));
   } catch (error) {
     refreshIfStale(error);
     return { error: messageFor(error) };
@@ -454,10 +460,10 @@ export async function releaseCandidate(
   requestId: string,
   owner: string,
   slug: string,
-  input: { candidateManifestId: string; approve: boolean; notes: string },
+  input: { candidateManifestId: string; exportsChangedAt: string | null; approve: boolean; notes: string },
 ): Promise<ActionState> {
   const token = await requireAccessToken();
-  const reviewed = { candidateManifestId: id(input.candidateManifestId) };
+  const reviewed = reviewedBody(input.candidateManifestId, input.exportsChangedAt);
   let approved = false;
   let number: number;
   try {

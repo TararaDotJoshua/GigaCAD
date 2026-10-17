@@ -23,11 +23,13 @@ import { approvedAlready, notifyReleaseRequest, sendLater, type RequestNotice } 
  * Optional so desktop apps and `giga` CLIs installed before it existed keep working: they act
  * on the current candidate. Make it required once updated clients have shipped.
  */
-const reviewed = { candidateManifestId: z.uuid().optional() };
+/** What the reviewer saw: the candidate, and when its files' exports last changed (null for none). Both optional for installed clients. */
+const reviewed = { candidateManifestId: z.uuid().optional(), exportsChangedAt: z.iso.datetime({ offset: true }).nullable().optional() };
 
 /** Bidirectional controls would let a path or message display reversed. */
 const BIDI = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
-const reportText = (max: number) => z.string().transform((text) => text.replace(BIDI, '').trim()).pipe(z.string().min(1).max(max));
+/** Report text without bidi controls, trimmed. It may come out empty; empty messages and paths are dropped below. */
+const reportText = (max: number) => z.string().transform((text) => text.replace(BIDI, '').trim()).pipe(z.string().max(max));
 
 const picks = z.object({
   actions: z.record(z.uuid(), z.enum(['take_branch', 'keep_main'])).optional(),
@@ -92,7 +94,9 @@ export function releaseRequestRoutes(app: FastifyInstance, { sql, mailer, webOri
         messages: z
           .array(z.object({ level: z.enum(['info', 'warning', 'error']), message: reportText(2000), path: reportText(1024).optional() }))
           // Installed 0.1.0 CLIs and add-ins send up to 5,000; the web pages through them all.
-          .max(5000),
+          .max(5000)
+          // They forward the add-in's messages as they are, so a blank one (or a blank path) is left out, not refused.
+          .transform((messages) => messages.flatMap(({ level, message, path }) => (message ? [{ level, message, ...(path ? { path } : {}) }] : []))),
       }),
       request.body,
     );

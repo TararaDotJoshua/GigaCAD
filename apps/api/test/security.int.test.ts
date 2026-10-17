@@ -231,6 +231,37 @@ describe('public projects', () => {
     expect((await asTeammate.get(`/v1/projects/${projectId}/approval-rules`)).body.approverUserIds).toEqual([teammate.id]);
   });
 
+  it('hide the same things from the Data API and Realtime as from the API', async () => {
+    const { projectId, branchId } = await project('public');
+    await asOwner.post(`/v1/projects/${projectId}/members`, { handle: teammate.handle, role: 'viewer' });
+    await asOwner.post(`/v1/branches/${branchId}/checkout`, { machine: 'JOSHS-MACBOOK' });
+    // Reads as the Data API runs them: the anon role, or a signed-in user's claims.
+    const as = <T>(role: 'anon' | 'authenticated', userId: string | null, read: (tx: typeof harness.sql) => Promise<T>) =>
+      harness.sql
+        .begin(async (tx) => {
+          await tx`select set_config('request.jwt.claims', ${JSON.stringify(userId ? { sub: userId, role } : { role })}, true)`;
+          await tx.unsafe(`set local role ${role}`);
+          return { ok: await read(tx as unknown as typeof harness.sql) };
+        })
+        .catch((error: { code?: string }) => ({ ok: undefined, code: error.code }));
+    const outsider = await createUser(harness, 'reader');
+    for (const [role, userId] of [['anon', null], ['authenticated', outsider.id]] as const) {
+      expect((await as(role, userId, (tx) => tx`select user_id from project_members where project_id = ${projectId}`)).ok).toHaveLength(0);
+      expect((await as(role, userId, (tx) => tx`select approver_user_ids from approval_rules where project_id = ${projectId}`)).ok).toHaveLength(0);
+      const kinds = (await as(role, userId, (tx) => tx<{ kind: string }[]>`select kind from project_events where project_id = ${projectId}`)).ok!.map((row) => row.kind);
+      expect(kinds).toContain('project_created');
+      expect(kinds).not.toContain('member_changed');
+      expect(kinds).not.toContain('branch_checked_out');
+      expect((await as(role, userId, (tx) => tx`select name from branches where id = ${branchId}`)).ok).toHaveLength(1);
+      expect(await as(role, userId, (tx) => tx`select checked_out_machine from branches where id = ${branchId}`)).toMatchObject({ code: '42501' });
+      expect(await as(role, userId, (tx) => tx`select rebuild_report from release_requests where project_id = ${projectId}`)).toMatchObject({ code: '42501' });
+    }
+    // Members still read their project's members and events.
+    expect((await as('authenticated', teammate.id, (tx) => tx`select user_id from project_members where project_id = ${projectId}`)).ok).toHaveLength(2);
+    const memberKinds = (await as('authenticated', teammate.id, (tx) => tx<{ kind: string }[]>`select kind from project_events where project_id = ${projectId}`)).ok!.map((row) => row.kind);
+    expect(memberKinds).toEqual(expect.arrayContaining(['member_changed', 'branch_checked_out']));
+  });
+
   it('keep membership changes out of the outsiders’ feed, and name each actor', async () => {
     const { projectId } = await project('public');
     await asOwner.post(`/v1/projects/${projectId}/members`, { handle: teammate.handle, role: 'viewer' });

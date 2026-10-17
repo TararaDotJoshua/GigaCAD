@@ -226,7 +226,9 @@ double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
 enable_confirmations = true
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
-secure_password_change = false
+# On, so a browser left signed in for a day can't change the password without an emailed code.
+# Hosted also has "Require current password when updating" (no config.toml key); see docs/operations/deployment.md.
+secure_password_change = true
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
 max_frequency = "1s"
 # Number of characters used in the email OTP.

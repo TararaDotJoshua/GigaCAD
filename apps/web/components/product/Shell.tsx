@@ -44,6 +44,9 @@ export async function Shell({ project, children }: { project?: Project; children
 
   return (
     <div className="shell">
+      <a className="skip-link" href="#main">
+        Skip to content
+      </a>
       <SidebarNav me={me && { handle: me.handle, avatarUrl: me.avatarUrl }} home={me ? dashboardPath() : '/explore'} projects={list} current={current} />
       <main id="main" className="shell-pane">
         {storage && <StorageBanner usedBytes={storage.usedBytes} quotaBytes={storage.quotaBytes} />}

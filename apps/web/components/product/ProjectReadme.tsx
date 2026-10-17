@@ -30,7 +30,7 @@ export async function ProjectReadme({ project, readme }: { project: Project; rea
       {readme.markdown ? (
         <div className="readme-body readme-markdown">
           <MarkdownAsync
-            remarkPlugins={[remarkGfm]}
+            remarkPlugins={[remarkGfm, remarkDemoteHeadings]}
             rehypePlugins={[rehypeProjectMedia((paths) => getReadmeMedia(project.id, paths))]}
             components={{
               a: ({ node: _node, href, ...props }) =>
@@ -45,4 +45,14 @@ export async function ProjectReadme({ project, readme }: { project: Project; rea
       )}
     </section>
   );
+}
+
+/** The page already has an h1, so README headings move down a level: `# Name` renders as an h2. */
+function remarkDemoteHeadings() {
+  type Node = { type?: string; depth?: number; children?: Node[] };
+  const walk = (node: Node) => {
+    if (node.type === 'heading' && node.depth) node.depth = Math.min(node.depth + 1, 6);
+    node.children?.forEach(walk);
+  };
+  return walk;
 }

@@ -141,8 +141,17 @@ export async function showModel(container: HTMLElement, bytes: ArrayBuffer, form
   observer.observe(container);
   controls.addEventListener('change', render);
   resize();
+  // Forced colors (Windows High Contrast) swap the Paper stage for the system's own colors.
+  const contrast = window.matchMedia('(forced-colors: active)');
+  const repaint = () => {
+    paint(container, scene, surface, edges, contrast.matches);
+    render();
+  };
+  contrast.addEventListener('change', repaint);
+  repaint();
 
   return () => {
+    contrast.removeEventListener('change', repaint);
     observer.disconnect();
     controls.dispose();
     geometries.forEach((geometry) => geometry.dispose());
@@ -155,4 +164,26 @@ export async function showModel(container: HTMLElement, bytes: ArrayBuffer, form
     renderer.forceContextLoss();
     container.replaceChildren();
   };
+}
+
+/** The stage in Paper, Mist and Ink, or in the system's Canvas and CanvasText under forced colors. */
+function paint(container: HTMLElement, scene: Scene, surface: MeshStandardMaterial, edges: LineBasicMaterial, forced: boolean) {
+  if (!forced) {
+    scene.background = new Color(PAPER);
+    surface.color.set(MIST);
+    edges.color.set(INK);
+    edges.opacity = 0.7;
+    return;
+  }
+  const probe = document.createElement('span');
+  probe.style.cssText = 'display: none; color: CanvasText; background-color: Canvas';
+  container.append(probe);
+  const { color, backgroundColor } = getComputedStyle(probe);
+  probe.remove();
+  const canvas = new Color(backgroundColor);
+  const text = new Color(color);
+  scene.background = canvas;
+  surface.color.copy(canvas).lerp(text, 0.25);
+  edges.color.copy(text);
+  edges.opacity = 1;
 }

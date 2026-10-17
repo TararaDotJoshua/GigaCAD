@@ -92,32 +92,34 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
 function ProjectTable({ projects, label, showRole }: { projects: Project[]; label: string; showRole: boolean }) {
   return (
-    <table className="data-table" aria-label={label}>
-      <thead>
-        <tr>
-          <th scope="col">Project</th>
-          {showRole && <th scope="col">Your role</th>}
-          <th scope="col">Visibility</th>
-          <th scope="col">Latest release</th>
-        </tr>
-      </thead>
-      <tbody>
-        {projects.map((project) => (
-          <tr key={project.id}>
-            <td>
-              <Link href={projectPath(project.ownerHandle, project.slug)} className="row-link">
-                <strong>{project.name}</strong>
-                <span className="mono muted">
-                  {project.ownerHandle}/{project.slug}
-                </span>
-              </Link>
-            </td>
-            {showRole && <td className="muted role">{project.role ?? 'viewer'}</td>}
-            <td className="muted">{project.visibility === 'public' ? 'Public' : 'Private'}</td>
-            <td className="mono">{project.latestReleaseNumber ? `v${project.latestReleaseNumber}` : <span className="muted">None yet</span>}</td>
+    <div className="table-wrap">
+      <table className="data-table" aria-label={label}>
+        <thead>
+          <tr>
+            <th scope="col">Project</th>
+            {showRole && <th scope="col">Your role</th>}
+            <th scope="col">Visibility</th>
+            <th scope="col">Latest release</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {projects.map((project) => (
+            <tr key={project.id}>
+              <td>
+                <Link href={projectPath(project.ownerHandle, project.slug)} className="row-link">
+                  <strong>{project.name}</strong>
+                  <span className="mono muted">
+                    {project.ownerHandle}/{project.slug}
+                  </span>
+                </Link>
+              </td>
+              {showRole && <td className="muted role">{project.role ?? 'viewer'}</td>}
+              <td className="muted">{project.visibility === 'public' ? 'Public' : 'Private'}</td>
+              <td className="mono">{project.latestReleaseNumber ? `v${project.latestReleaseNumber}` : <span className="muted">None yet</span>}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

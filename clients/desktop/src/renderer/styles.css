@@ -393,20 +393,79 @@ select {
 .toolbar-title {
   display: flex;
   flex: 1 1 auto;
-  flex-direction: column;
+  align-items: center;
+  gap: 6px;
   min-width: 120px;
-  line-height: 1.25;
+  overflow: hidden;
 }
 
-.toolbar-title .project {
+/* The breadcrumb: earlier steps give way first, the current one keeps its room. */
+.crumb {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--paper-muted);
+  font-size: var(--t-body);
+  font-weight: 500;
+}
+
+button.crumb:hover {
+  color: var(--paper);
+}
+
+.crumb.is-current {
+  flex: 0 1 auto;
+  min-width: 48px;
+  margin: 0;
+  color: var(--paper);
+  font-weight: 600;
+}
+
+.crumb:not(.is-current) {
+  flex: 0 100 auto;
+}
+
+.crumb-sep {
+  flex: none;
+  color: var(--paper-faint);
+}
+
+.chip {
+  display: inline-flex;
+  flex: 0 10 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  margin-left: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--paper-muted);
+  font-size: var(--t-micro);
+  font-weight: 500;
+}
+
+.chip .dot {
+  margin-left: 0;
+}
+
+.chip-label {
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* Narrow windows: toolbar buttons with an icon drop their label (it stays for screen readers
-   and in the tooltip). Windows has less room, since the caption buttons cover 150 px. */
+/* Narrow toolbars keep the current name: the steps before it go (the sidebar shows them),
+   and chips with a mark keep only the mark, with the words in the tooltip. */
 @container (max-width: 700px) {
-  .toolbar .btn:has(.icon) .btn-label {
+  .toolbar .crumb:not(.is-current),
+  .toolbar .crumb-sep {
+    display: none;
+  }
+
+  .toolbar .chip:has(.dot, .icon) .chip-label {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -416,7 +475,42 @@ select {
 }
 
 @container (max-width: 860px) {
-  [data-platform='win32'] .toolbar .btn:has(.icon) .btn-label,
+  [data-platform='win32'] .toolbar {
+    gap: 6px;
+  }
+
+  [data-platform='win32'] .toolbar .sync-status {
+    padding-inline: 4px;
+  }
+
+  [data-platform='win32'] .toolbar .crumb:not(.is-current),
+  [data-platform='win32'] .toolbar .crumb-sep {
+    display: none;
+  }
+
+  [data-platform='win32'] .toolbar .chip:has(.dot, .icon) .chip-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+
+/* Narrow windows: toolbar buttons with an icon drop their label (it stays for screen readers
+   and in the tooltip). Windows has less room, since the caption buttons cover 150 px. */
+@container (max-width: 700px) {
+  .toolbar .btn-secondary:has(.icon) .btn-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+
+@container (max-width: 860px) {
+  [data-platform='win32'] .toolbar .btn-secondary:has(.icon) .btn-label,
   [data-platform='win32'] .toolbar .sync-status:has(.icon) .sync-label {
     position: absolute;
     width: 1px;
@@ -426,21 +520,13 @@ select {
   }
 }
 
-.toolbar-title .project {
-  font-size: var(--t-micro);
-  color: var(--paper-faint);
-}
-
-.toolbar-title .branch {
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .sync-status {
   display: inline-flex;
   white-space: nowrap;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
   align-items: center;
   gap: 6px;
   font-size: var(--t-micro);
@@ -528,6 +614,15 @@ select {
 
 .btn-secondary:hover:not(:disabled) {
   background: rgb(245 245 247 / 0.06);
+}
+
+.btn-icon {
+  width: 32px;
+  padding: 0;
+}
+
+.btn-glyph {
+  display: inline-flex;
 }
 
 .btn-small {
@@ -665,7 +760,9 @@ select {
 
 .field input,
 .field textarea,
-.field select {
+.field select,
+.commit-box input,
+.commit-box textarea {
   width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--line-strong);
@@ -790,6 +887,36 @@ select {
   user-select: text;
 }
 
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.toast-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.toast-body .link {
+  margin-top: 6px;
+  font-size: var(--t-micro);
+}
+
+.toast-close {
+  flex: none;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: var(--paper-faint);
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.toast-close:hover {
+  color: var(--paper);
+}
+
 .toast.is-error {
   border-color: var(--danger);
 }
@@ -847,6 +974,30 @@ select {
   background: var(--danger);
 }
 
+.dot-caution {
+  background: var(--caution);
+}
+
+.settings-button {
+  position: relative;
+}
+
+.settings-button .dot {
+  position: absolute;
+  top: -2px;
+  right: -3px;
+}
+
+.tab-dot {
+  display: inline-block;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.sync-status .dot {
+  margin-left: 2px;
+}
+
 .link.is-active {
   color: var(--paper);
 }
@@ -862,6 +1013,9 @@ select {
 }
 
 .notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 16px;
   padding: 10px 12px;
   border: 1px solid var(--line-strong);
@@ -872,6 +1026,19 @@ select {
 
 .notice.is-error {
   border-color: var(--danger);
+}
+
+.notice.is-caution {
+  border-color: var(--caution);
+}
+
+.notice .grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.notice > :not(.grow) {
+  flex: none;
 }
 
 .select {
@@ -926,4 +1093,551 @@ select {
 
 .settings .check {
   margin-bottom: 6px;
+}
+
+/* Popovers and the ⋯ menu */
+
+.popover-root {
+  position: relative;
+  flex: none;
+}
+
+.popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  min-width: 200px;
+  max-width: 320px;
+  padding: 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--forest-deep);
+  box-shadow: 0 12px 40px -12px rgb(0 0 0 / 0.6);
+  white-space: normal;
+  -webkit-app-region: no-drag;
+}
+
+.popover-body {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px 10px;
+  font-size: var(--t-small);
+  user-select: text;
+}
+
+.popover-body p {
+  margin: 0;
+}
+
+.popover-body .btn {
+  justify-self: start;
+  margin-top: 4px;
+}
+
+.menu {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--paper);
+  font-size: var(--t-small);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.menu-item:hover,
+.menu-item:focus-visible {
+  background: rgb(245 245 247 / 0.08);
+  outline: none;
+}
+
+.menu-item.is-danger {
+  color: var(--danger);
+}
+
+/* Activity: in the sync status popover and on branch pages */
+
+.activity-popover {
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  padding: 0;
+}
+
+.popover:has(.activity-popover) {
+  max-width: none;
+  padding: 0;
+}
+
+.popover-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.popover-head > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.activity-scroll {
+  max-height: min(420px, calc(100vh - 160px));
+  overflow-y: auto;
+}
+
+.rows.activity > li {
+  align-items: flex-start;
+}
+
+.rows.activity > li > .icon {
+  margin-top: 2px;
+  color: var(--danger);
+}
+
+.activity-text {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.rows.activity .grow {
+  white-space: normal;
+}
+
+/* Project page: tab counts, the branch table, and the New Branch sheet */
+
+.tab .count {
+  display: inline-block;
+  min-width: 18px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--moss);
+  color: var(--paper-muted);
+  font-size: var(--t-micro);
+  line-height: 18px;
+  text-align: center;
+}
+
+.tab .count.is-caution {
+  background: var(--caution);
+  color: var(--forest);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.needs-you {
+  margin-bottom: 16px;
+  border-color: var(--caution);
+}
+
+/* One grid for the whole table, so the heading and every row share column widths. */
+.table {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.4fr) minmax(120px, 1.4fr) minmax(90px, 0.8fr) auto;
+  font-size: var(--t-small);
+}
+
+.table-head,
+.table-row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 6px 14px;
+}
+
+.table-head {
+  min-height: 36px;
+  border-bottom: 1px solid var(--line);
+  color: var(--paper-faint);
+  font-size: var(--t-micro);
+  font-weight: 500;
+}
+
+.table-row {
+  border-top: 1px solid var(--line);
+  cursor: default;
+}
+
+.table-head + .table-row {
+  border-top: 0;
+}
+
+.table-row:hover {
+  background: rgb(245 245 247 / 0.03);
+}
+
+.table-row > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cell-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cell-name .icon {
+  flex: none;
+}
+
+.state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.state .dot {
+  margin-left: 0;
+}
+
+.cell-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  overflow: visible !important;
+}
+
+.btn-small.btn-icon {
+  width: 26px;
+}
+
+/* Narrow: the On this Mac column folds away (the action already says Open or Download). */
+@container (max-width: 700px) {
+  .table {
+    grid-template-columns: minmax(110px, 1.2fr) minmax(110px, 1.2fr) auto;
+  }
+
+  .table-head > :nth-child(3),
+  .table-row > :nth-child(3) {
+    display: none;
+  }
+}
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: start center;
+  padding-top: 72px;
+  background: rgb(7 30 25 / 0.6);
+  -webkit-app-region: no-drag;
+}
+
+.sheet {
+  width: min(420px, calc(100vw - 32px));
+  padding: 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--forest-deep);
+  box-shadow: 0 24px 64px -16px rgb(0 0 0 / 0.7);
+}
+
+.sheet h2 {
+  margin: 0 0 16px;
+  font-size: var(--t-body);
+  font-weight: 600;
+}
+
+.sheet-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.field-note.is-error {
+  color: var(--danger);
+}
+
+.confirm-inline {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  white-space: normal;
+}
+
+.confirm-text {
+  color: var(--paper-muted);
+  font-size: var(--t-small);
+}
+
+/* Branch page: changes, the commit box, and history */
+
+.stack {
+  display: grid;
+  gap: 16px;
+}
+
+.rows.changes > li {
+  cursor: default;
+}
+
+.rows.changes > li:hover {
+  background: rgb(245 245 247 / 0.03);
+}
+
+.change-kind {
+  width: 14px;
+  font: 600 var(--t-small) / 1 var(--mono);
+  text-align: center;
+}
+
+.change-kind.is-modified {
+  color: var(--caution);
+}
+
+.change-kind.is-added {
+  color: var(--signal);
+}
+
+.change-kind.is-deleted {
+  color: var(--danger);
+}
+
+.change-kind.is-moved {
+  color: var(--paper-muted);
+}
+
+.row-actions {
+  opacity: 0;
+}
+
+.rows > li:hover .row-actions,
+.rows > li:focus-within .row-actions,
+.row-actions:has([aria-expanded='true']) {
+  opacity: 1;
+}
+
+.row-actions .btn-icon {
+  width: 26px;
+  height: 26px;
+}
+
+.checkout-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  font-size: var(--t-small);
+  color: var(--paper-muted);
+}
+
+.commit-box {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+}
+
+.commit-box textarea {
+  min-height: 60px;
+  resize: vertical;
+}
+
+.commit-box input {
+  font-size: var(--t-small);
+}
+
+.commit-row {
+  display: flex;
+  gap: 8px;
+}
+
+.commit-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.commit-row .btn {
+  flex: none;
+}
+
+.commit-box .field-note {
+  margin: 0;
+}
+
+.timeline {
+  margin: 0;
+  padding: 6px 0;
+  list-style: none;
+}
+
+.timeline > li {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 14px 8px 40px;
+  font-size: var(--t-small);
+}
+
+/* The line through the dots */
+.timeline > li::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 21px;
+  width: 1px;
+  background: var(--line-strong);
+}
+
+.timeline > li:first-child::before {
+  top: 16px;
+}
+
+.timeline > li:last-child::before {
+  bottom: calc(100% - 16px);
+}
+
+.timeline-dot {
+  position: absolute;
+  top: 11px;
+  left: 16px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--paper);
+}
+
+/* Autosaves: hollow and dashed, the drawing convention for hidden edges. */
+.is-autosaves > .timeline-dot {
+  border: 1.5px dashed var(--paper-muted);
+  background: var(--forest);
+}
+
+.timeline .grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.timeline > li > .popover-root {
+  opacity: 0;
+}
+
+.timeline > li:hover > .popover-root,
+.timeline > li:focus-within > .popover-root,
+.timeline .popover-root:has([aria-expanded='true']) {
+  opacity: 1;
+}
+
+.timeline .btn-icon,
+.timeline .nested .btn-icon {
+  width: 26px;
+  height: 26px;
+}
+
+.timeline-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--paper);
+}
+
+.timeline-toggle .caret {
+  display: inline-block;
+  transition: transform 120ms;
+}
+
+.timeline-toggle[aria-expanded='true'] .caret {
+  transform: rotate(90deg);
+}
+
+.timeline .rows.nested {
+  margin-top: 6px;
+}
+
+.nav-row.is-cloud {
+  opacity: 0.6;
+}
+
+/* Sidebar: filter, collapsible owner groups, busy branches */
+
+.sidebar-filter {
+  position: relative;
+  margin: 0 10px 2px;
+}
+
+.sidebar-filter .icon {
+  position: absolute;
+  top: 50%;
+  left: 9px;
+  width: 14px;
+  height: 14px;
+  color: var(--paper-faint);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.sidebar-filter input {
+  width: 100%;
+  height: 28px;
+  padding: 0 8px 0 28px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: rgb(245 245 247 / 0.04);
+  font-size: var(--t-small);
+  user-select: text;
+}
+
+.sidebar-filter input:focus {
+  border-color: var(--line-strong);
+  outline: none;
+}
+
+.group-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+}
+
+.group-toggle .caret {
+  display: inline-block;
+  font-size: 0.6rem;
+  transition: transform 120ms;
+}
+
+.group-toggle[aria-expanded='true'] .caret {
+  transform: rotate(90deg);
+}
+
+.nav-busy {
+  display: inline-flex;
+  margin-left: auto;
+  color: var(--paper-muted);
+}
+
+.nav-busy .icon {
+  width: 13px;
+  height: 13px;
 }

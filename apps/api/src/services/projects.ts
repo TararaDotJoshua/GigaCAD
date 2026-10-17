@@ -370,8 +370,11 @@ export async function setApprovalRules(sql: Sql, projectId: string, userId: stri
 
 /** Who joined, left, or changed role is for members; everyone else sees the work. */
 const MEMBERS_ONLY_EVENTS = ['member_changed'];
-/** Payload fields that name a computer or a user id, which outsiders don't get (see lockForViewer). */
-const MEMBERS_ONLY_FIELDS = ['machine', 'previousHolder', 'approverUserIds'];
+/**
+ * Payload fields that name a computer or a user id, which outsiders don't get (see lockForViewer),
+ * and why a lock was released, which can say that someone lost access.
+ */
+const MEMBERS_ONLY_FIELDS = ['machine', 'previousHolder', 'approverUserIds', 'reason'];
 
 /**
  * A page of the project's events, after `after` and, for paging back through a feed, before

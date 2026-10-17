@@ -399,7 +399,9 @@ test('warns before storage runs out, and keeps the warning once it has', async (
   await page.goto(`/${person.handle}/bench`);
   const banner = page.getByRole('status').filter({ hasText: 'Your storage is 90% full' });
   await expect(banner).toBeVisible();
-  await expect(banner.getByRole('link', { name: 'Upgrade' })).toHaveAttribute('href', `/settings/billing?from=${encodeURIComponent(`/${person.handle}/bench`)}`);
+  // Paid plans aren't open on this stack, so the way to more room is deleting projects.
+  await expect(banner.getByRole('link', { name: 'Free up space' })).toHaveAttribute('href', /^\/(app)?$/);
+  await expect(banner.getByRole('link', { name: 'Upgrade' })).toHaveCount(0);
   // Until the page hydrates, the button does nothing; click until the banner goes.
   await expect(async () => {
     await banner.getByRole('button', { name: 'Dismiss' }).click({ timeout: 1000 });

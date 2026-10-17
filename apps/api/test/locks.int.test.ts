@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Mailer } from '../src/mail.js';
+import { noticesSettled } from '../src/services/notices.js';
 import { client, createHarness, createUser, MACHINE, upload, type Client, type Harness, type TestUser } from './helpers.js';
 
 // A lock is someone's promise that nobody else will change a branch. These cover every way
@@ -61,7 +62,11 @@ const lockEvents = async (projectId: string, branchId: string) =>
   ((await asOwner.get(`/v1/projects/${projectId}/events`)).body as { kind: string; subjectId: string }[]).filter(
     (event) => event.kind === 'branch_lock_force_released' && event.subjectId === branchId,
   );
-const noticesAbout = (branchName: string) => sent.filter((message) => message.subject.includes(branchName));
+/** Notices go out after the response, so wait for them first. */
+const noticesAbout = async (branchName: string) => {
+  await noticesSettled();
+  return sent.filter((message) => message.subject.includes(branchName));
+};
 
 describe('archiving a branch', () => {
   it('releases the lock, logs and tells the holder, and keeps their autosaves', async () => {
@@ -77,7 +82,7 @@ describe('archiving a branch', () => {
     expect(await lockEvents(projectId, branch.id)).toMatchObject([
       { actorId: owner.id, payload: { previousHolder: maker.id, machine: MACHINE, reason: 'archived' } },
     ]);
-    const [notice, ...others] = noticesAbout(branch.name);
+    const [notice, ...others] = await noticesAbout(branch.name);
     expect(others).toHaveLength(0);
     expect(notice!.subject).toBe(`Your checkout of ${branch.name} in ${name} was released`);
     expect(notice!.text).toContain(`@${owner.handle} archived ${branch.name} in ${name}`);
@@ -88,7 +93,24 @@ describe('archiving a branch', () => {
     expect((await asOwner.post(`/v1/branches/${branch.id}/archive`)).status).toBe(200);
     const archives = (await asOwner.get(`/v1/projects/${projectId}/events`)).body.filter((event: { kind: string }) => event.kind === 'branch_archived');
     expect(archives).toHaveLength(1);
-    expect(noticesAbout(branch.name)).toHaveLength(1);
+    expect(await noticesAbout(branch.name)).toHaveLength(1);
+  });
+
+  it("doesn't tell outsiders who held the lock or why it was released", async () => {
+    const created = await asOwner.post('/v1/projects', { slug: `open-${randomUUID().slice(0, 8)}`, name: 'Open bench', visibility: 'public' });
+    const projectId = created.body.id as string;
+    await asOwner.put(`/v1/projects/${projectId}/members`, { handle: maker.handle, role: 'contributor' });
+    const branch = await newBranch(projectId);
+    await holdWithAutosave(projectId, branch.id);
+    await asOwner.post(`/v1/branches/${branch.id}/archive`);
+
+    const seen = (await client(harness, null).get(`/v1/projects/${projectId}/events`)).body as { kind: string; payload: Record<string, unknown> }[];
+    const released = seen.find((event) => event.kind === 'branch_lock_force_released')!;
+    expect(released.payload).not.toHaveProperty('reason');
+    expect(released.payload).not.toHaveProperty('previousHolder');
+    expect(released.payload).not.toHaveProperty('machine');
+    const archived = (await client(harness, null).get(`/v1/branches/${branch.id}`)).body.branch;
+    expect(archived).toMatchObject({ status: 'archived', archivedByHandle: null });
   });
 
   it('sends no notice when nobody held it, and refuses released branches', async () => {
@@ -96,7 +118,7 @@ describe('archiving a branch', () => {
     const free = await newBranch(projectId);
     expect((await asOwner.post(`/v1/branches/${free.id}/archive`)).status).toBe(200);
     expect(await lockEvents(projectId, free.id)).toHaveLength(0);
-    expect(noticesAbout(free.name)).toHaveLength(0);
+    expect(await noticesAbout(free.name)).toHaveLength(0);
 
     const shipped = await newBranch(projectId);
     await harness.sql`update branches set status = 'released' where id = ${shipped.id}`;
@@ -155,7 +177,7 @@ describe('removing a member', () => {
     for (const branch of [first, second]) {
       expect((await asOwner.get(`/v1/branches/${branch.id}`)).body.branch.checkedOutBy).toBeNull();
       expect(await lockEvents(projectId, branch.id)).toMatchObject([{ actorId: owner.id, payload: { previousHolder: maker.id, reason: 'member_removed' } }]);
-      const [notice] = noticesAbout(branch.name);
+      const [notice] = await noticesAbout(branch.name);
       expect(notice!.text).toContain(`@${owner.handle} changed your access to ${name}`);
       // They can't open the project any more, so there's no link.
       expect(notice!.text).not.toContain('http');
@@ -186,7 +208,7 @@ describe('force-releasing a lock', () => {
     const branch = await newBranch(projectId);
     await holdWithAutosave(projectId, branch.id);
     expect((await asOwner.post(`/v1/branches/${branch.id}/force-release`)).status).toBe(200);
-    const [notice, ...others] = noticesAbout(branch.name);
+    const [notice, ...others] = await noticesAbout(branch.name);
     expect(others).toHaveLength(0);
     expect(notice!.text).toContain(`@${owner.handle} force-released your checkout of ${branch.name}`);
     expect(notice!.text).toContain(`/branches/${branch.name}`);
@@ -197,7 +219,7 @@ describe('force-releasing a lock', () => {
     const branch = await newBranch(projectId);
     await asOwner.post(`/v1/branches/${branch.id}/checkout`, { machine: MACHINE });
     expect((await asOwner.post(`/v1/branches/${branch.id}/force-release`)).status).toBe(200);
-    expect(noticesAbout(branch.name)).toHaveLength(0);
+    expect(await noticesAbout(branch.name)).toHaveLength(0);
     expect(await lockEvents(projectId, branch.id)).toHaveLength(1);
   });
 });

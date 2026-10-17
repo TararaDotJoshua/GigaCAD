@@ -158,20 +158,23 @@ describe('SolidWorks exports', () => {
     const branch = await api.post(`/v1/projects/${projectId}/branches`, { name: 'work' });
     const [part, assembly, clip] = [`part ${randomUUID()}`, `assembly ${randomUUID()}`, `clip ${randomUUID()}`];
     await commitVersion(harness, api, projectId, branch.body.id, { 'Bracket.SLDPRT': part, 'Bracket.SLDASM': assembly, 'sub/Clip.SLDPRT': clip, 'Notes.txt': 'notes' });
-    const opened = await api.post(`/v1/branches/${branch.body.id}/release-requests`, { title: 'v1' });
-    const requestId = opened.body.releaseRequest.id;
-    await api.post(`/v1/release-requests/${requestId}/candidate`);
-    await api.post(`/v1/release-requests/${requestId}/approvals`);
-    expect((await api.post(`/v1/release-requests/${requestId}/release`)).status).toBe(201);
-    const slug = created.body.slug as string;
-    const archive = (query = '') => harness.app.inject({ method: 'GET', url: `/v1/projects/${projectId}/releases/1/archive${query}`, headers: { authorization: `Bearer ${owner.token}` } });
-    const before = await archive();
-
     const [stl, step, assemblyStep, clipStl] = [tetrahedron(), `ISO-10303-21; part ${randomUUID()}`, `ISO-10303-21; assembly ${randomUUID()}`, tetrahedron()];
     const [stlHash, stepHash, assemblyHash, clipHash] = (await upload(harness, api, projectId, [stl, step, assemblyStep, clipStl])) as [string, string, string, string];
     for (const [source, format, blob] of [[part, 'stl', stlHash], [part, 'step', stepHash], [assembly, 'step', assemblyHash], [clip, 'stl', clipHash]] as const) {
       expect((await api.put(`/v1/projects/${projectId}/exports`, { source: sha256(source), format, blob })).status).toBe(200);
     }
+    const opened = await api.post(`/v1/branches/${branch.body.id}/release-requests`, { title: 'v1' });
+    const requestId = opened.body.releaseRequest.id;
+    const candidateManifestId = (await api.post(`/v1/release-requests/${requestId}/candidate`)).body.candidate.manifestId;
+    await api.post(`/v1/release-requests/${requestId}/approvals`, { candidateManifestId });
+    expect((await api.post(`/v1/release-requests/${requestId}/release`, { candidateManifestId })).status).toBe(201);
+    const slug = created.body.slug as string;
+    const archive = (query = '') => harness.app.inject({ method: 'GET', url: `/v1/projects/${projectId}/releases/1/archive${query}`, headers: { authorization: `Bearer ${owner.token}` } });
+    const before = await archive();
+
+    // A STEP export replaced after the release doesn't change what the release was made with.
+    const [laterStep] = (await upload(harness, api, projectId, [`ISO-10303-21; later ${randomUUID()}`])) as [string];
+    expect((await api.put(`/v1/projects/${projectId}/exports`, { source: sha256(part), format: 'step', blob: laterStep })).status).toBe(200);
 
     const plain = await archive();
     expect(plain.rawPayload.equals(before.rawPayload)).toBe(true);

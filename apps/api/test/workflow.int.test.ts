@@ -220,6 +220,8 @@ describe('release workflow', () => {
     await commitVersion(harness, asAlex, projectId, work, { 'A.SLDPRT': 'a v2' });
     const opened = await asAlex.post(`/v1/branches/${work}/release-requests`, { title: 'Abandoned' });
     const id = opened.body.releaseRequest.id as string;
+    // Opening builds a candidate now, but requests can still have none: older ones, or ones whose picks never built.
+    await harness.sql`update release_requests set candidate_manifest_id = null, target_release_id = null, status = 'open' where id = ${id}`;
     expect((await asAlex.post(`/v1/release-requests/${id}/close`)).status).toBe(200);
 
     // Not "(first release)": it was compared against v1, the branch's base.

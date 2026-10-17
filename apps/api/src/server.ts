@@ -2,10 +2,11 @@ import { buildApp } from './app.js';
 import { createAuthenticator } from './auth.js';
 import { loadConfig } from './config.js';
 import { createSql } from './db.js';
-import { runJobs } from './jobs.js';
+import { resetExportDrawnThumbnails, runJobs } from './jobs.js';
 import { generateThumbnails } from './thumbnails/job.js';
 import { workerRenderer } from './thumbnails/index.js';
 import { createResendMailer } from './mail.js';
+import { noticesSettled } from './services/notices.js';
 import { createStripePayments } from './payments.js';
 import { createS3Storage } from './storage.js';
 
@@ -18,6 +19,7 @@ const app = buildApp({
   storage,
   authenticate: createAuthenticator({ sql, supabaseUrl: config.SUPABASE_URL, jwtSecret: config.SUPABASE_JWT_SECRET }),
   webOrigin: config.WEB_ORIGIN,
+  trustProxyHops: config.TRUST_PROXY_HOPS,
   ...(mailer ? { mailer } : {}),
   ...(config.STRIPE_SECRET_KEY && config.STRIPE_WEBHOOK_SECRET
     ? { payments: createStripePayments({
@@ -66,9 +68,21 @@ const thumbnails = async () => {
 };
 if (config.THUMBNAILS_INTERVAL_SECONDS > 0) timers.push(setInterval(thumbnails, config.THUMBNAILS_INTERVAL_SECONDS * 1000));
 
+// Once at startup too, outside the jobs lock, which an old instance may still hold during a deploy
+// overlap. Anything that old instance writes after this run is reset by a later job pass instead.
+// (No current API writes such rows; this goes away with the model_* columns.)
+resetExportDrawnThumbnails(sql)
+  .then((count) => count && app.log.info({ thumbnails: count }, 'reset export-drawn thumbnails'))
+  .catch((error: unknown) => app.log.warn(error, 'thumbnail reset failed'));
+
+/** How long a redeploy waits for emails already on their way. */
+const NOTICE_GRACE_MS = 15_000;
+
 const shutdown = async () => {
   timers.forEach((timer) => clearTimeout(timer));
   await app.close();
+  // Notices go out after their responses; let those in flight finish before the database closes.
+  await Promise.race([noticesSettled(), new Promise((resolve) => setTimeout(resolve, NOTICE_GRACE_MS))]);
   await sql.end({ timeout: 5 });
   process.exit(0);
 };

@@ -36,7 +36,7 @@ export function HeaderAccount() {
 }
 
 /** The account link in the phone menu and the footer. */
-export function AccountLink({ className }: { className?: string }) {
+export function SiteAccountLink({ className }: { className?: string }) {
   const signedIn = useSignedIn();
   return (
     <a className={className} href={signedIn ? DASHBOARD_URL : `${APP_URL}/login`}>

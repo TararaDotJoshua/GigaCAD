@@ -34,9 +34,12 @@ Release it to main:
 giga rr open --title "Stronger gripper"      # freezes the branch
 giga rr diff                                 # what changed on the branch and on main
 giga rr candidate
-giga rr approve
-giga rr release                              # becomes the next permanent release, e.g. v3
+giga rr show                                 # review the candidate; note its id
+giga rr approve --candidate <id>
+giga rr release --candidate <id>             # becomes the next permanent release, e.g. v3
 ```
+
+Approving and releasing name the candidate you reviewed (`giga rr show` prints its id), so a newer candidate is never approved or released by mistake.
 
 ## Signing in
 
@@ -126,8 +129,8 @@ giga rr diff [request]
 giga rr picks [request] --file picks.json      # or --file - for stdin
 giga rr candidate [request]
 giga rr rebuild-report [request] --file report.json
-giga rr approve [request]      # giga rr unapprove withdraws it
-giga rr release [request] [--notes <text>]
+giga rr approve [request] --candidate <id>      # giga rr unapprove withdraws it
+giga rr release [request] --candidate <id> [--notes <text>]
 giga rr close [request]
 ```
 

@@ -4,6 +4,7 @@ import { archiveBranch, forceReleaseLock, openReleaseRequest } from '../../../..
 import { ActionButton } from '../../../../../../components/product/ActionButton';
 import { ActionForm } from '../../../../../../components/product/ActionForm';
 import { ChangeList, changeSummary } from '../../../../../../components/product/ChangeList';
+import { CopyCommand } from '../../../../../../components/product/CopyCommand';
 import { EmptyState } from '../../../../../../components/product/EmptyState';
 import { PageHead } from '../../../../../../components/product/PageHead';
 import { ProjectDirectory } from '../../../../../../components/product/ProjectDirectory';
@@ -16,8 +17,13 @@ import { getBranchByName, getBranchDetail, getCommits, getProject, getRelease, g
 import type { ProjectParams } from '../../layout';
 
 export async function generateMetadata({ params }: { params: Promise<ProjectParams & { branch: string }> }) {
-  const { owner, project, branch } = await params;
-  return { title: `${decodeURIComponent(branch)} · ${owner}/${project}` };
+  const { owner, project, branch: name } = await params;
+  // Looked up, so a missing branch (or one in a project you can't see) never echoes its name.
+  const branch = await getProject(owner, project)
+    .then((found) => getBranchByName(found.id, name))
+    .catch(() => null);
+  if (!branch) return { title: 'Not found' };
+  return { title: `${branch.name} · ${owner}/${project}` };
 }
 
 export default async function BranchPage({ params }: { params: Promise<ProjectParams & { branch: string }> }) {
@@ -31,7 +37,12 @@ export default async function BranchPage({ params }: { params: Promise<ProjectPa
   const canManage = project.role === 'owner' || project.role === 'maintainer';
   const canWrite = canManage || project.role === 'contributor';
   const timeline = groupTimeline(commits);
+  // Autosaves at the head are saved as a version when a request opens.
+  const unsaved = timeline[0]?.kind === 'autosaves' ? timeline[0].commits : [];
+  const unsavedAuthors = [...new Set(unsaved.map((commit) => commit.authorHandle).filter(Boolean))];
   const { siteUrl } = sites();
+  // Nothing done on it yet beyond the commit it started from: one next step instead of empty sections.
+  const fresh = canWrite && branch.status === 'open' && changes.length === 0 && commits.every((commit) => commit.parentId === null);
 
   return (
     <div className="page">
@@ -58,15 +69,33 @@ export default async function BranchPage({ params }: { params: Promise<ProjectPa
       />
       <div className="page-grid">
         <div className="stack">
-          <section className="section">
-            <h2>{branch.baseReleaseNumber ? `Changes from v${branch.baseReleaseNumber}` : 'Changes'}</h2>
-            {changes.length > 0 && <p className="change-summary">{changeSummary(changes)}</p>}
-            <ChangeList projectId={project.id} changes={changes} empty={branch.baseReleaseNumber ? `Nothing has changed since v${branch.baseReleaseNumber}.` : 'No files yet.'} />
-          </section>
-          <section className="section">
-            <h2>Files</h2>
-            <ProjectDirectory project={project} path={`Branches/${branch.name}`} params={{}} signedIn={!!viewer} viewerHandle={viewer?.handle ?? null} embedded />
-          </section>
+          {fresh ? (
+            <section className="section card start-branch">
+              <h2>
+                Start working on <span className="mono">{branch.name}</span>
+              </h2>
+              <p className="section-intro">
+                Download the branch with the <code className="mono">giga</code> CLI and check it out, so only you can save to it. Commit versions as you go, then open a release request here.
+              </p>
+              <CopyCommand command={`giga clone ${owner}/${slug} --branch ${branch.name} ${branch.name}\ncd ${branch.name}\ngiga checkout`} />
+              <a className="muted" href={`${siteUrl}/docs/cli#a-typical-session`}>
+                A typical session with the CLI
+              </a>
+            </section>
+          ) : (
+            <section className="section">
+              <h2>{branch.baseReleaseNumber ? `Changes from v${branch.baseReleaseNumber}` : 'Changes'}</h2>
+              {changes.length > 0 && <p className="change-summary">{changeSummary(changes)}</p>}
+              <ChangeList projectId={project.id} changes={changes} empty={branch.baseReleaseNumber ? `Nothing has changed since v${branch.baseReleaseNumber}.` : 'No files yet.'} />
+            </section>
+          )}
+          {/* A fresh branch of an empty project has no files to list yet. */}
+          {!(fresh && !branch.baseReleaseNumber) && (
+            <section className="section">
+              <h2>Files</h2>
+              <ProjectDirectory project={project} path={`Branches/${branch.name}`} params={{}} signedIn={!!viewer} viewerHandle={viewer?.handle ?? null} embedded />
+            </section>
+          )}
           <section className="section">
             <h2>Version history</h2>
             {timeline.length ? (
@@ -119,7 +148,7 @@ export default async function BranchPage({ params }: { params: Promise<ProjectPa
                 {branch.checkedOutAt && (
                   <>
                     {' '}
-                    since <RelativeTime value={branch.checkedOutAt} />
+                    <RelativeTime value={branch.checkedOutAt} />
                   </>
                 )}
                 . Only they can save to it until they check it in.
@@ -128,7 +157,7 @@ export default async function BranchPage({ params }: { params: Promise<ProjectPa
               <p>No one has this branch checked out.</p>
             )}
             <p className="muted">
-              Check out a branch from the GigaCAD drive or with <code className="mono">giga checkout</code>. <a href={`${siteUrl}/docs/check-out`}>How checking out works</a>
+              Check out a branch with <code className="mono">giga checkout</code>. <a href={`${siteUrl}/docs/cli#a-typical-session`}>How checking out works</a>
             </p>
             {canManage && branch.checkedOutBy && (
               <>
@@ -139,10 +168,22 @@ export default async function BranchPage({ params }: { params: Promise<ProjectPa
               </>
             )}
           </section>
-          {canWrite && branch.status === 'open' && (
+          {canWrite && branch.status === 'open' && changes.length === 0 && (
+            <section className="rail-card">
+              <h2>Open release request</h2>
+              <p className="muted">Nothing to release yet: {branch.baseReleaseNumber ? `this branch has no changes from v${branch.baseReleaseNumber}` : 'this branch has no files'}.</p>
+            </section>
+          )}
+          {canWrite && branch.status === 'open' && changes.length > 0 && (
             <section className="rail-card">
               <h2>Open release request</h2>
               <p className="muted">This checks the branch in and freezes it: nobody can save to it until the request is released or closed. You can close the request any time to unfreeze it.</p>
+              {unsaved.length > 0 && (
+                <p className="muted">
+                  {unsaved.length} unsaved {unsaved.length === 1 ? 'autosave' : 'autosaves'}
+                  {unsavedAuthors.length ? ` from ${unsavedAuthors.map((handle) => `@${handle}`).join(', ')}` : ''} will be saved as a version and included.
+                </p>
+              )}
               <ActionForm action={openReleaseRequest.bind(null, branch.id, owner, slug)} submitLabel="Open release request" pendingLabel="Opening…">
                 <label className="field">
                   <span>Title</span>
@@ -160,7 +201,7 @@ export default async function BranchPage({ params }: { params: Promise<ProjectPa
           {canManage && branch.status === 'open' && (
             <section className="rail-card">
               <h2>Archive branch</h2>
-              <p className="muted">Archived branches are read-only and hidden from the branch list. Their history stays.</p>
+              <p className="muted">Archived branches are read-only and hidden from the sidebar and the Branches folder. Their history stays.</p>
               <ActionButton action={archiveBranch.bind(null, branch.id)} className="btn btn-danger btn-small" confirm={`Archive ${branch.name}? It becomes read-only.`}>
                 Archive
               </ActionButton>

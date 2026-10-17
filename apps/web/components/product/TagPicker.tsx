@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, useTransition, type CSSProperties } from 'react';
 import { setFileTags } from '../../app/(product)/actions';
 import type { Tag } from '../../lib/api';
+import { safeAction } from '../../lib/safe-action';
+import { useDismissDetails } from '../../lib/use-dismiss';
 import { TagIcon } from '../icons';
 
 /** Chooses a file's tags from the project's tags. Tags stay with the file in every branch and release. */
@@ -13,6 +15,7 @@ export function TagPicker({ projectId, itemId, name, tags, selected }: { project
   const menu = useRef<HTMLDetailsElement>(null);
   // Placed against the viewport, so the table's scrolling and rounded corners don't clip it.
   const [place, setPlace] = useState<CSSProperties>();
+  useDismissDetails(place !== undefined, menu);
 
   useEffect(() => {
     if (!place) return;
@@ -79,9 +82,12 @@ export function TagPicker({ projectId, itemId, name, tags, selected }: { project
               type="button"
               className="btn btn-primary btn-small"
               disabled={pending}
-              onClick={(event) => {
+              onClick={() => {
+                const before = new Set(selected.map((tag) => tag.id));
+                // Saving the same tags would only add a line to the activity.
+                if (chosen.size === before.size && [...chosen].every((id) => before.has(id))) return menu.current?.removeAttribute('open');
                 start(async () => {
-                  const result = await setFileTags(projectId, itemId, [...chosen]);
+                  const result = await safeAction(() => setFileTags(projectId, itemId, [...chosen]));
                   setError(result.error ?? '');
                   if (!result.error) menu.current?.removeAttribute('open');
                 });

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AccountLink, HeaderAccount } from "./AccountLinks";
+import { HeaderAccount, SiteAccountLink } from "./AccountLinks";
 import { Logo } from "./Logo";
 import { SiteMenu, SiteNav } from "./SiteNav";
 import { APP_URL } from "./site";
@@ -32,7 +32,7 @@ export function SiteFooter() {
           <Link href="/newsroom">Newsroom</Link>
           <a href={`${APP_URL}/explore`}>Explore</a>
           <Link href="/download">Desktop app</Link>
-          <AccountLink />
+          <SiteAccountLink />
           <Link href="/terms">Terms</Link>
           <Link href="/privacy">Privacy</Link>
         </nav>

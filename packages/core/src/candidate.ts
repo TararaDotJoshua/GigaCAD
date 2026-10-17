@@ -64,6 +64,13 @@ export interface AppliedReplacement {
 export type CandidateWarning =
   | { readonly kind: 'overwrites_main_change'; readonly itemId: ItemId; readonly path: string }
   | { readonly kind: 'discards_branch_change'; readonly itemId: ItemId; readonly path: string }
+  | {
+      /** A new branch file replaces a main file the branch also edited, so that edit is dropped. */
+      readonly kind: 'replacement_discards_branch_change';
+      readonly itemId: ItemId;
+      readonly path: string;
+      readonly toPath: string;
+    }
   | { readonly kind: 'missing_reference'; readonly itemId: ItemId; readonly path: string; readonly referencedPath: string }
   | {
       /** A file taken from the branch references a file whose branch changes are being discarded. */
@@ -176,10 +183,15 @@ export function buildCandidate(inputs: CandidateInputs): Candidate {
   }
 
   const applied: AppliedReplacement[] = [];
+  const editedOnBranch = new Set(rows.filter((row) => row.branchChange?.kind === 'modified').map((row) => row.itemId));
   for (const { mainItemId, branchItemId, mainEntry, branchEntry } of replacements) {
     result.set(mainItemId, { itemId: mainItemId, path: branchEntry.path, blob: branchEntry.blob });
     fromBranch.add(mainItemId);
     applied.push({ mainItemId, branchItemId, fromPath: mainEntry.path, toPath: branchEntry.path });
+    if (editedOnBranch.has(mainItemId)) {
+      const edited = head.get(mainItemId)!;
+      warnings.push({ kind: 'replacement_discards_branch_change', itemId: mainItemId, path: edited.path, toPath: branchEntry.path });
+    }
   }
 
   const manifest = sortManifest(result.values());

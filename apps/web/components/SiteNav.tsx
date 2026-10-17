@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { AccountLink } from "./AccountLinks";
+import { SiteAccountLink } from "./AccountLinks";
 import { MenuIcon } from "./icons";
 
 const links = [
@@ -90,7 +90,7 @@ export function SiteMenu() {
       </button>
       <nav id="site-menu" className="nav-menu-panel" aria-label="Main" hidden={!open}>
         <Links onNavigate={() => setOpen(false)} />
-        <AccountLink className="nav-menu-login" />
+        <SiteAccountLink className="nav-menu-login" />
       </nav>
     </div>
   );

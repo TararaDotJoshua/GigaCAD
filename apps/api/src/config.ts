@@ -17,6 +17,8 @@ const schema = z.object({
   S3_FORCE_PATH_STYLE: booleanString.default(false),
   /** Where people approve desktop sign-ins, e.g. https://app.gigacad.site */
   WEB_ORIGIN: z.url().default('http://localhost:3000'),
+  /** Proxies between clients and the API, so rate limits see client addresses. 1 on Railway (its edge proxy). */
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
   /** Minutes between background job runs (storage cleanup, purges, stale checkout notices). 0 turns them off. */
   JOBS_INTERVAL_MINUTES: z.coerce.number().int().min(0).default(60),
   /** Seconds between checks for thumbnails to render. 0 turns thumbnails off. */

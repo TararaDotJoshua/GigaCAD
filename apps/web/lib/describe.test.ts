@@ -169,7 +169,9 @@ describe('activity feed', () => {
 
   it('says what changed in the project, rules, files and tags', () => {
     expect(say('project_updated', { visibility: { from: 'private', to: 'public' } })).toBe('@alex made the project public');
-    expect(say('project_updated', { name: { from: 'Arm', to: 'Robot arm' }, description: { from: '', to: 'x' } })).toBe('@alex renamed the project from Arm to Robot arm and changed the description');
+    expect(say('project_updated', { name: { to: 'Robot arm' }, description: { to: 'x' } })).toBe('@alex renamed the project to Robot arm and changed the description');
+    // Older events held the whole form, so they can't say what changed.
+    expect(say('project_updated', { name: 'Arm', description: 'x', visibility: 'private', license: null })).toBe('@alex changed the project settings');
     expect(say('approval_rules_changed', { requiredCount: 2, approverRoles: ['maintainer'], approverUserIds: [], allowSelfApproval: true })).toBe(
       '@alex changed the approval rules to 2 approvals from maintainers, requester can approve',
     );

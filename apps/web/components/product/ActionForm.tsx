@@ -1,10 +1,12 @@
 'use client';
 
-import { Fragment, startTransition, useActionState, useEffect, useRef, useState } from 'react';
+import { Fragment, startTransition, useActionState, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { ActionState } from '../../app/(product)/actions';
 import { pendingText } from '../../lib/pending';
 import { safeAction } from '../../lib/safe-action';
 import { FormStatus } from './ActionButton';
+
+const noSubscription = () => () => {};
 
 interface Result {
   readonly state: ActionState;
@@ -22,6 +24,9 @@ interface Result {
  * their defaults. Here fields keep their values; on an error the field the server named
  * gets focus. A form that adds things and stays on the page (a folder, a tag, a member)
  * passes `resetOnSuccess` to clear itself after each success.
+ *
+ * Until the page hydrates, the submit button is disabled and the form posts rather than gets,
+ * so an early Enter can't put what was typed into the address bar.
  *
  * A form that edits saved values passes `discardable`: once its fields change, "Saved."
  * gives way to "Discard changes", and leaving the page asks first.
@@ -61,6 +66,7 @@ export function ActionForm({
     { state: {}, cleared: 0, saved: 0 },
   );
   const dirty = edits !== saved;
+  const hydrated = useSyncExternalStore(noSubscription, () => true, () => false);
 
   // After an error, focus the field it's about. After a remount, focus goes back to the field it was in.
   useEffect(() => {
@@ -91,10 +97,10 @@ export function ActionForm({
   }
 
   return (
-    <form ref={form} className={className} onSubmit={submit} onChange={() => setEdits((count) => count + 1)} aria-busy={pending || undefined}>
+    <form ref={form} method="post" className={className} onSubmit={submit} onChange={() => setEdits((count) => count + 1)} aria-busy={pending || undefined}>
       <Fragment key={`${cleared}.${discards}.${fieldsKey ?? ''}`}>{children}</Fragment>
       <div className="form-actions">
-        <button type="submit" className={submitClassName} aria-disabled={pending || undefined}>
+        <button type="submit" className={submitClassName} disabled={!hydrated} aria-disabled={pending || undefined}>
           {pending ? (pendingLabel ?? pendingText(submitLabel)) : submitLabel}
         </button>
         {discardable && dirty && !pending && (

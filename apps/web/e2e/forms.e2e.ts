@@ -161,6 +161,12 @@ test('a new project, branch and request keep what was typed after an error', asy
   await expect(page.getByRole('heading', { name: `Start working on ${name}` })).toBeVisible();
   await expect(page.getByText(`giga clone ${world.owner.handle}/${world.slug} --branch ${name}`)).toBeVisible();
 
+  // Once it has a change, the branch offers a release request.
+  const branches = await api(world.owner.token, 'GET', `/v1/projects/${world.projectId}/branches`);
+  const created = branches.find((branch: { name: string }) => branch.name === name);
+  await commitVersion(world.owner.token, world.projectId, created.id, { 'Bench.SLDASM': `wider ${randomUUID()}`, 'parts/Leg.SLDPRT': `leg ${world.slug}` });
+  await page.reload();
+
   // A title of only spaces is caught with a sentence, not a validator message, and the description stays.
   await page.getByLabel('Title').fill('   ');
   await page.getByLabel(/^Description/).fill('Wider legs');
@@ -310,7 +316,9 @@ test('a mistyped address inside a project keeps the shell and links back', async
   await page.getByRole('link', { name: 'Back to Test bench' }).click();
   await page.waitForURL(`**${projectUrl()}`);
 
-  // A missing branch's title doesn't repeat the name from the address.
+  // A missing branch's or folder's title doesn't repeat the name from the address.
   await page.goto(projectUrl('branches', 'secret-plans'));
+  await expect(page).toHaveTitle(/^Not found/);
+  await page.goto(projectUrl('tree', 'Docs', 'secret-plans'));
   await expect(page).toHaveTitle(/^Not found/);
 });

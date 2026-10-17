@@ -101,8 +101,12 @@ export async function updateProject(
     const { role } = await requireProjectRole(tx, projectId, userId, 'maintainer', { lock: true });
     const defined = Object.fromEntries(Object.entries(changes).filter(([, value]) => value !== undefined));
     const [before] = await tx<Record<string, unknown>[]>`select name, description, visibility, license from projects where id = ${projectId}`;
-    // The activity records what actually changed, as { from, to }, so a visibility flip is never lost among unchanged fields.
-    const changed = Object.fromEntries(Object.entries(defined).flatMap(([key, value]) => (before?.[key] === value ? [] : [[key, { from: before?.[key] ?? null, to: value }]])));
+    // The activity records only what changed, as { to }, so a visibility flip is never lost among unchanged fields.
+    // Only visibility keeps its { from }: an earlier name or description of a private project stays out of the
+    // feed, which everyone can read once the project is public.
+    const changed = Object.fromEntries(
+      Object.entries(defined).flatMap(([key, value]) => (before?.[key] === value ? [] : [[key, key === 'visibility' ? { from: before?.[key] ?? null, to: value } : { to: value }]])),
+    );
     if (changes.visibility === 'public') {
       const [row] = await tx<{ mustStayPrivate: boolean }[]>`select must_stay_private from projects where id = ${projectId}`;
       if (row?.mustStayPrivate) throw forbidden('A fork of a private project must stay private');

@@ -15,7 +15,7 @@ import {
   updateCandidateFiles,
   withdrawApproval,
 } from '../services/releaseRequests.js';
-import { approvedAlready, notifyReleaseRequest, type RequestNotice } from '../services/notices.js';
+import { approvedAlready, notifyReleaseRequest, sendLater, type RequestNotice } from '../services/notices.js';
 
 const picks = z.object({
   actions: z.record(z.uuid(), z.enum(['take_branch', 'keep_main'])).optional(),
@@ -23,9 +23,10 @@ const picks = z.object({
 });
 
 export function releaseRequestRoutes(app: FastifyInstance, { sql, mailer, webOrigin }: AppDeps): void {
-  /** Emails who the step concerns, after it commits; a mail failure is logged, never returned. */
-  const notify = async <T>(request: FastifyRequest, kind: RequestNotice, requestId: string, result: T): Promise<T> => {
-    if (mailer) await notifyReleaseRequest(sql, mailer, webOrigin, { kind, requestId, actorId: requireCaller(request).userId }).catch((error: unknown) => request.log.warn(error, 'release request notice not sent'));
+  /** Emails who the step concerns once it has committed, without making the response wait. */
+  const notify = <T>(request: FastifyRequest, kind: RequestNotice, requestId: string, result: T): T => {
+    const actorId = requireCaller(request).userId;
+    if (mailer) sendLater(request.log, 'release request notice', () => notifyReleaseRequest(sql, mailer, webOrigin, { kind, requestId, actorId }));
     return result;
   };
 

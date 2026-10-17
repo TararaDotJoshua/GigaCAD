@@ -1,13 +1,32 @@
 import { approverIneligibility, type ProjectRole } from '@gigacad/core';
+import type { FastifyBaseLogger } from 'fastify';
 import type { Sql } from '../db.js';
-import type { Mailer } from '../mail.js';
+import { sendAll, type MailMessage, type Mailer } from '../mail.js';
 import { loadApprovalRules } from './projects.js';
 
 /**
  * Short emails telling people about changes someone else made to their access or work:
  * a new role, being removed from a project, a project deleted, and a release request moving
- * on. (Locks that someone else releases are told from branches.ts.) They're sent after the change commits, and a mail failure never undoes it.
+ * on. (Locks that someone else releases are told from branches.ts.)
+ *
+ * Routes send them with `sendLater`, after the change has committed and without making the
+ * response wait. A failed email is logged; it never undoes the change or stops the others.
  */
+
+const inFlight = new Set<Promise<void>>();
+
+/** Starts a notice without waiting for it, and logs it if it fails. */
+export function sendLater(log: FastifyBaseLogger, what: string, run: () => Promise<void>): void {
+  const sending: Promise<void> = run()
+    .catch((error: unknown) => log.warn(error, `${what} not sent`))
+    .finally(() => inFlight.delete(sending));
+  inFlight.add(sending);
+}
+
+/** Resolves once every notice started so far has been sent or has failed. For tests and shutdown. */
+export async function noticesSettled(): Promise<void> {
+  while (inFlight.size > 0) await Promise.allSettled([...inFlight]);
+}
 
 interface Place {
   projectName: string;
@@ -69,14 +88,14 @@ export async function notifyProjectDeleted(sql: Sql, mailer: Mailer, deleted: { 
     join auth.users u on u.id = m.user_id
     where m.project_id = ${deleted.projectId} and m.user_id <> ${deleted.actorId}
   `;
-  for (const row of rows) {
-    if (!row.email) continue;
-    await mailer.send({
-      to: row.email,
-      subject: `@${row.actorHandle} deleted ${row.projectName}`,
-      text: [`@${row.actorHandle} deleted ${row.projectName} on GigaCAD. Its owner can restore it, with everything in it, for 30 days.`].join('\n'),
-    });
-  }
+  await sendAll(
+    mailer,
+    rows.flatMap((row) =>
+      row.email
+        ? [{ to: row.email, subject: `@${row.actorHandle} deleted ${row.projectName}`, text: `@${row.actorHandle} deleted ${row.projectName} on GigaCAD. Its owner can restore it, with everything in it, for 30 days.` }]
+        : [],
+    ),
+  );
 }
 
 export type RequestNotice = 'candidate' | 'approved' | 'released' | 'closed';
@@ -98,9 +117,13 @@ const CANDIDATE_QUIET_MINUTES = 30;
  * a release, or a close by someone else tells the requester.
  */
 export async function notifyReleaseRequest(sql: Sql, mailer: Mailer, webOrigin: string, notice: { kind: RequestNotice; requestId: string; actorId: string }): Promise<void> {
-  const [request] = await sql<(Place & { projectId: string; number: number; title: string; requesterId: string | null; requesterEmail: string | null; status: string })[]>`
+  const [request] = await sql<
+    (Place & { projectId: string; number: number; title: string; requesterId: string | null; requesterEmail: string | null; requesterCanSee: boolean; status: string })[]
+  >`
     select r.project_id, r.number, r.title, r.requester_id, r.status, ru.email as requester_email,
-      p.name as project_name, o.handle as owner_handle, p.slug, a.handle as actor_handle
+      p.name as project_name, o.handle as owner_handle, p.slug, a.handle as actor_handle,
+      -- Someone removed from a private project hears nothing more about it.
+      (p.visibility = 'public' or exists (select 1 from project_members m where m.project_id = r.project_id and m.user_id = r.requester_id)) as requester_can_see
     from release_requests r
     join projects p on p.id = r.project_id
     join profiles o on o.id = p.owner_id
@@ -116,7 +139,7 @@ export async function notifyReleaseRequest(sql: Sql, mailer: Mailer, webOrigin: 
     if (request.status !== 'candidate') return;
     const [recent] = await sql<{ count: number }[]>`
       select count(*)::int as count from project_events
-      where subject_id = ${notice.requestId} and kind = 'release_request_candidate_generated'
+      where project_id = ${request.projectId} and subject_id = ${notice.requestId} and kind = 'release_request_candidate_generated'
         and created_at > now() - make_interval(mins => ${CANDIDATE_QUIET_MINUTES})
     `;
     if ((recent?.count ?? 0) > 1) return;
@@ -126,19 +149,21 @@ export async function notifyReleaseRequest(sql: Sql, mailer: Mailer, webOrigin: 
       select m.user_id, m.role, u.email from project_members m left join auth.users u on u.id = m.user_id
       where m.project_id = ${request.projectId}
     `;
-    for (const member of members) {
-      if (!member.email || member.userId === notice.actorId) continue;
-      if (approverIneligibility(rules, member.userId, member.role, request.requesterId ?? '')) continue;
-      await mailer.send({
-        to: member.email,
-        subject: `Review ${name} in ${request.projectName}`,
-        text: [`The candidate for ${name} in ${request.projectName} is ready, and you can approve it.`, '', 'Check the files it will release, then approve it or leave it for now.', '', url].join('\n'),
-      });
-    }
-    return;
+    const messages: MailMessage[] = members.flatMap((member) =>
+      member.email && member.userId !== notice.actorId && !approverIneligibility(rules, member.userId, member.role, request.requesterId ?? '')
+        ? [
+            {
+              to: member.email,
+              subject: `Review ${name} in ${request.projectName}`,
+              text: [`The candidate for ${name} in ${request.projectName} is ready, and you can approve it.`, '', 'Check the files it will release, then approve it or leave it for now.', '', url].join('\n'),
+            },
+          ]
+        : [],
+    );
+    return sendAll(mailer, messages);
   }
 
-  if (!request.requesterEmail || request.requesterId === notice.actorId) return;
+  if (!request.requesterEmail || request.requesterId === notice.actorId || !request.requesterCanSee) return;
   const said: Record<Exclude<RequestNotice, 'candidate'>, { subject: string; line: string }> = {
     approved: { subject: `@${request.actorHandle} approved ${name}`, line: `@${request.actorHandle} approved the candidate for ${name} in ${request.projectName}.` },
     released: { subject: `@${request.actorHandle} released ${name}`, line: `@${request.actorHandle} released ${name} in ${request.projectName}. Its files are now on main.` },

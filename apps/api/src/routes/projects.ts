@@ -19,7 +19,7 @@ import {
   setMember,
   updateProject,
 } from '../services/projects.js';
-import { notifyMemberRemoved, notifyProjectDeleted, notifyRoleChanged } from '../services/notices.js';
+import { notifyMemberRemoved, notifyProjectDeleted, notifyRoleChanged, sendLater } from '../services/notices.js';
 import { getRelease, listReleases, releaseArchive } from '../services/releases.js';
 import { contentDisposition } from '../storage.js';
 
@@ -28,6 +28,14 @@ export const visibility = z.enum(['public', 'private']);
 export const slug = z.string().regex(/^[a-z0-9](?:[a-z0-9._-]{0,98}[a-z0-9])?$/, 'Use lowercase letters, digits, dots, dashes, or underscores');
 
 export function projectRoutes(app: FastifyInstance, { sql, storage, mailer, webOrigin }: AppDeps): void {
+  /** Someone's role in the project before a change, to tell them what changed. Null if they aren't a member. */
+  const memberRole = async (projectId: string, handle: string) => {
+    const [row] = await sql<{ role: string }[]>`
+      select m.role from project_members m join profiles p on p.id = m.user_id where m.project_id = ${projectId} and p.handle = ${handle}
+    `;
+    return row?.role ?? null;
+  };
+
   app.post('/v1/projects', async (request, reply) => {
     const { userId } = requireCaller(request);
     const input = parse(
@@ -70,7 +78,7 @@ export function projectRoutes(app: FastifyInstance, { sql, storage, mailer, webO
     const { id } = parse(idParams, request.params);
     const actorId = requireCaller(request).userId;
     await deleteProject(sql, id, actorId);
-    if (mailer) await notifyProjectDeleted(sql, mailer, { projectId: id, actorId }).catch((error: unknown) => request.log.warn(error, 'deletion notice not sent'));
+    if (mailer) sendLater(request.log, 'deletion notice', () => notifyProjectDeleted(sql, mailer, { projectId: id, actorId }));
     reply.status(204);
   });
 
@@ -89,13 +97,12 @@ export function projectRoutes(app: FastifyInstance, { sql, storage, mailer, webO
   app.put('/v1/projects/:id/members', async (request) => {
     const { id } = parse(idParams, request.params);
     const input = parse(z.object({ handle: z.string().min(1).max(39), role }), request.body);
-    const [before] = await sql<{ role: string }[]>`
-      select m.role from project_members m join profiles p on p.id = m.user_id where m.project_id = ${id} and p.handle = ${input.handle}
-    `;
+    const before = await memberRole(id, input.handle);
     const added = await setMember(sql, id, requireCaller(request).userId, input.handle, input.role);
     if (added && mailer) await notifyNewMember(mailer, webOrigin, added).catch((error: unknown) => request.log.warn(error, 'member notice not sent'));
-    if (before && before.role !== input.role && mailer) {
-      await notifyRoleChanged(sql, mailer, webOrigin, { projectId: id, handle: input.handle, role: input.role, actorId: requireCaller(request).userId }).catch((error: unknown) => request.log.warn(error, 'role notice not sent'));
+    if (before && before !== input.role && mailer) {
+      const change = { projectId: id, handle: input.handle, role: input.role, actorId: requireCaller(request).userId };
+      sendLater(request.log, 'role notice', () => notifyRoleChanged(sql, mailer, webOrigin, change));
     }
     return withAvatars(storage, await listMembers(sql, id, requireCaller(request).userId));
   });
@@ -103,8 +110,10 @@ export function projectRoutes(app: FastifyInstance, { sql, storage, mailer, webO
   app.delete('/v1/projects/:id/members/:handle', async (request) => {
     const { id, handle } = parse(idParams.extend({ handle: z.string().min(1).max(39) }), request.params);
     const actorId = requireCaller(request).userId;
+    const was = await memberRole(id, handle);
     await setMember(sql, id, actorId, handle, null);
-    if (mailer) await notifyMemberRemoved(sql, mailer, webOrigin, { projectId: id, handle, actorId }).catch((error: unknown) => request.log.warn(error, 'removal notice not sent'));
+    // Only someone who was a member is told they were removed, and only once.
+    if (was && mailer) sendLater(request.log, 'removal notice', () => notifyMemberRemoved(sql, mailer, webOrigin, { projectId: id, handle, actorId }));
     return withAvatars(storage, await listMembers(sql, id, requireCaller(request).userId));
   });
 

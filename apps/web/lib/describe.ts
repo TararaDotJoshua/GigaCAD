@@ -132,16 +132,16 @@ const PROJECT_FIELDS: Readonly<Record<string, string>> = { name: 'name', descrip
 
 /** "renamed the project to Rover", "made the project public", "changed the description". */
 function projectChanges(payload: Record<string, unknown>): string {
-  const parts = Object.entries(payload).flatMap(([field, value]) => {
-    // Older events recorded the fields sent, not { from, to }.
-    const change = value && typeof value === 'object' && 'to' in value ? (value as { from: unknown; to: unknown }) : { from: undefined, to: value };
-    if (field === 'visibility') return [`made the project ${String(change.to)}`];
-    if (field === 'name') return [change.from === undefined ? 'saved the project name' : `renamed the project from ${String(change.from)} to ${String(change.to)}`];
-    if (field === 'license') return [change.to ? `set the license to ${String(change.to)}` : 'removed the license'];
-    if (PROJECT_FIELDS[field]) return [`changed the ${PROJECT_FIELDS[field]}`];
-    return [];
+  const changes = Object.entries(payload).filter(([field]) => PROJECT_FIELDS[field]);
+  // Older events recorded every field the form sent, changed or not, so they can't say what changed.
+  if (changes.length === 0 || changes.some(([, value]) => !value || typeof value !== 'object' || !('to' in value))) return 'changed the project settings';
+  const parts = changes.map(([field, value]) => {
+    const to = (value as { to: unknown }).to;
+    if (field === 'visibility') return `made the project ${String(to)}`;
+    if (field === 'name') return `renamed the project to ${String(to)}`;
+    if (field === 'license') return to ? `set the license to ${String(to)}` : 'removed the license';
+    return `changed the ${PROJECT_FIELDS[field]}`;
   });
-  if (parts.length === 0) return 'changed the project settings';
   return parts.length === 1 ? parts[0]! : `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
 }
 

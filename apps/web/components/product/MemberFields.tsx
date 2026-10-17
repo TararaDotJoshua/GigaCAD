@@ -3,6 +3,7 @@
 import type { ProjectRole } from '@gigacad/core';
 import { useEffect, useId, useState, useTransition } from 'react';
 import { changeMemberRole, findPeople, type ActionState } from '../../app/(product)/actions';
+import { safeAction } from '../../lib/safe-action';
 import { FormStatus } from './ActionButton';
 
 /** What each role can do, one line each, said the same way wherever a role is picked. */
@@ -88,7 +89,7 @@ export function MemberRole({ projectId, handle, role, canAddMaintainers }: { pro
         onChange={(event) => {
           const select = event.target;
           start(async () => {
-            const result = await changeMemberRole(projectId, handle, select.value);
+            const result = await safeAction(() => changeMemberRole(projectId, handle, select.value));
             if (result.error) select.value = role;
             setState(result);
           });

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Mailer } from '../src/mail.js';
+import { noticesSettled } from '../src/services/notices.js';
 import { client, commitVersion, createHarness, createUser, type Client, type Harness, type TestUser } from './helpers.js';
 
 // Who hears about changes made to their access and work, and what the activity feed records.
@@ -15,10 +16,24 @@ let asContributor: Client;
 let projectId: string;
 let name: string;
 const sent: Parameters<Mailer['send']>[0][] = [];
+/** How many of the next sends fail, like a Resend 429. */
+let failing = 0;
 const about = (text: string) => sent.filter((message) => message.subject.includes(text));
+/** Notices go out after the response; wait for them before looking. */
+const mail = async (text: string) => {
+  await noticesSettled();
+  return about(text);
+};
 
 beforeAll(async () => {
-  harness = await createHarness({ mailer: { send: async (message) => void sent.push(message) } });
+  harness = await createHarness({
+    mailer: {
+      send: async (message) => {
+        if (failing > 0 && failing--) throw new Error('Resend returned HTTP 429');
+        sent.push(message);
+      },
+    },
+  });
   [owner, maintainer, contributor] = await Promise.all([createUser(harness, 'owner'), createUser(harness, 'maint'), createUser(harness, 'contrib')]);
   asOwner = client(harness, owner);
   asMaintainer = client(harness, maintainer);
@@ -51,14 +66,14 @@ describe('release request notices', () => {
     requestId = opened.body.releaseRequest.id;
     await asContributor.post(`/v1/release-requests/${requestId}/candidate`);
 
-    const reviews = about(`Review #${opened.body.releaseRequest.number} Wider bench`);
+    const reviews = await mail(`Review #${opened.body.releaseRequest.number} Wider bench`);
     expect(reviews).toHaveLength(1);
     expect(reviews[0]!.text).toContain('you can approve it');
     expect(reviews[0]!.text).toMatch(/\/release-requests\/\d+$/);
 
     // Rebuilding right away doesn't email again.
     await asContributor.post(`/v1/release-requests/${requestId}/candidate`);
-    expect(about('Review #')).toHaveLength(1);
+    expect(await mail('Review #')).toHaveLength(1);
   });
 
   it('tells the requester when someone approves or closes it, and records one approval per candidate', async () => {
@@ -66,11 +81,11 @@ describe('release request notices', () => {
     const body = { candidateManifestId: detail.candidate.manifestId };
     expect((await asMaintainer.post(`/v1/release-requests/${requestId}/approvals`, body)).status).toBe(200);
     expect((await asMaintainer.post(`/v1/release-requests/${requestId}/approvals`, body)).status).toBe(200);
-    expect(about(`@${maintainer.handle} approved`)).toHaveLength(1);
+    expect(await mail(`@${maintainer.handle} approved`)).toHaveLength(1);
     expect((await events()).filter((event) => event.kind === 'release_request_approved')).toHaveLength(1);
 
     await asOwner.post(`/v1/release-requests/${requestId}/close`);
-    const closed = about(`@${owner.handle} closed`);
+    const closed = await mail(`@${owner.handle} closed`);
     expect(closed).toHaveLength(1);
     expect(closed[0]!.text).toContain('open for work again');
   });
@@ -80,33 +95,55 @@ describe('member notices', () => {
   it('tells someone their new role, and that they were removed', async () => {
     const guest = await createUser(harness, 'guest');
     await asOwner.put(`/v1/projects/${projectId}/members`, { handle: guest.handle, role: 'viewer' });
-    expect(about(`added you to ${name}`).length).toBeGreaterThan(0);
+    expect((await mail(`added you to ${name}`)).length).toBeGreaterThan(0);
     await asOwner.put(`/v1/projects/${projectId}/members`, { handle: guest.handle, role: 'contributor' });
-    expect(about(`You're now a contributor on ${name}`)).toHaveLength(1);
+    expect(await mail(`You're now a contributor on ${name}`)).toHaveLength(1);
     // Saving the same role again isn't news.
     await asOwner.put(`/v1/projects/${projectId}/members`, { handle: guest.handle, role: 'contributor' });
-    expect(about(`You're now a contributor on ${name}`)).toHaveLength(1);
+    expect(await mail(`You're now a contributor on ${name}`)).toHaveLength(1);
 
     // Their work keeps their name in the feed after they leave.
     const asGuest = client(harness, guest);
     expect((await asGuest.post(`/v1/projects/${projectId}/branches`, { name: 'guest-idea' })).status).toBe(201);
     await asOwner.delete(`/v1/projects/${projectId}/members/${guest.handle}`);
-    expect(about(`removed you from ${name}`)).toHaveLength(1);
+    expect(await mail(`removed you from ${name}`)).toHaveLength(1);
     const created = (await events()).find((event) => event.kind === 'branch_created' && event.payload.name === 'guest-idea');
     expect(created?.actorHandle).toBe(guest.handle);
+  });
+
+  it('tells no one they were removed when they were never a member', async () => {
+    const stranger = await createUser(harness, 'stranger');
+    await asOwner.delete(`/v1/projects/${projectId}/members/${stranger.handle}`);
+    expect(await mail(`removed you from ${name}`)).toHaveLength(1);
+  });
+
+  it('stops telling someone about their request once they leave a private project', async () => {
+    const leaver = await createUser(harness, 'leaver');
+    await asOwner.put(`/v1/projects/${projectId}/members`, { handle: leaver.handle, role: 'contributor' });
+    const asLeaver = client(harness, leaver);
+    const branch = await asLeaver.post(`/v1/projects/${projectId}/branches`, { name: `leaving-${randomUUID().slice(0, 4)}` });
+    await commitVersion(harness, asLeaver, projectId, branch.body.id, { 'Leaving.SLDPRT': `leaving ${randomUUID()}` });
+    const opened = await asLeaver.post(`/v1/branches/${branch.body.id}/release-requests`, { title: 'Left behind' });
+    await asOwner.delete(`/v1/projects/${projectId}/members/${leaver.handle}`);
+    await asOwner.post(`/v1/release-requests/${opened.body.releaseRequest.id}/close`);
+    expect(await mail('closed #')).toHaveLength(1);
+    expect(await mail('Left behind')).toHaveLength(0);
   });
 });
 
 describe('the activity feed', () => {
-  it('records only what changed in the project, as from and to', async () => {
+  it('records only what changed in the project, and an earlier value only for visibility', async () => {
     await asOwner.patch(`/v1/projects/${projectId}`, { name, description: 'Oak top', visibility: 'private' });
     const [latest] = await events('order=desc&limit=1');
     expect(latest!.kind).toBe('project_updated');
-    expect(Object.keys(latest!.payload)).toEqual(['description']);
-    expect(latest!.payload.description.to).toBe('Oak top');
+    expect(latest!.payload).toEqual({ description: { to: 'Oak top' } });
+    await asOwner.patch(`/v1/projects/${projectId}`, { visibility: 'public' });
+    expect((await events('order=desc&limit=1'))[0]!.payload).toEqual({ visibility: { from: 'private', to: 'public' } });
+    await asOwner.patch(`/v1/projects/${projectId}`, { visibility: 'private' });
     // Saving the same values again records nothing.
+    const [unchanged] = await events('order=desc&limit=1');
     await asOwner.patch(`/v1/projects/${projectId}`, { name, description: 'Oak top' });
-    expect((await events('order=desc&limit=1'))[0]!.id).toBe(latest!.id);
+    expect((await events('order=desc&limit=1'))[0]!.id).toBe(unchanged!.id);
   });
 
   it('pages back through older events', async () => {
@@ -128,10 +165,14 @@ describe('the activity feed', () => {
 });
 
 describe('deleting a project', () => {
-  it('tells its other members, not the person who deleted it', async () => {
-    const before = about(`deleted ${name}`).length;
+  it('tells its other members, and one failed email doesn’t stop the rest', async () => {
+    const before = (await mail(`deleted ${name}`)).length;
+    failing = 1;
     expect((await asOwner.delete(`/v1/projects/${projectId}`)).status).toBe(204);
-    expect(about(`deleted ${name}`)).toHaveLength(before + 2);
-    expect(about(`deleted ${name}`)[0]!.text).toContain('restore it, with everything in it, for 30 days');
+    // Two other members: one send failed, the other still went out.
+    const deleted = await mail(`deleted ${name}`);
+    expect(deleted).toHaveLength(before + 1);
+    expect(deleted[0]!.text).toContain('restore it, with everything in it, for 30 days');
+    expect(failing).toBe(0);
   });
 });

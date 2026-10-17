@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Mailer } from '../src/mail.js';
+import { noticesSettled } from '../src/services/notices.js';
 import { client, createHarness, createUser, type Client, type Harness, type TestUser } from './helpers.js';
 
 let harness: Harness;
@@ -45,8 +46,9 @@ describe('adding a member', () => {
     expect(notices[0]!.text).toContain('as a viewer');
     expect(notices[0]!.text).toContain(`http://localhost:3000/${owner.handle}/`);
 
-    // A new role gets its own short notice, not a second welcome.
+    // A new role gets its own short notice, not a second welcome. It goes out after the response.
     await asOwner.put(`/v1/projects/${projectId}/members`, { handle: teammate.handle, role: 'contributor' });
+    await noticesSettled();
     expect(sent.filter((message) => message.subject.includes('added you to Team bench'))).toHaveLength(1);
     expect(sent.filter((message) => message.subject === "You're now a contributor on Team bench")).toHaveLength(1);
   });

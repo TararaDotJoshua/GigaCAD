@@ -147,6 +147,10 @@ export async function forkProject(
   if (!release) throw input.releaseNumber ? notFound('Release') : unprocessable('nothing_to_fork', 'This project has no releases to fork yet');
   const [owner] = await sql<{ handle: string }[]>`select handle from profiles where id = ${source.ownerId}`;
   const entries = await loadManifest(sql, release.manifestId);
+  // A release made just before the deploy that added export snapshots gets its snapshot from a job
+  // within a minute; a fork in that window takes it now rather than copying no exports.
+  const [snapshotted] = await sql`select 1 from release_export_snapshots where release_id = ${release.id}`;
+  if (!snapshotted) await sql.begin((tx) => snapshotReleaseExports(tx, sourceId, release.id, release.manifestId));
   // The STEP and STL exports the release was made with come along, so the fork can be downloaded and previewed the same way.
   const exports = await sql<{ sourceSha256: string; format: string; blobSha256: string }[]>`
     select source_sha256, format, blob_sha256 from release_exports where release_id = ${release.id}

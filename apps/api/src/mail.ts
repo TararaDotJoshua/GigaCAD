@@ -31,7 +31,12 @@ export function createResendMailer(config: { apiKey: string; from: string }): Ma
   return {
     send: (message) => post('/emails', email(message)),
     async sendBatch(messages) {
-      for (let start = 0; start < messages.length; start += BATCH_SIZE) await post('/emails/batch', messages.slice(start, start + BATCH_SIZE).map(email));
+      // Each batch goes out whatever happened to the one before; failures are reported together at the end.
+      const failed: unknown[] = [];
+      for (let start = 0; start < messages.length; start += BATCH_SIZE) {
+        await post('/emails/batch', messages.slice(start, start + BATCH_SIZE).map(email)).catch((error: unknown) => failed.push(error));
+      }
+      if (failed.length > 0) throw new AggregateError(failed, `${failed.length} of ${Math.ceil(messages.length / BATCH_SIZE)} email batches not sent`);
     },
   };
 }

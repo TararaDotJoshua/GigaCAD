@@ -104,50 +104,53 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 }
 
 function ProjectTable({ projects, label, showRole, leaveAs }: { projects: Project[]; label: string; showRole: boolean; leaveAs?: string }) {
+  // Scrolls sideways inside itself, never the page, whatever the names.
   return (
-    <table className="data-table" aria-label={label}>
-      <thead>
-        <tr>
-          <th scope="col">Project</th>
-          {showRole && <th scope="col">Your role</th>}
-          <th scope="col">Visibility</th>
-          <th scope="col">Latest release</th>
-          {leaveAs && (
-            <th scope="col">
-              <span className="sr-only">Actions</span>
-            </th>
-          )}
-        </tr>
-      </thead>
-      <tbody>
-        {projects.map((project) => (
-          <tr key={project.id}>
-            <td>
-              <Link href={projectPath(project.ownerHandle, project.slug)} className="row-link">
-                <strong>{project.name}</strong>
-                <span className="mono muted">
-                  {project.ownerHandle}/{project.slug}
-                </span>
-              </Link>
-            </td>
-            {showRole && <td className="muted role">{project.role ?? 'viewer'}</td>}
-            <td className="muted">{project.visibility === 'public' ? 'Public' : 'Private'}</td>
-            <td className="mono">{project.latestReleaseNumber ? `v${project.latestReleaseNumber}` : <span className="muted">None yet</span>}</td>
+    <div className="table-wrap">
+      <table className="data-table" aria-label={label}>
+        <thead>
+          <tr>
+            <th scope="col">Project</th>
+            {showRole && <th scope="col">Your role</th>}
+            <th scope="col">Visibility</th>
+            <th scope="col">Latest release</th>
             {leaveAs && (
-              <td className="cell-action">
-                <ActionButton
-                  action={leaveProject.bind(null, project.id, leaveAs)}
-                  className="btn btn-secondary btn-small"
-                  confirm={`Leave ${project.name}? You lose access unless someone adds you again.`}
-                  ariaLabel={`Leave ${project.ownerHandle}/${project.slug}`}
-                >
-                  Leave
-                </ActionButton>
-              </td>
+              <th scope="col">
+                <span className="sr-only">Actions</span>
+              </th>
             )}
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {projects.map((project) => (
+            <tr key={project.id}>
+              <td>
+                <Link href={projectPath(project.ownerHandle, project.slug)} className="row-link">
+                  <strong>{project.name}</strong>
+                  <span className="mono muted">
+                    {project.ownerHandle}/{project.slug}
+                  </span>
+                </Link>
+              </td>
+              {showRole && <td className="muted role">{project.role ?? 'viewer'}</td>}
+              <td className="muted">{project.visibility === 'public' ? 'Public' : 'Private'}</td>
+              <td className="mono">{project.latestReleaseNumber ? `v${project.latestReleaseNumber}` : <span className="muted">None yet</span>}</td>
+              {leaveAs && (
+                <td className="cell-action">
+                  <ActionButton
+                    action={leaveProject.bind(null, project.id, leaveAs)}
+                    className="btn btn-secondary btn-small"
+                    confirm={`Leave ${project.name}? You lose access unless someone adds you again.`}
+                    ariaLabel={`Leave ${project.ownerHandle}/${project.slug}`}
+                  >
+                    Leave
+                  </ActionButton>
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

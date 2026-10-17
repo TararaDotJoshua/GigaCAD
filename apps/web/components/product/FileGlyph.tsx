@@ -12,8 +12,8 @@ export function FileGlyph({ path, thumbnailUrl }: { path: string; thumbnailUrl?:
   const [, Icon, label] = KINDS.find(([pattern]) => pattern.test(path)) ?? [null, FileIcon, 'File'];
   if (thumbnailUrl) {
     return (
-      <span className="file-glyph has-thumbnail">
-        <ZoomableThumbnail src={thumbnailUrl} size={36} />
+      <span className="file-glyph has-thumbnail" title={label}>
+        <ZoomableThumbnail src={thumbnailUrl} size={36} label={`${label} thumbnail`} />
       </span>
     );
   }

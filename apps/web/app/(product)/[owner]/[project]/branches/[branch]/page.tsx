@@ -1,5 +1,6 @@
 import { diffManifests } from '@gigacad/core';
 import Link from 'next/link';
+import { permanentRedirect } from 'next/navigation';
 import { archiveBranch, forceReleaseLock, openReleaseRequest } from '../../../../actions';
 import { ActionButton } from '../../../../../../components/product/ActionButton';
 import { ActionForm } from '../../../../../../components/product/ActionForm';
@@ -7,12 +8,12 @@ import { ChangeList, changeSummary } from '../../../../../../components/product/
 import { CopyCommand } from '../../../../../../components/product/CopyCommand';
 import { EmptyState } from '../../../../../../components/product/EmptyState';
 import { PageHead } from '../../../../../../components/product/PageHead';
-import { ProjectDirectory } from '../../../../../../components/product/ProjectDirectory';
+import { ProjectDirectory, type DirectoryParams } from '../../../../../../components/product/ProjectDirectory';
 import { RelativeTime } from '../../../../../../components/product/RelativeTime';
 import { StatusBadge } from '../../../../../../components/product/StatusBadge';
 import { sites } from '../../../../../../lib/hosts';
 import { BRANCH_STATUS_LABEL, branchTone, groupTimeline } from '../../../../../../lib/describe';
-import { commitPath, projectPath, releasePath, releaseRequestPath } from '../../../../../../lib/paths';
+import { branchPath, commitPath, projectPath, releasePath, releaseRequestPath } from '../../../../../../lib/paths';
 import { getBranchByName, getBranchDetail, getCommits, getProject, getRelease, getReleaseRequests, getViewer } from '../../../../../../lib/product';
 import type { ProjectParams } from '../../layout';
 
@@ -26,10 +27,12 @@ export async function generateMetadata({ params }: { params: Promise<ProjectPara
   return { title: `${branch.name} · ${owner}/${project}` };
 }
 
-export default async function BranchPage({ params }: { params: Promise<ProjectParams & { branch: string }> }) {
-  const { owner, project: slug, branch: name } = await params;
+export default async function BranchPage({ params, searchParams }: { params: Promise<ProjectParams & { branch: string }>; searchParams: Promise<DirectoryParams> }) {
+  const [{ owner, project: slug, branch: name }, { sort, order, offset }] = await Promise.all([params, searchParams]);
   const project = await getProject(owner, slug);
   const branch = await getBranchByName(project.id, name);
+  // Branch names match case-insensitively; the address settles on the branch's own spelling.
+  if (branch.name !== name) permanentRedirect(branchPath(owner, slug, branch.name));
   const [detail, commits, requests, viewer] = await Promise.all([getBranchDetail(branch.id), getCommits(branch.id), getReleaseRequests(project.id), getViewer()]);
   const base = branch.baseReleaseNumber ? await getRelease(project.id, branch.baseReleaseNumber) : null;
   const changes = diffManifests(base?.files ?? [], detail.files);
@@ -89,7 +92,15 @@ export default async function BranchPage({ params }: { params: Promise<ProjectPa
           {!(fresh && !branch.baseReleaseNumber) && (
             <section className="section">
               <h2>Files</h2>
-              <ProjectDirectory project={project} path={`Branches/${branch.name}`} params={{}} signedIn={!!viewer} viewerHandle={viewer?.handle ?? null} embedded />
+              <ProjectDirectory
+                project={project}
+                path={`Branches/${branch.name}`}
+                params={{ sort, order, offset }}
+                signedIn={!!viewer}
+                viewerHandle={viewer?.handle ?? null}
+                embedded
+                basePath={branchPath(owner, slug, branch.name)}
+              />
             </section>
           )}
           <section className="section">

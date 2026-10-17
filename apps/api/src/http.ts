@@ -31,3 +31,5 @@ export const viewerId = (request: FastifyRequest): string | null => request.call
 
 export const idParams = z.object({ id: z.uuid() });
 export const sha256Schema = z.string().regex(/^[0-9a-f]{64}$/, 'Expected a lowercase hex SHA-256');
+/** Release numbers are Postgres `int`s, so a larger number can't name a release; it's refused before reaching the database. */
+export const releaseNumberSchema = z.coerce.number().int().positive().max(2_147_483_647);

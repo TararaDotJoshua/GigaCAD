@@ -41,6 +41,8 @@ const PG_UNIQUE_VIOLATION = '23505';
 const PG_FOREIGN_KEY_VIOLATION = '23503';
 /** Text Postgres can't store: a NUL character, or bytes that aren't valid UTF-8. */
 const PG_BAD_TEXT = new Set(['22021', '22P05']);
+// A number too large for its column, like a release number past the `int` range.
+const PG_OUT_OF_RANGE = '22003';
 
 export function buildApp(deps: AppDeps): FastifyInstance {
   // Trusting a count of hops, like proxy-addr's numeric option: the socket's peer is hop 0.
@@ -66,6 +68,9 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     }
     if (error.code === PG_UNIQUE_VIOLATION) {
       return reply.status(409).send({ error: { code: 'already_exists', message: 'That already exists' } });
+    }
+    if (error.code === PG_OUT_OF_RANGE) {
+      return reply.status(422).send({ error: { code: 'out_of_range', message: 'A number in the request is too large' } });
     }
     if (error.code === PG_FOREIGN_KEY_VIOLATION) {
       request.log.warn(error);

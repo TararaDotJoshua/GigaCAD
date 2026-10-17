@@ -57,7 +57,20 @@ function id(value: string): string {
 const json = (method: string, body?: unknown): RequestInit => ({ method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
 
 /** Errors about what was typed, which send focus back to the field. */
-const FIELD_ERRORS = new Set(['invalid_request', 'already_exists', 'branch_exists', 'name_taken', 'invalid_name', 'reserved_name', 'tag_exists', 'invalid_tag', 'not_found']);
+const FIELD_ERRORS = new Set([
+  'invalid_request',
+  'already_exists',
+  'branch_exists',
+  'branch_exists_archived',
+  'handle_taken',
+  'handle_unavailable',
+  'name_taken',
+  'invalid_name',
+  'reserved_name',
+  'tag_exists',
+  'invalid_tag',
+  'not_found',
+]);
 
 /** An API error as form state. `field` is the input it's about, if it's about what was typed. */
 function failure(error: unknown, field?: string): ActionState {
@@ -328,10 +341,12 @@ export async function restoreProject(projectId: string): Promise<ActionState> {
   redirect(`${projectPath(project.ownerHandle, project.slug)}?restored=1`);
 }
 
-/** A short-lived download link with the file's real name. It is never rendered into a page. */
+/**
+ * A short-lived download link with the file's real name. It is never rendered into a page.
+ * No session is fine: anyone can download from a public project, and the API decides.
+ */
 export async function downloadLink(projectId: string, sha256: string, filename: string): Promise<{ url?: string; error?: string }> {
   const token = await getAccessToken();
-  if (!token) return SIGNED_OUT;
   try {
     const plan = await apiRequest<{ downloads: { sha256: string; url: string }[] }>(
       token,

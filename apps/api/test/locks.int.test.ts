@@ -109,8 +109,19 @@ describe('archiving a branch', () => {
     expect(released.payload).not.toHaveProperty('reason');
     expect(released.payload).not.toHaveProperty('previousHolder');
     expect(released.payload).not.toHaveProperty('machine');
+    const archive = seen.find((event) => event.kind === 'branch_archived')!;
+    expect(archive.payload).toEqual({ name: branch.name });
     const archived = (await client(harness, null).get(`/v1/branches/${branch.id}`)).body.branch;
     expect(archived).toMatchObject({ status: 'archived', archivedByHandle: null });
+
+    // The anon key reads events through the Data API too: the lock release stays hidden there,
+    // and the archive event names no one.
+    const rows = await harness.sql.begin(async (tx) => {
+      await tx`set local role anon`;
+      return tx<{ kind: string; payload: Record<string, unknown> }[]>`select kind, payload from project_events where project_id = ${projectId}`;
+    });
+    expect(rows.map((row) => row.kind)).not.toContain('branch_lock_force_released');
+    for (const row of rows) expect(JSON.stringify(row.payload)).not.toContain(maker.id);
   });
 
   it('sends no notice when nobody held it, and refuses released branches', async () => {

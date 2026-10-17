@@ -327,7 +327,9 @@ export async function archiveBranch(sql: Sql, branchId: string, userId: string):
       actorId: userId,
       kind: 'branch_archived',
       subjectId: branchId,
-      payload: { name: branch.name, previousHolder: branch.checkedOutBy },
+      // Outsiders can read this event (LiveRefresh needs it), so it names no one; the lock
+      // release above records the holder where only members can see it.
+      payload: { name: branch.name },
     });
     return { branch: await branchView(tx, branchId), notice };
   });

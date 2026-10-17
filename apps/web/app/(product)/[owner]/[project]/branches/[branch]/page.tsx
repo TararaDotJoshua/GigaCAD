@@ -135,6 +135,12 @@ export default async function BranchPage({ params }: { params: Promise<ProjectPa
           {!(fresh && !branch.baseReleaseNumber) && (
             <section className="section">
               <h2>Files</h2>
+              {detail.head.kind === 'autosave' && (
+                <p className="muted">
+                  These include unsaved work: an autosave from <RelativeTime value={detail.head.createdAt} />
+                  {detail.head.authorHandle ? ` by @${detail.head.authorHandle}` : ''}, not yet committed as a version.
+                </p>
+              )}
               <ProjectDirectory project={project} path={`Branches/${branch.name}`} params={{}} signedIn={!!viewer} viewerHandle={viewer?.handle ?? null} embedded />
             </section>
           )}

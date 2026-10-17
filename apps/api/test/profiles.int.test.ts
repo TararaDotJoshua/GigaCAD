@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { encodePng } from '../src/thumbnails/png.js';
+import { deflateSync } from 'node:zlib';
+import { crc32, encodePng } from '../src/thumbnails/png.js';
 import { client, commitVersion, createHarness, createUser, MACHINE, upload, type Client, type Harness, type TestUser } from './helpers.js';
 
 let harness: Harness;
@@ -186,6 +187,43 @@ describe('avatars', () => {
     expect((await putAvatar(maker, Buffer.concat([JPEG.subarray(0, 4), Buffer.from('xx')]), 'image/jpeg')).status).toBe(400);
     expect((await putAvatar(maker, Buffer.concat([PNG, Buffer.alloc(1024 * 1024)]))).status).toBe(413);
     expect((await putAvatar(maker, PNG, 'text/plain')).status).toBe(400);
+  });
+});
+
+describe('avatar uploads that try to exhaust the API', () => {
+  it('refuses a small PNG that would inflate to gigabytes, without storing it', async () => {
+    const bomber = await createUser(harness, 'bomber');
+    // A 1x1 image whose pixel data is 256 MB of zeros: about 250 KB compressed.
+    const header = Buffer.alloc(13);
+    header.writeUInt32BE(1, 0);
+    header.writeUInt32BE(1, 4);
+    header[8] = 8;
+    header[9] = 6;
+    const chunk = (name: string, data: Uint8Array) => {
+      const out = Buffer.alloc(12 + data.length);
+      out.writeUInt32BE(data.length, 0);
+      out.write(name, 4, 'ascii');
+      out.set(data, 8);
+      out.writeUInt32BE(crc32(out.subarray(4, 8 + data.length)), 8 + data.length);
+      return out;
+    };
+    const bomb = Buffer.concat([PNG.subarray(0, 8), chunk('IHDR', header), chunk('IDAT', deflateSync(Buffer.alloc(256 * 1024 * 1024))), chunk('IEND', Buffer.alloc(0))]);
+    expect(bomb.length).toBeLessThan(1024 * 1024);
+    const keys = harness.storage.objects.size;
+    const started = performance.now();
+    const refused = await putAvatar(bomber, bomb);
+    expect(performance.now() - started).toBeLessThan(2000);
+    expect(refused.status).toBe(400);
+    expect(refused.body.error.code).toBe('invalid_image');
+    expect(harness.storage.objects.size).toBe(keys);
+  });
+
+  it('limits how often one account can upload', async () => {
+    const eager = await createUser(harness, 'eager');
+    const statuses: number[] = [];
+    for (let i = 0; i < 11; i++) statuses.push((await putAvatar(eager, PNG)).status);
+    expect(statuses.slice(0, 10).every((status) => status === 200)).toBe(true);
+    expect(statuses[10]).toBe(429);
   });
 });
 

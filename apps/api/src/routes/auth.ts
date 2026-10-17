@@ -81,6 +81,7 @@ export function authRoutes(app: FastifyInstance, { sql, storage, webOrigin }: Ap
   const startLimit = createRateLimit({ limit: 20, windowMs: 60_000 });
   const pollLimit = createRateLimit({ limit: 30, windowMs: 60_000 });
   const approveLimit = createRateLimit({ limit: 20, windowMs: 60_000 });
+  const avatarLimit = createRateLimit({ limit: 10, windowMs: 60_000 });
 
   app.post('/v1/auth/device/code', async (request) => {
     startLimit(request.ip);
@@ -180,6 +181,8 @@ export function authRoutes(app: FastifyInstance, { sql, storage, webOrigin }: Ap
 
     scope.put('/v1/me/avatar', async (request) => {
       const { userId } = requireSessionCaller(request);
+      // Checking an image takes real work, so one account can't keep the API busy with uploads.
+      avatarLimit(userId);
       if (!(request.body instanceof Buffer)) throw badRequest('invalid_image', 'Upload a PNG, JPEG, or WebP image');
       return { avatarUrl: await setAvatar(sql, storage, userId, request.body) };
     });

@@ -62,11 +62,13 @@ export function EmailForm({ current, pending: pendingAtLoad }: { current: string
 
   async function resend() {
     if (!pending) return;
+    // Auth finds the account by its current address, then resends to both.
+    if (!current) return setStatus({ error: 'You’ve been signed out. Log in again to resend the links.', signedOut: true });
     setBusy(true);
     setStatus({});
-    const { error } = await createClient().auth.resend({ type: 'email_change', email: pending });
+    const { error } = await createClient().auth.resend({ type: 'email_change', email: current });
     setBusy(false);
-    setStatus(error ? failure(error, 'email') : { message: `Sent again to ${current ?? 'your current address'} and ${pending}.` });
+    setStatus(error ? failure(error, 'email') : { message: `Sent again to ${current} and ${pending}.` });
   }
 
   return (

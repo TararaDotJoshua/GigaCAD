@@ -7,11 +7,15 @@ import { FileGlyph } from './FileGlyph';
 import { PreviewButton } from './PreviewButton';
 import { StatusBadge } from './StatusBadge';
 
+/** A rename or move that left the contents alone. */
+const onlyMoved = (change: ItemChange) => change.kind === 'modified' && change.moved && !change.contentChanged;
+
 /** How the numbers read in a summary line: "3 files changed: 2 edited, 1 added". */
 export function changeSummary(changes: readonly ItemChange[]): string {
-  const count = (kind: ItemChange['kind']) => changes.filter((change) => change.kind === kind).length;
+  const count = (kind: ItemChange['kind']) => changes.filter((change) => change.kind === kind && !onlyMoved(change)).length;
   const parts = [
     [count('modified'), 'edited'],
+    [changes.filter(onlyMoved).length, 'moved'],
     [count('added'), 'added'],
     [count('deleted'), 'removed'],
   ].flatMap(([n, word]) => (n ? [`${n} ${word}`] : []));
@@ -37,8 +41,10 @@ export function ChangeList({ projectId, changes, empty = 'No file changes.' }: {
             <span className="change-path">
               <span className="mono">{path}</span>
               <span className="change-verb">
-                <StatusBadge tone={change.kind === 'added' ? 'signal' : change.kind === 'deleted' ? 'danger' : 'quiet'}>{change.kind === 'added' ? 'Added' : change.kind === 'deleted' ? 'Removed' : 'Edited'}</StatusBadge>
-                {change.kind === 'modified' && change.moved && <span className="muted"> {changeVerb(change)}</span>}
+                <StatusBadge tone={change.kind === 'added' ? 'signal' : change.kind === 'deleted' ? 'danger' : 'quiet'}>
+                  {change.kind === 'added' ? 'Added' : change.kind === 'deleted' ? 'Removed' : onlyMoved(change) ? 'Moved' : 'Edited'}
+                </StatusBadge>
+                {change.kind === 'modified' && change.moved && <span className="muted"> {onlyMoved(change) ? `from ${change.before.path}` : changeVerb(change)}</span>}
               </span>
             </span>
             {after && (

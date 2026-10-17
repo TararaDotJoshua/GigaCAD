@@ -193,8 +193,11 @@ export default async function RequestPage({ params }: { params: Promise<RequestP
                   const current = approval?.candidateManifestId === request.candidateManifestId;
                   return (
                     <li key={member.userId}>
-                      <span>@{member.handle}</span>
-                      <span className={current ? 'badge badge-signal' : 'muted'}>{approval ? (current ? 'Approved' : 'Older candidate') : 'Waiting'}</span>
+                      <span className="approver-name" title={`@${member.handle}`}>
+                        @{member.handle}
+                        {me && member.userId === me.id && <span className="muted"> (you)</span>}
+                      </span>
+                      <span className={current ? 'badge badge-signal approver-state' : 'muted approver-state'}>{approval ? (current ? 'Approved' : 'Older candidate') : 'Waiting'}</span>
                     </li>
                   );
                 })}

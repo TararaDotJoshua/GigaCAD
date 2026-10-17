@@ -62,7 +62,9 @@ The web app decides which site to serve from the request's host (`apps/web/lib/h
    - Site URL: `https://app.gigacad.site`.
    - Redirect URLs, all on `https://app.gigacad.site`: `/**`, `/auth/callback**`, `/device**`, `/reset-password`.
    - Turn on email confirmation.
-   - Set up custom SMTP, then copy `supabase/templates/confirmation.html` and `recovery.html` into the matching email templates. Local templates in `supabase/config.toml` are not applied to hosted projects.
+   - Set up custom SMTP, then copy `supabase/templates/confirmation.html`, `recovery.html`, and `email_change.html` into the matching email templates, with the subjects in `supabase/config.toml`. Local templates in `supabase/config.toml` are not applied to hosted projects.
+   - Turn on the "Email address changed" security notification with `email_changed_notification.html`, so the old address hears when a change goes through.
+   - Passwords: minimum length 8, as in `supabase/config.toml`. Turn on leaked-password protection when the project is on Pro.
    - Create GitHub and Google OAuth apps using the callback URL each provider's Supabase settings page shows. Keep the client secrets only in Supabase.
 4. Note the connection string for the **Supavisor session-mode pooler** (port 5432 on the pooler host). The API uses postgres.js, which needs session mode for prepared statements, and the direct database host is IPv6-only, which Railway can't reach.
 5. Hosted projects sign sessions with asymmetric keys, which the API verifies through JWKS. Leave `SUPABASE_JWT_SECRET` unset in production.

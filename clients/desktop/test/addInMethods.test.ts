@@ -33,6 +33,7 @@ const project = (role: ProjectState['role'] = 'owner'): ProjectState => ({
   ],
   releases: [],
   error: null,
+  conflicts: [],
 });
 
 function setup(role: ProjectState['role'] = 'owner') {

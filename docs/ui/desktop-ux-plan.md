@@ -4,7 +4,7 @@ This plan covers the findings from the 2026-10-07 audit of the desktop app's win
 
 macOS and Windows run the same Electron app, so every item applies to both. Where the two systems need different code, the item says how.
 
-Status (2026-10-14): decisions approved. Phase 1 and the preview harness are built; the rest is done on macOS first, then checked on Windows with the CI installer.
+Status (2026-10-14): decisions approved. Phases 1–4 and the preview harness are built; the rest is done on macOS first, then checked on Windows with the CI installer.
 
 ## Decisions (approved 2026-10-08)
 
@@ -79,7 +79,7 @@ Files: `renderer/components/Toolbar.tsx`, `BranchView.tsx`, `ProjectView.tsx`, `
 ## Phase 3: seeing what happened
 
 1. **Activity** (decision 2). Show `state.activity` in the window. Each entry gets its time, its project and branch, and a link to the thing it's about. Unread errors mark the sync status and the Activity tab. The tray keeps its three most recent lines.
-2. **Conflicts.** `main/sync.ts:302` logs "X changed here and on gigacad.site. Your version is Y." Also add the conflict to the branch's state (a `conflicts` list on `BranchState`). Show it as a caution notice at the top of that branch's Changes tab with "Show both", and a caution dot on the branch in the sidebar until it's dismissed.
+2. **Conflicts.** (Built on the project rather than the branch: only root files sync both ways, so they're the only files that can conflict. The notice is on the project page, the dot on the project in the sidebar.) `main/sync.ts:302` logs "X changed here and on gigacad.site. Your version is Y." Also add the conflict to the branch's state (a `conflicts` list on `BranchState`). Show it as a caution notice at the top of that branch's Changes tab with "Show both", and a caution dot on the branch in the sidebar until it's dismissed.
 3. **Toasts.**
    - Add a × button.
    - Pause the timer while the pointer is over a toast.

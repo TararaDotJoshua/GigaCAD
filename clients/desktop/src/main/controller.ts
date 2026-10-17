@@ -421,6 +421,7 @@ export class Controller {
       }));
       if (!hidden) void this.engine.syncProject(projectId);
     },
+    dismissConflict: (projectId, path) => this.engine.dismissConflict(projectId, path),
 
     checkout: (projectId, branch) => this.engine.checkout(projectId, branch),
     checkin: (projectId, branch) => this.engine.checkin(projectId, branch),
@@ -446,6 +447,8 @@ export class Controller {
       const project = this.project(projectId);
       return giga(['rr', 'open', '--project', `${project.owner}/${project.slug}`, '--branch', branch, ...(title ? ['--title', title] : []), ...(body ? ['--body', body] : [])], this.opts());
     },
+    rootFiles: async (projectId) =>
+      (await apiClient(this.settings.apiUrl)).get(`/v1/projects/${projectId}/files?area=root&sort=modified&order=desc&limit=30`),
     // Approves the candidate the list showed, so a candidate regenerated since is refused rather than approved unseen.
     approveReleaseRequest: async (projectId, number, candidateManifestId) => {
       const project = this.project(projectId);
@@ -457,6 +460,7 @@ export class Controller {
       if (/^https:\/\//.test(url)) void shell.openExternal(url);
     },
     openTerminal: (path) => openTerminal(path),
+    copyText: (text) => clipboard.writeText(text),
     webUrl: (projectId, path) => {
       const project = this.project(projectId);
       return treeUrl(this.settings.appUrl, project.owner, project.slug, path);

@@ -1,3 +1,4 @@
+import { BRANCH_NAME } from '@gigacad/core';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
@@ -15,9 +16,7 @@ import {
   listCommits,
 } from '../services/branches.js';
 
-const branchName = z
-  .string()
-  .regex(/^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$/, 'Use letters, digits, dots, dashes, or underscores');
+const branchName = z.string().regex(BRANCH_NAME, 'Use letters, digits, dots, dashes, or underscores');
 const machine = z.string().min(1).max(200);
 
 export function branchRoutes(app: FastifyInstance, { sql }: AppDeps): void {

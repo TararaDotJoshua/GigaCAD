@@ -179,6 +179,8 @@ export interface ReleaseView {
   readonly manifestId: string;
   readonly notes: string;
   readonly releaseRequestId: string | null;
+  /** The release request's title, which names the release. */
+  readonly title: string | null;
   readonly createdByHandle: string | null;
   readonly createdAt: string;
 }

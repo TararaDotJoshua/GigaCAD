@@ -6,6 +6,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useTransition, type React
 import { entryContents, moveEntryTo, removeEntry, renameEntry } from '../../app/(product)/actions';
 import { deleteSummary, type EntryContents } from '../../lib/directory';
 import { treePath } from '../../lib/paths';
+import { announce } from './Announcer';
 import { focusAfterRefresh } from '../../lib/focus';
 import { safeAction } from '../../lib/safe-action';
 
@@ -21,7 +22,6 @@ interface Target {
 type Mode = 'menu' | 'rename' | 'move' | 'delete';
 
 const LONG_PRESS_MS = 550;
-const NOTICE_MS = 8000;
 
 /** The part of the window the menu has to stay inside: the visible part, above a phone's keyboard. */
 function viewport() {
@@ -61,7 +61,6 @@ export function EntryMenu({
   const [busy, setBusy] = useState('');
   // False when it couldn't be counted.
   const [contents, setContents] = useState<EntryContents | false | null>(null);
-  const [notice, setNotice] = useState<{ text: ReactNode; key: number } | null>(null);
   const [pending, start] = useTransition();
   const menu = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -162,12 +161,6 @@ export function EntryMenu({
     };
   }, [target, mode, contents, projectId]);
 
-  useEffect(() => {
-    if (!notice) return;
-    const timer = window.setTimeout(() => setNotice(null), NOTICE_MS);
-    return () => window.clearTimeout(timer);
-  }, [notice]);
-
   /**
    * Runs a menu action, says what it did, and puts focus back where it makes sense. The refresh
    * replaces the row (a rename changes its key) or removes it, so focus then goes to the entry's
@@ -184,7 +177,8 @@ export function EntryMenu({
       setBusy('');
       if (result.error) return setError(result.error);
       close(false);
-      setNotice({ text: done, key: Date.now() });
+      // Said in the page's status region, which stays when this menu goes with the last row.
+      announce(done);
       focusAfterRefresh(
         () =>
           (nextId && document.querySelector<HTMLElement>(`tr[data-entry-id="${nextId}"] a`)) ||
@@ -425,13 +419,6 @@ export function EntryMenu({
           )}
         </div>
       )}
-      <div className="entry-menu-notice" role="status" aria-live="polite">
-        {notice && (
-          <p key={notice.key} className="upload-toast">
-            <span>{notice.text}</span>
-          </p>
-        )}
-      </div>
     </div>
   );
 }

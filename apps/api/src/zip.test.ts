@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { buffer } from 'node:stream/consumers';
 import { unzipSync } from 'fflate';
 import { describe, expect, it, vi } from 'vitest';
-import { zipSize, zipStream, type ZipEntry } from './zip.js';
+import { zipParts, zipSize, zipStream, type ZipEntry } from './zip.js';
 
 const entry = (path: string, content: string): ZipEntry => {
   const bytes = Buffer.from(content);
@@ -46,8 +46,22 @@ describe('release zip', () => {
     await vi.waitFor(() => expect(opened).toEqual([0, 1, 2, 3]));
     stream.destroy();
     release();
-    await vi.waitFor(() => expect(closed).toEqual([1, 2, 3]));
+    // The file being written and the ones opened ahead.
+    await vi.waitFor(() => expect([...closed].sort()).toEqual([0, 1, 2, 3]));
     expect(opened).toEqual([0, 1, 2, 3]);
+  });
+
+  it('closes the file it was writing when the download stops at its header', async () => {
+    const closed: number[] = [];
+    const entries: ZipEntry[] = Array.from({ length: 2 }, (_, index) => ({
+      path: `f${index}`,
+      size: 1,
+      open: async () => Object.assign([Buffer.from('x')], { destroy: () => closed.push(index) }),
+    }));
+    const parts = zipParts(entries);
+    expect((await parts.next()).value?.readUInt32LE(0)).toBe(0x04034b50); // f0's header
+    await parts.return(undefined);
+    await vi.waitFor(() => expect([...closed].sort()).toEqual([0, 1]));
   });
 
   it('refuses a file whose bytes don’t match its recorded size', async () => {

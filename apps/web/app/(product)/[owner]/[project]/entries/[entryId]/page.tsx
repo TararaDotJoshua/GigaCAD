@@ -196,7 +196,7 @@ export default async function EntryPage({ params }: { params: Promise<EntryParam
                   : 'Deletes the file and every revision. Branches and releases keep their own files.'}
               </p>
               <ActionButton
-                action={deleteEntry.bind(null, project.id, entry.id, owner, slug, parentPath, entry.name)}
+                action={deleteEntry.bind(null, project.id, entry.id, owner, slug, parentPath)}
                 className="btn btn-danger"
                 confirm={`Delete ${entry.path}${entry.kind === 'folder' ? ' and everything in it' : ''}? This can’t be undone.`}
               >

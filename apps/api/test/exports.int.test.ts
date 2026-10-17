@@ -203,6 +203,29 @@ describe('SolidWorks exports', () => {
     expect((await archive('?exports=maybe')).statusCode).toBe(400);
   });
 
+  it('go beside a release that has an exports folder of its own, so no path is in the zip twice', async () => {
+    const created = await api.post('/v1/projects', { slug: `clash-${randomUUID().slice(0, 8)}`, name: 'Clash' });
+    const projectId = created.body.id as string;
+    const branch = await api.post(`/v1/projects/${projectId}/branches`, { name: 'work' });
+    const part = `part ${randomUUID()}`;
+    const committedStep = `ISO-10303-21; committed ${randomUUID()}`;
+    await commitVersion(harness, api, projectId, branch.body.id, { 'Bracket.SLDPRT': part, 'Exports/Bracket.STEP': committedStep });
+    const [stepHash] = (await upload(harness, api, projectId, [`ISO-10303-21; attached ${randomUUID()}`])) as [string];
+    expect((await api.put(`/v1/projects/${projectId}/exports`, { source: sha256(part), format: 'step', blob: stepHash })).status).toBe(200);
+    const opened = await api.post(`/v1/branches/${branch.body.id}/release-requests`, { title: 'v1' });
+    const requestId = opened.body.releaseRequest.id;
+    const candidateManifestId = (await api.post(`/v1/release-requests/${requestId}/candidate`)).body.candidate.manifestId;
+    await api.post(`/v1/release-requests/${requestId}/approvals`, { candidateManifestId });
+    expect((await api.post(`/v1/release-requests/${requestId}/release`, { candidateManifestId })).status).toBe(201);
+
+    const slug = created.body.slug as string;
+    const full = await harness.app.inject({ method: 'GET', url: `/v1/projects/${projectId}/releases/1/archive?exports=1`, headers: { authorization: `Bearer ${owner.token}` } });
+    expect(Number(full.headers['content-length'])).toBe(full.rawPayload.length);
+    const names = Object.keys(unzipSync(new Uint8Array(full.rawPayload)));
+    expect(names.sort()).toEqual([`${slug}-v1-exports/Bracket.step`, `${slug}-v1/Bracket.SLDPRT`, `${slug}-v1/Exports/Bracket.STEP`]);
+    expect(new Set(names.map((name) => name.toLowerCase())).size).toBe(names.length);
+  });
+
   it('come along when a release is forked', async () => {
     const { projectId, branchId, part } = await project('public');
     const [stlHash] = (await upload(harness, api, projectId, [tetrahedron()])) as [string];

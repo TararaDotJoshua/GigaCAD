@@ -270,8 +270,14 @@ export async function getReadmeFiles(projectId: string, paths: readonly string[]
   const files = await Promise.all(
     paths.slice(0, 50).map(async (path) => {
       const name = path.slice(path.lastIndexOf('/') + 1);
+      // Search lists each file once, at its best place, so a file also in a newer release or a branch
+      // wouldn't come back at the path the README names. Searching inside that folder, released and
+      // archived branches included, finds it there.
+      const folder = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
       try {
-        const matches = (await searchFiles(projectId, { q: name, limit: 100 })).entries.filter((file) => file.path.toLowerCase() === path.toLowerCase());
+        const matches = (await searchFiles(projectId, { q: name, limit: 100, ...(folder ? { under: folder, history: true } : {}) })).entries.filter(
+          (file) => file.path.toLowerCase() === path.toLowerCase(),
+        );
         return [path, matches.find((file) => file.path === path) ?? matches[0]] as const;
       } catch {
         return [path, undefined] as const;

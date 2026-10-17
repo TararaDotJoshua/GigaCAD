@@ -67,7 +67,10 @@ export function zipSize(entries: readonly Pick<ZipEntry, 'path' | 'size'>[], opt
 
 type Opened = Awaited<ReturnType<ZipEntry['open']>>;
 
-export function zipStream(entries: readonly ZipEntry[], options: { modified?: Date; zip64Threshold?: number } = {}): Readable {
+const close = (opened: Promise<Opened>) => void opened.then((stream) => (stream as { destroy?: () => void }).destroy?.(), () => {});
+
+/** The ZIP's bytes, piece by piece. Stopping it early (`return()`) closes every file it had opened. */
+export function zipParts(entries: readonly ZipEntry[], options: { modified?: Date; zip64Threshold?: number } = {}): AsyncGenerator<Buffer> {
   const { time, date } = dosTime(options.modified ?? new Date());
   // Tests lower this to exercise the ZIP64 records without writing gigabytes.
   const limit = options.zip64Threshold ?? MAX_32;
@@ -103,14 +106,20 @@ export function zipStream(entries: readonly ZipEntry[], options: { modified?: Da
       header.writeUInt32LE(zip64 ? MAX_32 : entry.size, 22);
       header.writeUInt16LE(name.length, 26);
       header.writeUInt16LE(extra.length, 28);
-      yield Buffer.concat([header, name, extra]);
-
       let crc = 0;
       let size = 0;
-      for await (const chunk of await body) {
-        crc = crc32(chunk, crc);
-        size += chunk.byteLength;
-        yield Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+      let read = false;
+      try {
+        yield Buffer.concat([header, name, extra]);
+        for await (const chunk of await body) {
+          crc = crc32(chunk, crc);
+          size += chunk.byteLength;
+          yield Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+        }
+        read = true;
+      } finally {
+        // Stopped partway, at the header or in the body: this file is closed too, not just the ones opened ahead.
+        if (!read) close(body);
       }
       if (size !== entry.size) throw new Error(`${entry.path}: expected ${entry.size} bytes, read ${size}`);
 
@@ -187,9 +196,13 @@ export function zipStream(entries: readonly ZipEntry[], options: { modified?: Da
       yield* generate();
     } finally {
       // Files opened ahead that the archive never reached, as when a download is cancelled.
-      for (const opened of opening.values()) void opened.then((stream) => (stream as { destroy?: () => void }).destroy?.(), () => {});
+      for (const opened of opening.values()) close(opened);
     }
   }
 
-  return Readable.from(closing(), { objectMode: false });
+  return closing();
+}
+
+export function zipStream(entries: readonly ZipEntry[], options: { modified?: Date; zip64Threshold?: number } = {}): Readable {
+  return Readable.from(zipParts(entries, options), { objectMode: false });
 }

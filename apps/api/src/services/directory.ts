@@ -505,7 +505,7 @@ export interface SearchQuery {
   readonly tagIds?: readonly string[] | undefined;
   readonly favorites?: boolean | undefined;
   readonly area?: FileArea | undefined;
-  /** Only files inside this directory folder, like `Designs`, `Branches/main/parts`, or `Releases/v2`. */
+  /** Only files inside this directory folder, like `Designs`, `Branches/main/parts`, or `Releases/v2`, in any case. */
   readonly under?: string | undefined;
   /**
    * Also look in released and archived branches. Like the Branches folder, search leaves
@@ -532,7 +532,7 @@ export async function searchFiles(sql: Sql, projectId: string, viewerId: string 
   const sortKey =
     paging.sort === 'modified' ? sql`l.modified_at ${order}, lower(l.name)` : paging.sort === 'size' ? sql`l.size ${order}, lower(l.name)` : sql`lower(l.name) ${order}`;
 
-  const rows = await sql<(Omit<Undecorated, 'kind' | 'location'> & { area: FileArea; branchId: string | null; branchName: string | null; releaseNumber: number | null; innerPath: string; total: number })[]>`
+  const read = (limit: number, offset: number) => sql<(Omit<Undecorated, 'kind' | 'location'> & { area: FileArea; branchId: string | null; branchName: string | null; releaseNumber: number | null; innerPath: string; total: number })[]>`
     with recursive root_paths as (
       select e.id, e.item_id, e.kind, e.name::text as path from directory_entries e
       where e.project_id = ${projectId} and e.parent_id is null
@@ -575,7 +575,7 @@ export async function searchFiles(sql: Sql, projectId: string, viewerId: string 
           when 'root' then l.inner_path
           when 'branch' then 'Branches/' || l.branch_name || '/' || l.inner_path
           else 'Releases/v' || l.release_number || '/' || l.inner_path
-        end) like ${underPattern})
+        end) ilike ${underPattern})
         and (${tagIds.length} = 0 or (
           select count(*) from file_tags ft where ft.item_id = l.item_id and ft.tag_id = any(${tagIds}::uuid[])
         ) = ${tagIds.length})
@@ -594,9 +594,11 @@ export async function searchFiles(sql: Sql, projectId: string, viewerId: string 
     from best l
     left join profiles p on p.id = l.modified_by
     order by ${sortKey}, l.area, l.branch_name nulls last, l.release_number desc nulls last, l.inner_path
-    limit ${paging.limit} offset ${paging.offset}
+    limit ${limit} offset ${offset}
   `;
-  const total = rows[0]?.total ?? 0;
+  const rows = await read(paging.limit, paging.offset);
+  // The total rides on the page's rows, so a page past the end asks for it from the first row.
+  const total = rows[0]?.total ?? (paging.offset > 0 ? ((await read(1, 0))[0]?.total ?? 0) : 0);
   const files = rows.map(({ area, branchId, branchName, releaseNumber, innerPath, total: _, ...row }) =>
     withoutDecorations({
       ...row,

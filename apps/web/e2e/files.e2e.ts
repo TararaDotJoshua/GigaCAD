@@ -95,9 +95,17 @@ test.beforeAll(async () => {
   await uploadContents(token, project.id, [second]);
   await api(token, 'POST', `/v1/projects/${project.id}/directory/entries/${notes.id}/revisions`, { blob: sha256(second) });
   await api(token, 'POST', `/v1/projects/${project.id}/directory/folders`, { parentId: null, name: 'a%2Fb' });
-  await addFile(token, project.id, null, 'README.md', '# Shop\n\nRead the [notes](Docs/notes.txt) first.\n\n![Bench](photos/missing.png)\n');
+  await addFile(
+    token,
+    project.id,
+    null,
+    'README.md',
+    '# Shop\n\nRead the [notes](Docs/notes.txt) first. The [released leg](Releases/v1/parts/Leg.SLDPRT) is final.\n\n![Bench](photos/missing.png)\n\n![Top](Releases/v1/renders/top.png)\n',
+  );
   await api(token, 'POST', `/v1/projects/${project.id}/tags`, { name: 'Laser cut' });
-  await release(token, project.id, { 'Bench.SLDASM': 'bench', 'parts/Leg.SLDPRT': `leg ${'x'.repeat(400)}`, 'parts/Top.SLDPRT': 'top' });
+  await release(token, project.id, { 'Bench.SLDASM': 'bench', 'parts/Leg.SLDPRT': `leg ${'x'.repeat(400)}`, 'parts/Top.SLDPRT': 'top', 'renders/top.png': `png ${randomUUID()}` });
+  // An open branch from v1 holds the same files, so search's best place for them is the branch, not v1.
+  await api(token, 'POST', `/v1/projects/${project.id}/branches`, { name: 'next', fromRelease: 1 });
 
   const publicSlug = 'open-bench';
   const open = await api(token, 'POST', '/v1/projects', { slug: publicSlug, name: 'Open bench', visibility: 'public' });
@@ -143,6 +151,10 @@ test('README links open project files in place, and missing images say so', asyn
   await page.goto(projectUrl());
   const readme = page.getByRole('region', { name: 'README.md' });
   await expect(readme.getByText('Missing image: photos/missing.png')).toBeVisible();
+  // Paths into a release resolve there, though the same files are also on an open branch.
+  await expect(readme.getByRole('img', { name: 'Top' })).toHaveAttribute('src', /\/media\//);
+  await expect(readme.getByText(/Missing image: Releases/)).toHaveCount(0);
+  await expect(readme.getByRole('link', { name: 'released leg' })).toHaveAttribute('href', projectUrl('tree', 'Releases', 'v1', 'parts'));
   const link = readme.getByRole('link', { name: 'notes', exact: true });
   await expect(link).not.toHaveAttribute('target', '_blank');
   await link.click();
@@ -235,6 +247,53 @@ test('replacing a file with the same contents says nothing changed', async ({ pa
   // A file of another type asks first.
   await page.locator('input[type="file"]').setInputFiles({ name: 'same.bin', mimeType: 'application/octet-stream', buffer: Buffer.from('other') });
   await expect(page.getByRole('group', { name: 'Confirm the replacement' })).toContainText('It’s a different type of file.');
+});
+
+test('a move that empties a folder still says where the file went', async ({ page }) => {
+  const solo = await api(world.token, 'POST', `/v1/projects/${world.projectId}/directory/folders`, { parentId: null, name: `Solo ${randomUUID().slice(0, 4)}` });
+  const name = `solo-${randomUUID().slice(0, 6)}.txt`;
+  await addFile(world.token, world.projectId, solo.id, name, `solo ${randomUUID()}`);
+  await logIn(page);
+  await page.goto(projectUrl('tree', solo.name));
+  await expect(async () => {
+    await page.getByRole('button', { name: `More actions for ${name}` }).click();
+    await expect(page.getByRole('menuitem', { name: 'Move to…' })).toBeVisible({ timeout: 1000 });
+  }).toPass({ timeout: 15_000 });
+  await page.getByRole('menuitem', { name: 'Move to…' }).click();
+  await page.getByRole('menuitem', { name: 'Project root' }).click();
+  await expect(page.getByText('This folder is empty.')).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: `Moved ${name} to` })).toBeVisible();
+});
+
+test('deleting a file from its page says so in its folder, and a made-up link says nothing', async ({ page }) => {
+  const name = `gone-${randomUUID().slice(0, 6)}.txt`;
+  const entry = await addFile(world.token, world.projectId, world.docsId, name, `gone ${randomUUID()}`);
+  await logIn(page);
+  await page.goto(projectUrl('entries', entry.id));
+  await page.getByRole('button', { name: 'Delete file' }).click();
+  await page.getByRole('button', { name: 'Delete file' }).click();
+  await page.waitForURL(`**${projectUrl('tree', 'Docs')}?deleted=${entry.id}`);
+  await expect(page.getByRole('status').filter({ hasText: `Deleted Docs/${name}.` })).toBeVisible();
+  await page.goto(`${projectUrl('tree', 'Docs')}?deleted=${randomUUID()}`);
+  await expect(page.getByText(/^Deleted /)).toHaveCount(0);
+});
+
+test('a long project name wraps instead of widening a phone screen', async ({ browser }) => {
+  const name = 'Gearbox'.repeat(14);
+  const slug = `long-${randomUUID().slice(0, 6)}`;
+  await api(world.token, 'POST', '/v1/projects', { slug, name, description: 'x'.repeat(2000), visibility: 'public' });
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  const phone = await context.newPage();
+  await phone.goto('/login');
+  await phone.getByLabel('Email', { exact: true }).fill(world.email);
+  await phone.getByLabel('Password', { exact: true }).fill(world.password);
+  await phone.getByRole('button', { name: 'Log in' }).click();
+  await phone.waitForURL('**/app');
+  for (const path of ['/app', `/${world.handle}/${slug}`, `/${world.handle}`, '/explore']) {
+    await phone.goto(path);
+    expect(await phone.evaluate(() => document.documentElement.scrollWidth), path).toBeLessThanOrEqual(390);
+  }
+  await context.close();
 });
 
 test('signed-out visitors download a public project’s files without logging in', async ({ browser }) => {

@@ -638,15 +638,15 @@ export async function removeEntry(projectId: string, entryId: string): Promise<A
   return mutate((token) => apiRequest(token, `/v1/projects/${id(projectId)}/directory/entries/${id(entryId)}`, json('DELETE')));
 }
 
-export async function deleteEntry(projectId: string, entryId: string, owner: string, slug: string, parentPath: string, name = ''): Promise<ActionState> {
+export async function deleteEntry(projectId: string, entryId: string, owner: string, slug: string, parentPath: string): Promise<ActionState> {
   const token = await requireAccessToken();
   try {
     await apiRequest(token, `/v1/projects/${id(projectId)}/directory/entries/${id(entryId)}`, json('DELETE'));
   } catch (error) {
     return { error: messageFor(error) };
   }
-  // The folder says what went, since the page you were on is gone.
-  redirect(`${treePath(owner, slug, parentPath)}${name ? `?${new URLSearchParams({ deleted: name.slice(0, 255) })}` : ''}`);
+  // The folder says what went, since the page you were on is gone. It reads the name from the project's feed.
+  redirect(`${treePath(owner, slug, parentPath)}?${new URLSearchParams({ deleted: entryId })}`);
 }
 
 export async function createTag(projectId: string, _state: ActionState, form: FormData): Promise<ActionState> {

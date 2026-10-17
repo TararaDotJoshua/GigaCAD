@@ -9,7 +9,7 @@ import { pager } from '../../lib/directory';
 import { hasModel } from '../../lib/models';
 import { isSolidWorks } from '../../lib/preview';
 import { branchPath, entryPath, projectPath, releasePath, treePath } from '../../lib/paths';
-import { getBilling, getDirectory, getFileExports, getReadme, getRootFolders, getTags, getThumbnailLinks, searchFiles, type FileQuery } from '../../lib/product';
+import { getBilling, getDirectory, getEvents, getFileExports, getReadme, getRootFolders, getTags, getThumbnailLinks, getViewer, searchFiles, type FileQuery } from '../../lib/product';
 import { BranchIcon, FolderIcon, LockIcon, MoreIcon, SearchIcon } from '../icons';
 import { ActionForm } from './ActionForm';
 import { DropZone } from './DropZone';
@@ -49,7 +49,7 @@ export interface DirectoryParams {
   under?: string;
   /** `released` shows released and archived branches in the Branches folder, and in search, tags, and favorites. */
   show?: string;
-  /** The name of a file or folder just deleted from its own page, to say so here. */
+  /** The id of a file or folder just deleted from its own page, to say so here. */
   deleted?: string;
 }
 
@@ -205,11 +205,7 @@ export async function ProjectDirectory({
         !embedded && <FolderBar project={project} listing={listing!} owner={storageOwner} />
       )}
 
-      {params.deleted && !searching && (
-        <p className="notice" role="status">
-          Deleted <span className="mono">{params.deleted.slice(0, 255)}</span>.
-        </p>
-      )}
+      {params.deleted && !searching && <DeletedNotice projectId={project.id} entryId={params.deleted} />}
 
       {/* A brand-new project: nothing at the root but the two built-in folders, and no releases. */}
       {writable && listing?.location.path === '' && counts?.releases === 0 && !listing.entries.some((entry) => !(entry.kind === 'folder' && entry.virtual)) && (
@@ -329,6 +325,27 @@ async function FolderBar({ project, listing, owner: storageOwner }: { project: P
         </p>
       )}
     </div>
+  );
+}
+
+/** How long after a delete its folder still says so. */
+const DELETED_NOTICE_MS = 10 * 60 * 1000;
+
+/**
+ * "Deleted X", after deleting a file or folder from its own page. The address names only the
+ * entry; the notice shows when the project's feed says the viewer deleted it moments ago, so a
+ * link someone crafts can't make a folder announce something that didn't happen.
+ */
+async function DeletedNotice({ projectId, entryId }: { projectId: string; entryId: string }) {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(entryId)) return null;
+  const [viewer, events] = await Promise.all([getViewer().catch(() => null), getEvents(projectId, 50).catch(() => [])]);
+  const deleted = events.find((event) => event.kind === 'directory_entry_deleted' && event.subjectId === entryId);
+  const path = typeof deleted?.payload?.path === 'string' ? deleted.payload.path : null;
+  if (!viewer || !deleted || deleted.actorId !== viewer.id || !path || Date.now() - new Date(deleted.createdAt).getTime() > DELETED_NOTICE_MS) return null;
+  return (
+    <p className="notice" role="status">
+      Deleted <span className="mono">{path}</span>.
+    </p>
   );
 }
 

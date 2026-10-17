@@ -61,11 +61,11 @@ export default async function ReleasePage({ params, searchParams }: { params: Pr
         actions={
           <>
             {hasExports && (
-              <a className="btn btn-secondary" href={`${releaseDownloadPath(owner, slug, release.number)}?exports=1`} download>
+              <a className="btn btn-secondary" href={`${releaseDownloadPath(owner, slug, release.number)}?exports=1`}>
                 Download all with STEP and STL exports
               </a>
             )}
-            <a className="btn btn-primary" href={releaseDownloadPath(owner, slug, release.number)} download>
+            <a className="btn btn-primary" href={releaseDownloadPath(owner, slug, release.number)}>
               <DownloadIcon className="icon" />
               Download all ({files.length} {files.length === 1 ? 'file' : 'files'})
             </a>

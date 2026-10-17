@@ -99,13 +99,10 @@ export function UploadFiles({
     const open = () => input.current?.click();
     const drop = (event: Event) => {
       const { files, folders } = (event as CustomEvent<DroppedFiles>).detail;
-      if (folders.length) {
-        setItems((current) => [
-          ...(running.current ? current : current.filter((item) => item.phase === 'waiting')),
-          ...folders.map((name) => ({ id: nextId.current++, name, phase: 'skipped' as const, progress: 0, error: 'Folders can’t be uploaded here. Open the folder and drop its files.' })),
-        ]);
-      }
-      begin(files);
+      begin(
+        files,
+        folders.map((name) => ({ id: nextId.current++, name, phase: 'skipped' as const, progress: 0, error: 'Folders can’t be uploaded here. Open the folder and drop its files.' })),
+      );
     };
     window.addEventListener(OPEN_UPLOAD_EVENT, open);
     window.addEventListener(DROP_FILES_EVENT, drop);
@@ -117,19 +114,20 @@ export function UploadFiles({
 
   const update = (id: number, change: Partial<Item>) => setItems((current) => current.map((item) => (item.id === id ? { ...item, ...change } : item)));
 
-  function begin(files: File[]) {
-    if (!files.length) return;
+  /** Starts uploading `files`, listing `skipped` (like dropped folders) with them. */
+  function begin(files: File[], skipped: Item[] = []) {
     // Mid-upload or mid-question, new files join the queue; any named like a file here are asked about after.
-    if (running.current || collisions) return enqueue(files, false, true);
-    const taken = files.filter((file) => existing[file.name.toLowerCase()]);
-    if (taken.length) {
-      setItems([]);
-      const ids = files.map(() => nextId.current++);
-      setCollisions({ files, ids });
-    } else {
-      setItems([]);
-      enqueue(files, false);
+    if (running.current || collisions) {
+      if (skipped.length) setItems((current) => [...current, ...skipped]);
+      if (files.length) enqueue(files, false, true);
+      return;
     }
+    if (!files.length && !skipped.length) return;
+    setItems(skipped);
+    if (!files.length) return;
+    const taken = files.filter((file) => existing[file.name.toLowerCase()]);
+    if (taken.length) setCollisions({ files, ids: files.map(() => nextId.current++) });
+    else enqueue(files, false);
   }
 
   /** Adds files to the queue as Waiting, and starts working through it if nothing is running. */

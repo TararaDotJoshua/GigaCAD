@@ -307,6 +307,11 @@ describe('tags, favorites, recent files, and search', () => {
     expect(await search('q=wheel&history=true')).toMatchObject({ total: 1, entries: [{ path: 'Branches/next/Wheel.SLDPRT', alsoIn: 2 }] });
     expect((await search('q=spoke')).total).toBe(0);
     expect(await search('q=spoke&history=true')).toMatchObject({ total: 1, entries: [{ path: 'Branches/abandoned/Spoke.SLDPRT' }] });
+    // Inside a folder, the file is found there, as a README naming `Releases/v1/Wheel.SLDPRT` needs, in any case.
+    expect(await search('q=wheel&under=Releases/v1&history=true')).toMatchObject({ total: 1, entries: [{ path: 'Releases/v1/Wheel.SLDPRT' }] });
+    expect(await search('q=wheel&under=releases/V1')).toMatchObject({ total: 1, entries: [{ path: 'Releases/v1/Wheel.SLDPRT' }] });
+    // A page past the end still says how many files there are.
+    expect(await search('q=wheel&history=true&offset=50')).toMatchObject({ total: 1, entries: [], nextOffset: null });
 
     // A tag counts each file once, and only where search looks by default.
     const round = await api.post(`/v1/projects/${projectId}/tags`, { name: 'Round' });

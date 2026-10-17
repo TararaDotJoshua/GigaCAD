@@ -83,7 +83,8 @@ async function exportFiles(sql: Sql, releaseId: string, files: readonly Manifest
 
 /**
  * A release as one ZIP, every file under a `<project>-v<n>/` folder, optionally with its
- * SolidWorks files' exports in an `exports/` folder there. Streamed: nothing is held in
+ * SolidWorks files' exports in an `exports/` folder there (or in `<project>-v<n>-exports/` when
+ * the release has an `exports/` folder of its own). Streamed: nothing is held in
  * memory, so it works for assemblies of any size. `length` is the ZIP's exact size.
  */
 export async function releaseArchive(
@@ -96,12 +97,19 @@ export async function releaseArchive(
 ): Promise<{ filename: string; size: number; length: number; stream: Readable }> {
   const { release, files } = await getRelease(sql, projectId, number, userId);
   const [project] = await sql<{ slug: string }[]>`select slug from projects where id = ${projectId}`;
-  const listed: { path: string; blob: string }[] = [...files, ...(options.exports ? await exportFiles(sql, release.id, files) : [])];
+  const folder = `${project?.slug ?? 'project'}-v${release.number}`;
+  const exported = options.exports ? await exportFiles(sql, release.id, files) : [];
+  // A release with an `exports/` folder of its own (in any case) gets the exports beside it instead,
+  // in a folder none of its files can be in, so no path is in the zip twice.
+  const clash = files.some((file) => file.path.toLowerCase().startsWith('exports/'));
+  const listed: { path: string; blob: string }[] = [
+    ...files.map((file) => ({ path: `${folder}/${file.path}`, blob: file.blob })),
+    ...exported.map((file) => ({ path: clash ? `${folder}-${file.path}` : `${folder}/${file.path}`, blob: file.blob })),
+  ];
   const sizes = new Map(
     (await sql<{ sha256: string; size: number }[]>`select sha256, size::float8 as size from blobs where sha256 = any(${listed.map((file) => file.blob)}::text[])`).map((row) => [row.sha256, row.size]),
   );
-  const folder = `${project?.slug ?? 'project'}-v${release.number}`;
-  const entries = listed.map((file) => ({ path: `${folder}/${file.path}`, size: sizes.get(file.blob) ?? 0, open: () => storage.readStream(blobKey(file.blob)) }));
+  const entries = listed.map((file) => ({ path: file.path, size: sizes.get(file.blob) ?? 0, open: () => storage.readStream(blobKey(file.blob)) }));
   const stream = zipStream(entries, { modified: release.createdAt });
   return {
     filename: options.exports ? `${folder}-with-exports.zip` : `${folder}.zip`,

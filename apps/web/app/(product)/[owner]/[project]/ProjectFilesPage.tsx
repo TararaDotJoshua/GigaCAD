@@ -147,7 +147,7 @@ async function LatestRelease({ project, release }: { project: Project; release: 
           </p>
         </div>
         <div className="latest-release-actions">
-          <a className="btn btn-primary btn-small" href={releaseDownloadPath(owner, slug, release.number)} download>
+          <a className="btn btn-primary btn-small" href={releaseDownloadPath(owner, slug, release.number)}>
             <DownloadIcon className="icon" />
             Download all
           </a>

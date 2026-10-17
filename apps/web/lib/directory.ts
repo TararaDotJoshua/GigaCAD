@@ -35,10 +35,11 @@ export interface PagerState {
  */
 export function pager({ offset, shown, total, pageSize, nextOffset }: { offset: number; shown: number; total: number; pageSize: number; nextOffset: number | null }): PagerState {
   const lastOffset = total > 0 ? Math.floor((total - 1) / pageSize) * pageSize : 0;
-  if (shown === 0) return { label: null, previous: offset > 0 ? Math.min(lastOffset, Math.max(0, offset - pageSize)) : null, next: null, last: total > 0 && offset > lastOffset ? lastOffset : null };
+  const previous = offset > 0 ? (offset > lastOffset ? lastOffset : Math.max(0, offset - pageSize)) : null;
+  if (shown === 0) return { label: null, previous, next: null, last: total > 0 && offset > lastOffset ? lastOffset : null };
   return {
     label: `${offset + 1}–${offset + shown} of ${total}`,
-    previous: offset > 0 ? Math.max(0, Math.min(offset - pageSize, lastOffset)) : null,
+    previous,
     next: nextOffset,
     last: null,
   };
@@ -57,8 +58,7 @@ export function uploadTitle(phases: readonly UploadState[]): string {
   if (done + failed < counted.length) return `Uploading ${done + failed + 1} of ${counted.length}…`;
   if (failed) return `Uploaded ${done} of ${done + failed}.`;
   if (done) return `Uploaded ${done} ${done === 1 ? 'file' : 'files'}.`;
-  const skipped = phases.length - counted.length;
-  return skipped ? `Skipped ${skipped} ${skipped === 1 ? 'file' : 'files'}.` : '';
+  return phases.length ? 'Nothing was uploaded.' : '';
 }
 
 const extension = (name: string) => (name.lastIndexOf('.') > 0 ? name.slice(name.lastIndexOf('.') + 1).toLowerCase() : '');

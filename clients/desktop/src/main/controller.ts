@@ -1,7 +1,7 @@
 import { app, BrowserWindow, clipboard, dialog, Menu, nativeImage, Notification, shell, Tray, type MenuItemConstructorOptions } from 'electron';
 import { execFile, spawn } from 'node:child_process';
 import { stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, normalize } from 'node:path';
 import { platformWords } from '../shared/platform.js';
 import type { BundleRuntime } from '../shared/runtime.js';
 import { supportDir } from '../shared/runtime.js';
@@ -421,6 +421,7 @@ export class Controller {
       }));
       if (!hidden) void this.engine.syncProject(projectId);
     },
+    dismissConflict: (projectId, path) => this.engine.dismissConflict(projectId, path),
 
     checkout: (projectId, branch) => this.engine.checkout(projectId, branch),
     checkin: (projectId, branch) => this.engine.checkin(projectId, branch),
@@ -446,17 +447,25 @@ export class Controller {
       const project = this.project(projectId);
       return giga(['rr', 'open', '--project', `${project.owner}/${project.slug}`, '--branch', branch, ...(title ? ['--title', title] : []), ...(body ? ['--body', body] : [])], this.opts());
     },
+    rootFiles: async (projectId) =>
+      (await apiClient(this.settings.apiUrl)).get(`/v1/projects/${projectId}/files?area=root&sort=modified&order=desc&limit=30`),
     // Approves the candidate the list showed, so a candidate regenerated since is refused rather than approved unseen.
     approveReleaseRequest: async (projectId, number, candidateManifestId) => {
       const project = this.project(projectId);
       await giga(['rr', 'approve', String(number), '--project', `${project.owner}/${project.slug}`, '--candidate', candidateManifestId], this.opts());
     },
 
-    reveal: (path) => shell.showItemInFolder(path),
+    // The window joins paths with `/`; Windows wants its own separators.
+    reveal: (path) => shell.showItemInFolder(normalize(path)),
+    openPath: async (path) => {
+      const problem = await shell.openPath(normalize(path));
+      if (problem) throw new Error(problem);
+    },
     openExternal: (url) => {
       if (/^https:\/\//.test(url)) void shell.openExternal(url);
     },
     openTerminal: (path) => openTerminal(path),
+    copyText: (text) => clipboard.writeText(text),
     webUrl: (projectId, path) => {
       const project = this.project(projectId);
       return treeUrl(this.settings.appUrl, project.owner, project.slug, path);

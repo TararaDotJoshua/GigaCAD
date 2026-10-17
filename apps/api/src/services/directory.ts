@@ -1,7 +1,7 @@
 import { comparePaths, InvalidPathError, isReservedRootName, MAX_PATH_LENGTH, validateEntryName } from '@gigacad/core';
 import type { Db, Sql, Tx } from '../db.js';
 import { conflict, notFound, unprocessable } from '../errors.js';
-import { projectAccess, requireProjectRole } from './access.js';
+import { lockForViewer, projectAccess, requireProjectRole } from './access.js';
 import type { BranchStatus } from './branches.js';
 import { recordEvent } from './events.js';
 import { loadManifest } from './manifests.js';
@@ -468,7 +468,10 @@ export async function listDirectory(
 
   const writable = result.location.area === 'root' && role !== null && role !== 'viewer';
   const page = await decorate(sql, projectId, viewerId, sortAndPage(result.items, paging));
-  return { location: { ...result.location, writable }, ...page };
+  // Branch folders show their lock; outsiders don't learn the holder's id or computer.
+  const entries = page.entries.map((item) => ('branch' in item && item.branch ? { ...item, branch: lockForViewer(item.branch, role) } : item));
+  const branch = result.location.branch ? lockForViewer(result.location.branch, role) : null;
+  return { location: { ...result.location, branch, writable }, ...page, entries };
 }
 
 // Search -------------------------------------------------------------------

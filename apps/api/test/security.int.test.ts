@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { purgeDeviceCodes } from '../src/jobs.js';
+import { HIDDEN_LOCK_HOLDER, HIDDEN_LOCK_MACHINE } from '../src/services/access.js';
 import {
   call,
   client,
@@ -180,10 +181,25 @@ describe('public projects', () => {
   it('show who holds a lock to outsiders, but not on which machine', async () => {
     const { projectId, branchId } = await project('public');
     await asOwner.post(`/v1/branches/${branchId}/checkout`, { machine: 'JOSHS-MACBOOK' });
-    const listed = (await anonymous().get(`/v1/projects/${projectId}/branches`)).body.find((branch: { id: string }) => branch.id === branchId);
-    expect(listed).toMatchObject({ checkedOutByHandle: owner.handle, checkedOutMachine: null, checkedOutBy: null });
-    expect((await anonymous().get(`/v1/branches/${branchId}`)).body.branch.checkedOutMachine).toBeNull();
-    expect((await asOwner.get(`/v1/branches/${branchId}`)).body.branch.checkedOutMachine).toBe('JOSHS-MACBOOK');
+    // Installed CLIs read a null holder as "not checked out", so outsiders get stand-ins, not nulls.
+    const hidden = { checkedOutByHandle: owner.handle, checkedOutBy: HIDDEN_LOCK_HOLDER, checkedOutMachine: HIDDEN_LOCK_MACHINE };
+    for (const viewer of [anonymous(), client(harness, await createUser(harness, 'onlooker'))]) {
+      const listed = (await viewer.get(`/v1/projects/${projectId}/branches`)).body.find((branch: { id: string }) => branch.id === branchId);
+      expect(listed).toMatchObject(hidden);
+      expect((await viewer.get(`/v1/branches/${branchId}`)).body.branch).toMatchObject(hidden);
+      const folders = (await viewer.get(`/v1/projects/${projectId}/directory?path=Branches`)).body.entries as { name: string; branch: object }[];
+      expect(folders.find((folder) => folder.name === 'work')?.branch).toMatchObject(hidden);
+      expect((await viewer.get(`/v1/projects/${projectId}/directory?path=Branches/work`)).body.location.branch).toMatchObject(hidden);
+      expect(JSON.stringify((await viewer.get(`/v1/projects/${projectId}/directory?path=Branches`)).body)).not.toContain('JOSHS-MACBOOK');
+    }
+    expect((await asOwner.get(`/v1/branches/${branchId}`)).body.branch).toMatchObject({ checkedOutBy: owner.id, checkedOutMachine: 'JOSHS-MACBOOK' });
+    expect((await asOwner.get(`/v1/projects/${projectId}/directory?path=Branches/work`)).body.location.branch.checkedOutMachine).toBe('JOSHS-MACBOOK');
+    // The activity feed doesn't give the computer away either.
+    expect(JSON.stringify((await anonymous().get(`/v1/projects/${projectId}/events`)).body)).not.toContain('JOSHS-MACBOOK');
+    expect(JSON.stringify((await asOwner.get(`/v1/projects/${projectId}/events`)).body)).toContain('JOSHS-MACBOOK');
+    // A branch nobody holds stays plainly unlocked.
+    await asOwner.post(`/v1/branches/${branchId}/checkin`);
+    expect((await anonymous().get(`/v1/branches/${branchId}`)).body.branch).toMatchObject({ checkedOutBy: null, checkedOutMachine: null });
   });
 
   it('list members to outsiders by handle only, without ids, roles, or named approvers', async () => {

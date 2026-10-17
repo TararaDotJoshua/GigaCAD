@@ -1,7 +1,7 @@
-import { diffManifests, planAutosavePrune, type BranchCommit, type CommitKind, type ManifestEntry, type ProjectRole, type PruneTrigger } from '@gigacad/core';
+import { diffManifests, planAutosavePrune, type BranchCommit, type CommitKind, type ManifestEntry, type PruneTrigger } from '@gigacad/core';
 import type { Db, Sql, Tx } from '../db.js';
 import { conflict, forbidden, notFound } from '../errors.js';
-import { projectAccess, requireProjectRole } from './access.js';
+import { lockForViewer, projectAccess, requireProjectRole } from './access.js';
 import { recordEvent } from './events.js';
 import { deleteUnreferencedManifests, insertManifest, loadManifest, resolveFiles, type FileInput } from './manifests.js';
 
@@ -131,14 +131,6 @@ export async function createBranch(
   });
 }
 
-/**
- * Who holds a lock is public on a public project, but not where: machine names are often
- * a person's name, and the holder's id is for members.
- */
-function forViewer(branch: BranchView, role: ProjectRole | null): BranchView {
-  return role === null ? { ...branch, checkedOutBy: null, checkedOutMachine: null } : branch;
-}
-
 export async function listBranches(sql: Sql, projectId: string, userId: string | null): Promise<BranchView[]> {
   const { role } = await projectAccess(sql, projectId, userId);
   const branches = await sql<BranchView[]>`
@@ -151,7 +143,7 @@ export async function listBranches(sql: Sql, projectId: string, userId: string |
     where b.project_id = ${projectId}
     order by b.created_at desc
   `;
-  return branches.map((branch) => forViewer(branch, role));
+  return branches.map((branch) => lockForViewer(branch, role));
 }
 
 export async function getBranch(
@@ -162,7 +154,7 @@ export async function getBranch(
   const branch = await branchView(sql, branchId);
   const { role } = await projectAccess(sql, branch.projectId, userId);
   const head = await commitView(sql, branch.headCommitId);
-  return { branch: forViewer(branch, role), head, files: await loadManifest(sql, head.manifestId) };
+  return { branch: lockForViewer(branch, role), head, files: await loadManifest(sql, head.manifestId) };
 }
 
 /** Takes the branch's exclusive write lock for this user and machine. Re-checking out the same machine is a no-op. */

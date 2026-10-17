@@ -279,7 +279,7 @@ async function status(rt: Runtime): Promise<void> {
   else {
     if (remote.status !== 'open') lines.push(`The branch is ${remote.status}; it can't be changed.`);
     else if (lockedHere) lines.push('Checked out on this computer.');
-    else if (remote.checkedOutBy) lines.push(`Checked out by @${remote.checkedOutByHandle} on ${remote.checkedOutMachine}.`);
+    else if (remote.checkedOutBy || remote.checkedOutByHandle) lines.push(`Checked out by @${remote.checkedOutByHandle}${remote.checkedOutMachine ? ` on ${remote.checkedOutMachine}` : ''}.`);
     else lines.push('Not checked out. Run `giga checkout` before committing.');
     if (behind) lines.push('The branch has newer commits. Run `giga pull`.');
   }

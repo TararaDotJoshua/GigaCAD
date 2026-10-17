@@ -81,7 +81,8 @@ describe('SolidWorks exports', () => {
     // A STEP added later doesn't take over from the STL for the thumbnail.
     const [stepHash] = (await upload(harness, api, projectId, [`ISO-10303-21; ${randomUUID()}`])) as [string];
     expect((await api.put(`/v1/projects/${projectId}/exports`, { source: sha256(part), format: 'step', blob: stepHash })).status).toBe(200);
-    await render();
+    // The fixture isn't a real STEP file, so mark its thumbnail ready: both exports now have one.
+    await harness.sql`update thumbnails set status = 'ready', error = null where blob_sha256 = ${stepHash}`;
     expect(await shown(api, projectId, part)).toContain(thumbnailKey(stlHash));
     const both = await api.post(`/v1/projects/${projectId}/exports/lookup`, { sha256s: [sha256(part)] });
     expect(both.body.exports[sha256(part)].map((entry: { format: string }) => entry.format)).toEqual(['step', 'stl']);
@@ -90,6 +91,10 @@ describe('SolidWorks exports', () => {
     await unlinkUnusedBlobs(harness.sql, { graceHours: 0 });
     const [kept] = await harness.sql`select 1 from project_blobs where project_id = ${projectId} and sha256 = ${stlHash}`;
     expect(kept).toBeDefined();
+
+    // Without the STL, the STEP's thumbnail is shown.
+    await harness.sql`delete from file_exports where project_id = ${projectId} and source_sha256 = ${sha256(part)} and format = 'stl'`;
+    expect(await shown(api, projectId, part)).toContain(thumbnailKey(stepHash));
   });
 
   it('only attach to SolidWorks parts and assemblies in the project, from contributors', async () => {

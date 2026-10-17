@@ -31,9 +31,9 @@ async function releasedProject(api: Client, visibility: 'public' | 'private') {
   await commitVersion(harness, api, projectId, branch.body.id, { 'Part.SLDPRT': `${visibility} ${word}` });
   const opened = await api.post(`/v1/branches/${branch.body.id}/release-requests`, { title: `First ${visibility} release` });
   const requestId = opened.body.releaseRequest.id;
-  await api.post(`/v1/release-requests/${requestId}/candidate`);
-  await api.post(`/v1/release-requests/${requestId}/approvals`);
-  expect((await api.post(`/v1/release-requests/${requestId}/release`)).status).toBe(201);
+  const candidateManifestId = (await api.post(`/v1/release-requests/${requestId}/candidate`)).body.candidate.manifestId;
+  await api.post(`/v1/release-requests/${requestId}/approvals`, { candidateManifestId });
+  expect((await api.post(`/v1/release-requests/${requestId}/release`, { candidateManifestId })).status).toBe(201);
   return projectId;
 }
 

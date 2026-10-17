@@ -17,8 +17,12 @@ const commitTitle = (commit: Commit) => commit.message || commit.versionLabel ||
 export async function generateMetadata({ params }: { params: Promise<ProjectParams & { id: string }> }) {
   const { owner, project, id } = await params;
   // A missing commit 404s from the page itself. Throwing here would stream the error after a 200.
-  const detail = await getCommit(id).catch(() => null);
-  return { title: `${detail ? commitTitle(detail.commit) : 'Commit'} · ${owner}/${project}` };
+  // The commit must belong to this project, or the title would name another project's work.
+  const detail = await Promise.all([getProject(owner, project), getCommit(id)])
+    .then(async ([found, commit]) => ((await getBranchDetail(commit.commit.branchId)).branch.projectId === found.id ? commit : null))
+    .catch(() => null);
+  if (!detail) return { title: 'Not found' };
+  return { title: `${commitTitle(detail.commit)} · ${owner}/${project}` };
 }
 
 export default async function CommitPage({ params }: { params: Promise<ProjectParams & { id: string }> }) {

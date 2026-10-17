@@ -49,10 +49,7 @@ export async function updateSession(request: NextRequest) {
   }
   // Someone already signed in has nothing to do on the log-in or sign-up form.
   if (data?.claims && (effectivePath === '/login' || effectivePath === '/signup')) {
-    const target = request.nextUrl.clone();
-    const [targetPath, targetSearch = ''] = safeReturnPath(request.nextUrl.searchParams.get('next'), dashboardPath()).split('?');
-    target.pathname = targetPath!;
-    target.search = targetSearch;
+    const target = new URL(safeReturnPath(request.nextUrl.searchParams.get('next'), dashboardPath()), request.nextUrl.origin);
     const redirect = NextResponse.redirect(target);
     response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
     return redirect;

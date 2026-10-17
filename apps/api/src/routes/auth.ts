@@ -2,8 +2,10 @@ import { HANDLE_PATTERN, isPlaceholderHandle, isReservedHandle } from '@gigacad/
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
-import { badRequest, conflict, notFound } from '../errors.js';
+import type { Db } from '../db.js';
+import { badRequest, conflict, forbidden, notFound } from '../errors.js';
 import { idParams, parse, requireCaller, requireSessionCaller } from '../http.js';
+import { createRateLimit } from '../rateLimit.js';
 import { approveDeviceSignIn, denyDeviceSignIn, issueToken, listTokens, pendingDeviceSignIn, pollDeviceSignIn, revokeToken, startDeviceSignIn } from '../services/device.js';
 import { AVATAR_TYPES, MAX_AVATAR_BYTES, avatarUrl, clearAvatar, setAvatar } from '../services/profiles.js';
 
@@ -55,33 +57,60 @@ const websiteSchema = z
   })
   .transform((value) => value || null);
 
+/** Days a handle someone gave up stays theirs, so links and emails naming it can't reach someone else. */
+export const HANDLE_HOLD_DAYS = 90;
+
+/**
+ * Whether another account gave up this handle recently, or ever while it owned public projects
+ * (whose links stay out there). The account that gave it up can always take it back.
+ */
+async function handleIsHeld(db: Db, handle: string, userId: string): Promise<boolean> {
+  // Saving the profile resends the handle you already have, which is always yours to keep.
+  const [held] = await db`
+    select 1 from handle_history h
+    where h.handle = ${handle} and h.user_id is distinct from ${userId}
+      and (h.had_public_projects or h.released_at > now() - make_interval(days => ${HANDLE_HOLD_DAYS}))
+      and not exists (select 1 from profiles p where p.id = ${userId} and p.handle = ${handle})
+  `;
+  return Boolean(held);
+}
+
 export function authRoutes(app: FastifyInstance, { sql, storage, webOrigin }: AppDeps): void {
+  // Starting a sign-in needs no account, so it's limited per address; a client polls every
+  // 5 seconds, so a code gets a little more than that; approving is limited per person.
+  const startLimit = createRateLimit({ limit: 20, windowMs: 60_000 });
+  const pollLimit = createRateLimit({ limit: 30, windowMs: 60_000 });
+  const approveLimit = createRateLimit({ limit: 20, windowMs: 60_000 });
+
   app.post('/v1/auth/device/code', async (request) => {
+    startLimit(request.ip);
     const { clientName } = parse(z.object({ clientName: z.string().min(1).max(100) }), request.body);
     return startDeviceSignIn(sql, webOrigin, clientName);
   });
 
   app.post('/v1/auth/device/approve', async (request) => {
     const caller = requireSessionCaller(request);
+    approveLimit(caller.userId);
     const { userCode } = parse(z.object({ userCode: z.string().min(4).max(20) }), request.body);
     return approveDeviceSignIn(sql, caller.userId, userCode);
   });
 
   app.post('/v1/auth/device/deny', async (request, reply) => {
-    requireSessionCaller(request);
+    approveLimit(requireSessionCaller(request).userId);
     const { userCode } = parse(z.object({ userCode: z.string().min(4).max(20) }), request.body);
     await denyDeviceSignIn(sql, userCode);
     reply.status(204);
   });
 
   app.get('/v1/auth/device/pending/:userCode', async (request) => {
-    requireSessionCaller(request);
+    approveLimit(requireSessionCaller(request).userId);
     const { userCode } = parse(z.object({ userCode: z.string().min(4).max(20) }), request.params);
     return pendingDeviceSignIn(sql, userCode);
   });
 
   app.post('/v1/auth/device/token', async (request) => {
     const { deviceCode } = parse(z.object({ deviceCode: z.string().min(1).max(200) }), request.body);
+    pollLimit(`${request.ip} ${deviceCode}`);
     return pollDeviceSignIn(sql, deviceCode);
   });
 
@@ -96,7 +125,10 @@ export function authRoutes(app: FastifyInstance, { sql, storage, webOrigin }: Ap
 
   app.delete('/v1/me/tokens/:id', async (request, reply) => {
     const { id } = parse(idParams, request.params);
-    await revokeToken(sql, requireCaller(request).userId, id);
+    const caller = requireCaller(request);
+    // A leaked desktop token mustn't be able to sign the person out everywhere else.
+    if (caller.via === 'device' && caller.tokenId !== id) throw forbidden('A device can only sign itself out. Sign out other devices on gigacad.site');
+    await revokeToken(sql, caller.userId, id);
     reply.status(204);
   });
 
@@ -111,8 +143,9 @@ export function authRoutes(app: FastifyInstance, { sql, storage, webOrigin }: Ap
 
   app.get('/v1/me', async (request) => me(requireCaller(request).userId));
 
+  // Changing the handle or profile is for the website: a desktop or CLI token can't rename the account.
   app.patch('/v1/me', async (request) => {
-    const { userId } = requireCaller(request);
+    const { userId } = requireSessionCaller(request);
     const changes = parse(
       z
         .object({
@@ -125,12 +158,19 @@ export function authRoutes(app: FastifyInstance, { sql, storage, webOrigin }: Ap
         .strict(),
       request.body,
     );
-    if (changes.handle) {
-      const [taken] = await sql`select 1 from profiles where lower(handle) = lower(${changes.handle}) and id <> ${userId}`;
-      if (taken) throw conflict('handle_taken', 'That handle is taken');
-    }
     const defined = Object.fromEntries(Object.entries(changes).filter(([, value]) => value !== undefined));
-    if (Object.keys(defined).length > 0) await sql`update profiles set ${sql(defined)} where id = ${userId}`;
+    if (Object.keys(defined).length > 0) {
+      await sql.begin(async (tx) => {
+        if (changes.handle) {
+          const [taken] = await tx`select 1 from profiles where lower(handle) = lower(${changes.handle}) and id <> ${userId}`;
+          if (taken) throw conflict('handle_taken', 'That handle is taken');
+        }
+        if (changes.handle && (await handleIsHeld(tx, changes.handle, userId))) {
+          throw conflict('handle_unavailable', 'Someone used this handle recently, so old links to it could reach your projects. Choose another.');
+        }
+        await tx`update profiles set ${tx(defined)} where id = ${userId}`;
+      });
+    }
     return me(userId);
   });
 
@@ -139,13 +179,13 @@ export function authRoutes(app: FastifyInstance, { sql, storage, webOrigin }: Ap
     scope.addContentTypeParser([...AVATAR_TYPES], { parseAs: 'buffer', bodyLimit: MAX_AVATAR_BYTES }, (_request, body, done) => done(null, body));
 
     scope.put('/v1/me/avatar', async (request) => {
-      const { userId } = requireCaller(request);
+      const { userId } = requireSessionCaller(request);
       if (!(request.body instanceof Buffer)) throw badRequest('invalid_image', 'Upload a PNG, JPEG, or WebP image');
       return { avatarUrl: await setAvatar(sql, storage, userId, request.body) };
     });
 
     scope.delete('/v1/me/avatar', async (request, reply) => {
-      await clearAvatar(sql, storage, requireCaller(request).userId);
+      await clearAvatar(sql, storage, requireSessionCaller(request).userId);
       reply.status(204);
     });
   });

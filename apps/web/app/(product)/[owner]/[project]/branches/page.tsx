@@ -11,7 +11,10 @@ import { branchPath, projectPath, releasePath } from '../../../../../lib/paths';
 import { getBranches, getProject, getReleases, getViewer } from '../../../../../lib/product';
 import type { ProjectParams } from '../layout';
 
-export const metadata = { title: 'Branches' };
+export async function generateMetadata({ params }: { params: Promise<ProjectParams> }) {
+  const { owner, project } = await params;
+  return { title: `Branches · ${owner}/${project}` };
+}
 
 export default async function Branches({ params, searchParams }: { params: Promise<ProjectParams>; searchParams: Promise<{ all?: string }> }) {
   const [{ owner, project: slug }, query] = await Promise.all([params, searchParams]);
@@ -92,11 +95,20 @@ export default async function Branches({ params, searchParams }: { params: Promi
                           )}
                         </td>
                         <td>
-                          {me && branch.checkedOutBy === me.id
-                            ? `You${branch.checkedOutMachine ? ` on ${branch.checkedOutMachine}` : ''}`
-                            : branch.checkedOutByHandle
-                              ? `@${branch.checkedOutByHandle}${branch.checkedOutMachine ? ` on ${branch.checkedOutMachine}` : ''}`
-                              : '—'}
+                          {branch.checkedOutByHandle ? (
+                            <>
+                              {me && branch.checkedOutBy === me.id ? 'You' : `@${branch.checkedOutByHandle}`}
+                              {branch.checkedOutMachine && ` on ${branch.checkedOutMachine}`}
+                              {branch.checkedOutAt && (
+                                <span className="muted">
+                                  {' · '}
+                                  <RelativeTime value={branch.checkedOutAt} />
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            '—'
+                          )}
                         </td>
                         <td>
                           <RelativeTime value={branch.createdAt} />

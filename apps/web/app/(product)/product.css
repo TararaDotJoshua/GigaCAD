@@ -136,6 +136,10 @@
   transition: background-color 150ms, color 150ms;
 }
 
+.shell .app-nav-owner {
+  color: var(--paper-muted);
+}
+
 .shell .app-nav a:hover {
   background: rgb(245 245 247 / 0.06);
   color: var(--paper);
@@ -189,6 +193,50 @@
 .shell .app-nav-holder .icon {
   width: 12px;
   height: 12px;
+}
+
+/* A link whose page is still loading: the row lights up at once and a bar pulses at its edge. */
+.shell .app-nav a,
+.shell .shell-explore {
+  position: relative;
+}
+
+.shell .nav-pending {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--paper);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.shell .nav-pending.is-pending {
+  animation: nav-pending 800ms ease-in-out infinite alternate;
+}
+
+.shell .app-nav a:has(> .nav-pending.is-pending),
+.shell .shell-explore:has(> .nav-pending.is-pending) {
+  background: rgb(245 245 247 / 0.12);
+  color: var(--paper);
+}
+
+@keyframes nav-pending {
+  from {
+    opacity: 0.2;
+  }
+  to {
+    opacity: 0.9;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell .nav-pending.is-pending {
+    animation: none;
+    opacity: 0.8;
+  }
 }
 
 .shell .app-nav-count {
@@ -567,6 +615,12 @@
   cursor: not-allowed;
 }
 
+/* A button whose action is running keeps focus, so it's aria-disabled rather than disabled. */
+.shell .btn[aria-disabled="true"] {
+  opacity: 0.7;
+  cursor: progress;
+}
+
 .shell .btn-primary {
   background: var(--forest);
   color: var(--paper);
@@ -871,6 +925,7 @@
 
 .shell .empty-title {
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .shell .empty-body {
@@ -1241,7 +1296,10 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 10px;
+  /* Wrapped under a long file name, the controls stay on the right like every other row's. */
+  margin-left: auto;
 }
 
 .shell .segment {
@@ -1593,6 +1651,7 @@
 .shell .explore-search {
   flex: 1 1 320px;
   max-width: 520px;
+  margin-top: 0;
   background: var(--mist);
   color: var(--ink-muted);
 }
@@ -1997,6 +2056,70 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  max-width: 100%;
+}
+
+/* Long handles end in an ellipsis (the full one is the cell's title) instead of wrapping mid-handle. */
+.shell .member-handle {
+  max-width: 28ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The role select in a member row, drawn like the form selects. */
+.shell .member-role select {
+  min-height: 32px;
+  padding: 4px 30px 4px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: var(--mist) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%230a2922' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3 4.5 3 3 3-3'/%3E%3C/svg%3E") right 10px center no-repeat;
+  color: var(--ink);
+  font: inherit;
+  appearance: none;
+  cursor: pointer;
+}
+
+.shell .member-role select:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+/* A Remove or Leave confirm wraps at a fixed width instead of stretching the column (the cell is 1% wide, nowrap). */
+.shell .data-table .cell-action .confirm-inline {
+  width: max-content;
+  max-width: 28ch;
+  text-align: left;
+  white-space: normal;
+}
+
+.shell .members-status:empty {
+  display: none;
+}
+
+.shell .members-status {
+  margin-top: 12px;
+}
+
+/* Handle and Role line up at the top; each hint sits under its own field. */
+.shell .member-add {
+  margin-top: 16px;
+}
+
+.shell .member-add-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.shell .member-add-fields .field {
+  flex: 1 1 200px;
+}
+
+.shell .confirm-short {
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
 }
 
 /* Account settings: the avatar row */
@@ -2838,6 +2961,36 @@
   text-align: left;
 }
 
+.shell .action-toast-region {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  z-index: 31;
+  max-width: calc(100vw - 32px);
+  transform: translateX(-50%);
+}
+
+.shell .action-toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 16px;
+  border-radius: var(--r-md);
+  background: var(--forest);
+  color: var(--paper);
+  font-weight: 500;
+  box-shadow: 0 12px 40px -12px rgb(10 41 34 / 0.35);
+}
+
+.shell .action-toast .icon-button {
+  color: inherit;
+}
+
+.shell .action-toast .icon-button:hover {
+  background: rgb(245 245 247 / 0.12);
+  color: inherit;
+}
+
 .shell .upload-toast-title {
   font-weight: 600;
 }
@@ -3131,9 +3284,119 @@
   font-size: var(--t-small);
 }
 
+.shell .next-step > p {
+  flex: 1 1 32ch;
+}
+
+/* Why a request control is off, said next to it. */
+.shell .form-hint {
+  color: var(--ink-muted);
+  font-size: var(--t-small);
+}
+
+/* The result of the last action, which outlives the button that ran it. */
+.shell .next-step-notice {
+  font-weight: 500;
+}
+
+.shell .request-note {
+  margin: -12px 0 20px;
+}
+
+.shell section > .request-note {
+  margin: 0 0 12px;
+}
+
+/* A pick that can't be changed here: read-only views, and files another file replaces. */
+.shell .pick-state {
+  margin-left: auto;
+  color: var(--ink-muted);
+  font-size: var(--t-small);
+}
+
+/* Rebuild report: errors first in the error color, notes muted, paths kept in reading order. */
+.shell .rebuild-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.shell .rebuild-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding-left: 18px;
+  list-style: disc;
+  font-size: var(--t-small);
+  overflow-wrap: anywhere;
+}
+
+.shell .rebuild-list .is-error {
+  color: #b4262b;
+}
+
+.shell .rebuild-list .is-warning {
+  color: #8a6212;
+}
+
+.shell .rebuild-list .is-info {
+  color: var(--ink-muted);
+}
+
+.shell .rebuild-message {
+  white-space: pre-line;
+}
+
+.shell .rebuild-more,
+.shell .candidate-files {
+  margin-top: 10px;
+  font-size: var(--t-small);
+}
+
+.shell .rebuild-more > summary,
+.shell .candidate-files > summary {
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+
+.shell .file-list {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.shell .file-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+
+.shell .release-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* Typed Markdown keeps its own line breaks; the plain-text styles' pre-wrap would double them. */
+.shell .markdown-text {
+  white-space: normal;
+}
+
+/* A model's size, under its 3D preview. */
+.shell .model-size {
+  position: absolute;
+  bottom: 10px;
+  left: 16px;
+  color: var(--ink-muted);
+  font-size: var(--t-micro);
+  font-variant-numeric: tabular-nums;
+}
+
 
 .shell .release-title {
-  margin-left: 12px;
   font-family: var(--font-sans);
 }
 
@@ -3149,4 +3412,69 @@
   margin-left: 4px;
   color: var(--ink-muted);
   font-size: var(--t-micro);
+}
+
+/* Needs you, at the top of the dashboard */
+
+.shell .needs-you h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shell .needs-you .needs-you-count {
+  margin-left: 0;
+}
+
+.shell .needs-you-list {
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line-ink);
+  border-radius: var(--r-md);
+  list-style: none;
+}
+
+.shell .needs-you-list li {
+  display: grid;
+  gap: 2px;
+  padding: 10px 14px;
+}
+
+.shell .needs-you-list li + li {
+  border-top: 1px solid var(--line-ink);
+}
+
+.shell .needs-you-list a {
+  font-weight: 600;
+}
+
+.shell .needs-you-list .muted {
+  font-size: 0.8125rem;
+}
+
+/* A fresh branch's one next step, and copyable commands */
+
+.shell .start-branch {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+
+.shell .copy-command {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  max-width: 100%;
+}
+
+.shell .copy-command pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.shell .activity-pager {
+  display: flex;
+  gap: 16px;
+  margin-top: 16px;
+  font-weight: 500;
 }

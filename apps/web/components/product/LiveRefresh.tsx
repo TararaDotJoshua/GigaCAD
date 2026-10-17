@@ -39,10 +39,11 @@ export function LiveRefresh({ projectId }: { projectId: string }) {
     async function refresh() {
       if (!startedSignedIn || (await supabase.auth.getSession()).data.session) router.refresh();
     }
+    // Signing out (here or in another tab) drops the subscription at once, rather than when the token expires.
     const { data: auth } = supabase.auth.onAuthStateChange((event) => {
-      if (event !== 'SIGNED_OUT' || !startedSignedIn) return;
+      if (event !== 'SIGNED_OUT') return;
       clearTimeout(timer);
-      if (channel) void supabase.removeChannel(channel);
+      void supabase.removeAllChannels();
     });
     return () => {
       cancelled = true;

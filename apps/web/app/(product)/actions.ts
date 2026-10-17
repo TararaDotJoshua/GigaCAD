@@ -1,11 +1,11 @@
 'use server';
 
-import { formatBytes, isPlanId, type ApprovalRules, type Picks, type ProjectRole } from '@gigacad/core';
+import { formatBytes, HANDLE_PATTERN, isPlanId, type ApprovalRules, type Picks, type ProjectRole } from '@gigacad/core';
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError, apiRequest, type Project, type ReleaseRequestDetail } from '../../lib/api';
 import { dashboardPath } from '../../lib/hosts';
-import { messageFor } from '../../lib/messages';
+import { fieldFor, messageFor } from '../../lib/messages';
 import { projectPath, releasePath, releaseRequestPath, treePath } from '../../lib/paths';
 import { safeReturnPath } from '../../lib/return-path';
 import { getAccessToken } from '../../lib/session';
@@ -18,20 +18,16 @@ import { getAccessToken } from '../../lib/session';
 export interface ActionState {
   readonly error?: string;
   readonly message?: string;
+  /** The form field the error is about, which the form focuses. */
+  readonly field?: string;
+  /** The candidate a release request action left behind (null: none), so the page knows it as the viewer's own. */
+  readonly candidateManifestId?: string | null;
   /** Set when an upload was refused because the project owner's storage is full. */
   readonly storageFull?: { readonly usedBytes: number; readonly quotaBytes: number };
   /** The session ended (in another tab, or it expired), so nothing was saved. */
   readonly signedOut?: boolean;
   /** Where to go to fix the error, shown after it. */
   readonly link?: { readonly href: string; readonly label: string };
-}
-
-/** A new project's address is one of yours already, maybe a deleted project's, which the error links to. */
-function addressError(error: unknown): ActionState {
-  if (error instanceof ApiError && error.code === 'address_deleted') {
-    return { error: 'You deleted a project at this address. Restore it under Account, or choose another address.', link: { href: '/settings#deleted', label: 'Deleted projects' } };
-  }
-  return { error: messageFor(error) };
 }
 
 /**
@@ -60,17 +56,44 @@ function id(value: string): string {
 
 const json = (method: string, body?: unknown): RequestInit => ({ method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
 
-async function mutate(run: (token: string) => Promise<unknown>, message?: string): Promise<ActionState> {
+/** Errors about what was typed, which send focus back to the field. */
+const FIELD_ERRORS = new Set(['invalid_request', 'already_exists', 'branch_exists', 'name_taken', 'invalid_name', 'reserved_name', 'tag_exists', 'invalid_tag', 'not_found']);
+
+/** An API error as form state. `field` is the input it's about, if it's about what was typed. */
+function failure(error: unknown, field?: string): ActionState {
+  const code = error instanceof ApiError ? error.code : '';
+  return { error: messageFor(error), storageFull: storageFull(error), ...(field && FIELD_ERRORS.has(code) ? { field: fieldFor(error) ?? field } : {}) };
+}
+
+async function mutate(run: (token: string) => Promise<unknown>, message?: string, field?: string): Promise<ActionState> {
   const token = await getAccessToken();
   if (!token) return SIGNED_OUT;
   try {
     await run(token);
   } catch (error) {
-    return { error: messageFor(error), storageFull: storageFull(error) };
+    return failure(error, field);
   }
   refresh();
   return message ? { message } : {};
 }
+
+/** Creating or forking a project into an address its owner already uses, maybe a deleted project's, which the error links to. */
+function projectFailure(error: unknown): ActionState {
+  if (error instanceof ApiError && error.code === 'address_deleted') {
+    return {
+      error: 'You deleted a project at this address. Restore it under Account, or choose another address.',
+      field: 'slug',
+      link: { href: '/settings#deleted', label: 'Deleted projects' },
+    };
+  }
+  if (error instanceof ApiError && (error.code === 'already_exists' || error.code === 'address_taken')) {
+    return { error: 'You already have a project at that address. Choose another.', field: 'slug' };
+  }
+  return failure(error, 'slug');
+}
+
+/** A required field left blank (or only spaces), caught before it reaches the API. */
+const blank = (field: string, error: string): ActionState => ({ error, field });
 
 const text = (form: FormData, name: string) => {
   const value = form.get(name);
@@ -112,7 +135,7 @@ export async function saveProfile(_state: ActionState, form: FormData): Promise<
   // links. Something with its own scheme, like "mailto:", goes as typed for the API to refuse.
   const typed = text(form, 'website');
   const website = typed && !/^[a-z][a-z0-9+.-]*:(?:\/\/|(?!\d))/i.test(typed) ? `https://${typed}` : typed;
-  if (website.length > 200) return { error: `Website can be at most 200 characters${website === typed ? '' : ', counting the https:// added to it'}.` };
+  if (website.length > 200) return { error: `Website can be at most 200 characters${website === typed ? '' : ', counting the https:// added to it'}.`, field: 'website' };
   return mutate(
     (token) =>
       apiRequest(
@@ -127,6 +150,7 @@ export async function saveProfile(_state: ActionState, form: FormData): Promise<
         }),
       ),
     'Saved.',
+    'handle',
   );
 }
 
@@ -152,6 +176,7 @@ export async function signOutDevice(tokenId: string): Promise<ActionState> {
 // Projects
 
 export async function createProject(_state: ActionState, form: FormData): Promise<ActionState> {
+  if (!text(form, 'name')) return blank('name', 'Enter a name.');
   const token = await getAccessToken();
   if (!token) return SIGNED_OUT;
   let project: Project;
@@ -167,12 +192,15 @@ export async function createProject(_state: ActionState, form: FormData): Promis
       }),
     );
   } catch (error) {
-    return addressError(error);
+    return projectFailure(error);
   }
+  // The sidebar lists your projects, and the redirect alone wouldn't redraw it.
+  refresh();
   redirect(projectPath(project.ownerHandle, project.slug));
 }
 
 export async function updateProject(projectId: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  if (!text(form, 'name')) return blank('name', 'Enter a name.');
   return mutate(
     (token) =>
       apiRequest(
@@ -181,18 +209,51 @@ export async function updateProject(projectId: string, _state: ActionState, form
         json('PATCH', {
           name: text(form, 'name'),
           description: text(form, 'description'),
-          visibility: text(form, 'visibility') === 'public' ? 'public' : 'private',
+          // Only the owner gets the field; a disabled select isn't submitted at all.
+          ...(form.has('visibility') ? { visibility: text(form, 'visibility') === 'public' ? 'public' : 'private' } : {}),
           license: text(form, 'license') || null,
         }),
       ),
     'Saved.',
+    'name',
   );
 }
 
+/** Adds someone new. It never changes an existing member's role; the table does that. */
 export async function setMember(projectId: string, _state: ActionState, form: FormData): Promise<ActionState> {
   const handle = text(form, 'handle').replace(/^@/, '').toLowerCase();
   const role = text(form, 'role') as ProjectRole;
-  return mutate((token) => apiRequest(token, `/v1/projects/${id(projectId)}/members`, json('PUT', { handle, role })), `Added @${handle}.`);
+  if (!handle) return blank('handle', 'Enter their handle.');
+  if (handle.includes('@')) return { error: 'Add people by their handle, not their email. They need a GigaCAD account with a handle first.', field: 'handle' };
+  const nobody = { error: `No one has the handle @${handle}. They need a GigaCAD account with a handle first.`, field: 'handle' };
+  if (!HANDLE_PATTERN.test(handle)) return nobody;
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
+  try {
+    await apiRequest(token, `/v1/projects/${id(projectId)}/members`, json('POST', { handle, role }));
+  } catch (error) {
+    if (error instanceof ApiError && error.code === 'already_member') {
+      return { error: `@${handle} is already a ${String((error.details as { role?: string } | undefined)?.role ?? 'member')}. Change their role in the table above.`, field: 'handle' };
+    }
+    if (error instanceof ApiError && error.code === 'not_found') return nobody;
+    return failure(error, 'handle');
+  }
+  refresh();
+  return { message: `Added @${handle} as a ${role}.` };
+}
+
+/** Removes the caller from a project shared with them. */
+export async function leaveProject(projectId: string, handle: string): Promise<ActionState> {
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
+  try {
+    await apiRequest(token, `/v1/projects/${id(projectId)}/members/${encodeURIComponent(handle)}`, json('DELETE'));
+  } catch (error) {
+    return { error: messageFor(error) };
+  }
+  // The sidebar drops the project too, not just the page.
+  refresh();
+  redirect(dashboardPath());
 }
 
 /** Changes a member's role from the members table. */
@@ -220,8 +281,10 @@ export async function removeMember(projectId: string, handle: string): Promise<A
 }
 
 export async function setApprovalRules(projectId: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  // An emptied field must not quietly become 0, which turns review off.
+  if (!/^\d+$/.test(text(form, 'requiredCount'))) return { error: 'Enter how many approvals a release needs.' };
   const rules: ApprovalRules = {
-    requiredCount: Number(text(form, 'requiredCount')) || 0,
+    requiredCount: Number(text(form, 'requiredCount')),
     approverRoles: form.getAll('approverRoles').map(String) as ProjectRole[],
     approverUserIds: form.getAll('approverUserIds').map(String),
     allowSelfApproval: form.get('allowSelfApproval') === 'on',
@@ -231,7 +294,7 @@ export async function setApprovalRules(projectId: string, _state: ActionState, f
 }
 
 export async function deleteProject(projectId: string, slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
-  if (text(form, 'confirm') !== slug) return { error: `Type ${slug} to confirm.` };
+  if (text(form, 'confirm') !== slug) return { error: `Type ${slug} to confirm.`, field: 'confirm' };
   const token = await getAccessToken();
   if (!token) return SIGNED_OUT;
   try {
@@ -239,6 +302,8 @@ export async function deleteProject(projectId: string, slug: string, _state: Act
   } catch (error) {
     return { error: messageFor(error) };
   }
+  // Drops it from the sidebar, and from the page Back would return to.
+  refresh();
   redirect(`${dashboardPath()}?deleted=${encodeURIComponent(slug)}`);
 }
 
@@ -259,6 +324,7 @@ export async function restoreProject(projectId: string): Promise<ActionState> {
     }
     return { error: messageFor(error) };
   }
+  refresh();
   redirect(`${projectPath(project.ownerHandle, project.slug)}?restored=1`);
 }
 
@@ -288,6 +354,7 @@ export async function setStar(projectId: string, starred: boolean): Promise<Acti
 }
 
 export async function forkProject(sourceId: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  if (!text(form, 'name')) return blank('name', 'Enter a name.');
   const token = await getAccessToken();
   if (!token) return SIGNED_OUT;
   const release = Number(text(form, 'releaseNumber'));
@@ -304,13 +371,15 @@ export async function forkProject(sourceId: string, _state: ActionState, form: F
       }),
     );
   } catch (error) {
-    return addressError(error);
+    return projectFailure(error);
   }
-  redirect(projectPath(project.ownerHandle, project.slug));
+  refresh();
+  redirect(`${projectPath(project.ownerHandle, project.slug)}?forked=1`);
 }
 
 export async function createBranch(projectId: string, owner: string, slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
   const name = text(form, 'name');
+  if (!name) return blank('name', 'Enter a name.');
   const from = Number(text(form, 'fromRelease'));
   const token = await getAccessToken();
   if (!token) return SIGNED_OUT;
@@ -318,10 +387,13 @@ export async function createBranch(projectId: string, owner: string, slug: strin
     await apiRequest(token, `/v1/projects/${id(projectId)}/branches`, json('POST', { name, ...(from > 0 ? { fromRelease: from } : {}) }));
   } catch (error) {
     if (error instanceof ApiError && error.code === 'branch_exists_archived') {
-      return { error: `An archived branch is already called ${(error.details as { name?: string } | undefined)?.name ?? name}. Restore it or pick another name.` };
+      const existing = (error.details as { name?: string } | undefined)?.name ?? name;
+      return { error: `An archived branch is already called ${existing}. Restore it or pick another name.`, field: 'name' };
     }
-    return { error: messageFor(error) };
+    return failure(error, 'name');
   }
+  // The sidebar lists open branches; redirecting alone leaves it without the new one.
+  refresh();
   redirect(projectPath(owner, slug, 'branches', name));
 }
 
@@ -343,6 +415,7 @@ export async function unarchiveBranch(branchId: string): Promise<ActionState> {
 }
 
 export async function openReleaseRequest(branchId: string, owner: string, slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  if (!text(form, 'title')) return blank('title', 'Give the request a title.');
   const token = await getAccessToken();
   if (!token) return SIGNED_OUT;
   let detail: ReleaseRequestDetail;
@@ -353,19 +426,16 @@ export async function openReleaseRequest(branchId: string, owner: string, slug: 
       json('POST', { title: text(form, 'title'), body: text(form, 'body') || undefined }),
     );
   } catch (error) {
-    return { error: messageFor(error) };
+    return failure(error, 'title');
   }
-  // Build the first candidate from the default picks right away, so a request that needs
-  // no changes to its picks is one step from release. A pick error just leaves it unbuilt.
-  if (detail.preview.ok) {
-    await apiRequest(token, `/v1/release-requests/${id(detail.releaseRequest.id)}/candidate`, json('POST', {})).catch(() => undefined);
-  }
+  // The API builds the first candidate from the default picks as it opens the request.
+  refresh();
   redirect(releaseRequestPath(owner, slug, detail.releaseRequest.number));
 }
 
 // Release requests
 
-/** Saves the picks and rebuilds the candidate from them, so saving is the only step. */
+/** Saves the picks and regenerates the candidate from them, so saving is the only step. */
 export async function savePicks(requestId: string, picks: Picks): Promise<ActionState> {
   const token = await getAccessToken();
   if (!token) return SIGNED_OUT;
@@ -375,26 +445,61 @@ export async function savePicks(requestId: string, picks: Picks): Promise<Action
   } catch (error) {
     return { error: messageFor(error) };
   }
-  if (!detail.preview.ok) {
+  // Saving picks clears the candidate; whatever is built next (or nothing) is this viewer's own doing.
+  if (!detail.preview.ok || !detail.changesMain) {
     refresh();
-    return { message: 'Saved. Fix the pick errors to build the candidate.' };
+    return { message: detail.preview.ok ? 'Saved. These picks leave main as it is, so there’s nothing to release.' : 'Saved. Fix the pick errors to build the candidate.', candidateManifestId: null };
   }
+  let built: ReleaseRequestDetail;
   try {
-    await apiRequest(token, `/v1/release-requests/${id(requestId)}/candidate`, json('POST', {}));
+    built = await apiRequest<ReleaseRequestDetail>(token, `/v1/release-requests/${id(requestId)}/candidate`, json('POST', {}));
   } catch (error) {
     refresh();
-    return { error: `Saved, but the candidate didn’t build: ${messageFor(error)}` };
+    return { error: `Saved, but the candidate didn’t build: ${messageFor(error)}`, candidateManifestId: null };
   }
   refresh();
-  return { message: 'Saved and rebuilt the candidate.' };
+  return { message: 'Saved and regenerated the candidate.', candidateManifestId: built.candidate?.manifestId ?? null };
 }
 
 export async function generateCandidate(requestId: string): Promise<ActionState> {
-  return mutate((token) => apiRequest(token, `/v1/release-requests/${id(requestId)}/candidate`, json('POST', {})), 'Generated the candidate.');
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
+  let built: ReleaseRequestDetail;
+  try {
+    built = await apiRequest<ReleaseRequestDetail>(token, `/v1/release-requests/${id(requestId)}/candidate`, json('POST', {}));
+  } catch (error) {
+    return failure(error);
+  }
+  refresh();
+  return { message: 'Built the candidate.', candidateManifestId: built.candidate?.manifestId ?? null };
 }
 
-export async function approveCandidate(requestId: string): Promise<ActionState> {
-  return mutate((token) => apiRequest(token, `/v1/release-requests/${id(requestId)}/approvals`, json('POST', {})), 'Approved.');
+/** A refusal because the candidate changed under the page: show the new one so it can be reviewed. */
+function refreshIfStale(error: unknown): void {
+  if (error instanceof ApiError && (error.code === 'stale_candidate' || error.code === 'main_moved' || error.code === 'release_request_finished')) refresh();
+}
+
+/**
+ * Approves the candidate the viewer reviewed (`candidateManifestId`, sent by the page).
+ * `releaser` names who can release it when the approver can't, so they know what happens next.
+ */
+/** What the viewer reviewed: the candidate, and when its exports last changed, so a swapped export is refused as stale. */
+const reviewedBody = (candidateManifestId: string, exportsChangedAt: string | null) => ({
+  candidateManifestId: id(candidateManifestId),
+  exportsChangedAt: exportsChangedAt && !Number.isNaN(Date.parse(exportsChangedAt)) ? exportsChangedAt : null,
+});
+
+export async function approveCandidate(requestId: string, releaser: string | null, candidateManifestId: string, exportsChangedAt: string | null): Promise<ActionState> {
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
+  try {
+    await apiRequest(token, `/v1/release-requests/${id(requestId)}/approvals`, json('POST', reviewedBody(candidateManifestId, exportsChangedAt)));
+  } catch (error) {
+    refreshIfStale(error);
+    return { error: messageFor(error) };
+  }
+  refresh();
+  return { message: releaser ? `Approved. ${releaser} can release it.` : 'Approved.' };
 }
 
 export async function withdrawApproval(requestId: string): Promise<ActionState> {
@@ -405,22 +510,39 @@ export async function closeReleaseRequest(requestId: string): Promise<ActionStat
   return mutate((token) => apiRequest(token, `/v1/release-requests/${id(requestId)}/close`, json('POST', {})), 'Closed. The branch is open again.');
 }
 
-export async function releaseCandidate(requestId: string, owner: string, slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
+/**
+ * Releases the candidate the viewer reviewed (sent by the page). With `approve`, approves it
+ * first: for someone whose own approval is the last one needed and who chose to do both. If
+ * the approval lands but the release doesn't, the page says so and shows the approval.
+ */
+export async function releaseCandidate(
+  requestId: string,
+  owner: string,
+  slug: string,
+  input: { candidateManifestId: string; exportsChangedAt: string | null; approve: boolean; notes: string },
+): Promise<ActionState> {
   const token = await getAccessToken();
   if (!token) return SIGNED_OUT;
+  const reviewed = reviewedBody(input.candidateManifestId, input.exportsChangedAt);
+  let approved = false;
   let number: number;
   try {
-    // "Approve and release" for someone whose own approval is the last one needed.
-    if (text(form, 'approve') === 'yes') await apiRequest(token, `/v1/release-requests/${id(requestId)}/approvals`, json('POST', {}));
-    const result = await apiRequest<{ release: { number: number } }>(
-      token,
-      `/v1/release-requests/${id(requestId)}/release`,
-      json('POST', text(form, 'notes') ? { notes: text(form, 'notes') } : {}),
-    );
+    if (input.approve) {
+      await apiRequest(token, `/v1/release-requests/${id(requestId)}/approvals`, json('POST', reviewed));
+      approved = true;
+    }
+    const notes = input.notes.trim();
+    const result = await apiRequest<{ release: { number: number } }>(token, `/v1/release-requests/${id(requestId)}/release`, json('POST', notes ? { ...reviewed, notes } : reviewed));
     number = result.release.number;
   } catch (error) {
+    if (approved) {
+      refresh();
+      return { error: `Approved, but not released. ${messageFor(error)}` };
+    }
+    refreshIfStale(error);
     return { error: messageFor(error) };
   }
+  refresh();
   redirect(releasePath(owner, slug, number));
 }
 
@@ -505,23 +627,28 @@ export async function replaceRootFile(projectId: string, entryId: string, sha256
 
 export async function createFolder(projectId: string, parentId: string | null, _state: ActionState, form: FormData): Promise<ActionState> {
   const name = text(form, 'name');
+  if (!name) return blank('name', 'Enter a name.');
   return mutate(
     (token) => apiRequest(token, `/v1/projects/${id(projectId)}/directory/folders`, json('POST', { parentId: parent(parentId), name })),
     `Created ${name}.`,
+    'name',
   );
 }
 
-/** Renames and moves a root entry in one step. An empty destination is the project root. */
+/**
+ * Renames and moves a root entry in one step. An empty destination is the project root.
+ * Only fields that differ from the page's `was*` values are sent, so a rename never moves
+ * the entry back to a folder the form showed before someone else moved it.
+ */
 export async function moveEntry(projectId: string, entryId: string, _state: ActionState, form: FormData): Promise<ActionState> {
-  return mutate(
-    (token) =>
-      apiRequest(
-        token,
-        `/v1/projects/${id(projectId)}/directory/entries/${id(entryId)}`,
-        json('PATCH', { name: text(form, 'name'), parentId: parent(text(form, 'parentId')) }),
-      ),
-    'Saved.',
-  );
+  const name = text(form, 'name');
+  if (!name) return blank('name', 'Enter a name.');
+  const change = {
+    ...(form.has('wasName') && name === text(form, 'wasName') ? {} : { name }),
+    ...(form.has('wasParentId') && text(form, 'parentId') === text(form, 'wasParentId') ? {} : { parentId: parent(text(form, 'parentId')) }),
+  };
+  if (Object.keys(change).length === 0) return { message: 'Nothing to change.' };
+  return mutate((token) => apiRequest(token, `/v1/projects/${id(projectId)}/directory/entries/${id(entryId)}`, json('PATCH', change)), 'Saved.', 'name');
 }
 
 /** From the directory's right-click menu: one change at a time, staying in the folder. */
@@ -550,11 +677,14 @@ export async function deleteEntry(projectId: string, entryId: string, owner: str
 
 export async function createTag(projectId: string, _state: ActionState, form: FormData): Promise<ActionState> {
   const name = text(form, 'name');
-  return mutate((token) => apiRequest(token, `/v1/projects/${id(projectId)}/tags`, json('POST', { name })), `Added ${name}.`);
+  if (!name) return blank('name', 'Enter a tag name.');
+  return mutate((token) => apiRequest(token, `/v1/projects/${id(projectId)}/tags`, json('POST', { name })), `Added ${name}.`, 'name');
 }
 
 export async function renameTag(projectId: string, tagId: string, _state: ActionState, form: FormData): Promise<ActionState> {
-  return mutate((token) => apiRequest(token, `/v1/projects/${id(projectId)}/tags/${id(tagId)}`, json('PATCH', { name: text(form, 'name') })), 'Renamed.');
+  const name = text(form, 'name');
+  if (!name) return blank('name', 'Enter a tag name.');
+  return mutate((token) => apiRequest(token, `/v1/projects/${id(projectId)}/tags/${id(tagId)}`, json('PATCH', { name })), 'Renamed.', 'name');
 }
 
 export async function deleteTag(projectId: string, tagId: string): Promise<ActionState> {

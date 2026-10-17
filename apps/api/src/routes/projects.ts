@@ -20,6 +20,7 @@ import {
   setMember,
   updateProject,
 } from '../services/projects.js';
+import { notifyMemberRemoved, notifyProjectDeleted, notifyRoleChanged, sendLater } from '../services/notices.js';
 import { getRelease, listReleases, releaseArchive } from '../services/releases.js';
 import { contentDisposition } from '../storage.js';
 
@@ -28,6 +29,14 @@ export const visibility = z.enum(['public', 'private']);
 export const slug = z.string().regex(/^[a-z0-9](?:[a-z0-9._-]{0,98}[a-z0-9])?$/, 'Use lowercase letters, digits, dots, dashes, or underscores');
 
 export function projectRoutes(app: FastifyInstance, { sql, storage, mailer, webOrigin }: AppDeps): void {
+  /** Someone's role in the project before a role change, to tell them it changed. Null if they aren't a member. */
+  const memberRole = async (projectId: string, handle: string) => {
+    const [row] = await sql<{ role: string }[]>`
+      select m.role from project_members m join profiles p on p.id = m.user_id where m.project_id = ${projectId} and p.handle = ${handle}
+    `;
+    return row?.role ?? null;
+  };
+
   app.post('/v1/projects', async (request, reply) => {
     const { userId } = requireCaller(request);
     const input = parse(
@@ -68,7 +77,9 @@ export function projectRoutes(app: FastifyInstance, { sql, storage, mailer, webO
 
   app.delete('/v1/projects/:id', async (request, reply) => {
     const { id } = parse(idParams, request.params);
-    await deleteProject(sql, id, requireCaller(request).userId);
+    const actorId = requireCaller(request).userId;
+    await deleteProject(sql, id, actorId);
+    if (mailer) sendLater(request.log, 'deletion notice', () => notifyProjectDeleted(sql, mailer, { projectId: id, actorId }));
     reply.status(204);
   });
 
@@ -84,27 +95,48 @@ export function projectRoutes(app: FastifyInstance, { sql, storage, mailer, webO
     return withAvatars(storage, await listMembers(sql, id, viewerId(request)));
   });
 
+  const memberInput = z.object({ handle: z.string().min(1).max(39), role });
+
+  /** Adds someone new. An existing member is a 409 `already_member`, so adding never changes a role by surprise. */
+  app.post('/v1/projects/:id/members', async (request, reply) => {
+    const { id } = parse(idParams, request.params);
+    const input = parse(memberInput, request.body);
+    const { added } = await setMember(sql, id, requireCaller(request).userId, input.handle, input.role, { onlyNew: true });
+    if (added && mailer) await notifyNewMember(mailer, webOrigin, added).catch((error: unknown) => request.log.warn(error, 'member notice not sent'));
+    reply.status(201);
+    return withAvatars(storage, await listMembers(sql, id, requireCaller(request).userId));
+  });
+
+  /** Sets a member's role, adding them if needed. */
   app.put('/v1/projects/:id/members', async (request) => {
     const { id } = parse(idParams, request.params);
-    const input = parse(z.object({ handle: z.string().min(1).max(39), role }), request.body);
+    const input = parse(memberInput, request.body);
+    const before = await memberRole(id, input.handle);
     const { added, releasedLocks } = await setMember(sql, id, requireCaller(request).userId, input.handle, input.role);
     if (added && mailer) await notifyNewMember(mailer, webOrigin, added).catch((error: unknown) => request.log.warn(error, 'member notice not sent'));
-    await notifyLocks(request, releasedLocks);
-    return withAvatars(storage, await listMembers(sql, id, requireCaller(request).userId));
-  });
-
-  app.delete('/v1/projects/:id/members/:handle', async (request) => {
-    const { id, handle } = parse(idParams.extend({ handle: z.string().min(1).max(39) }), request.params);
-    const { releasedLocks } = await setMember(sql, id, requireCaller(request).userId, handle, null);
-    await notifyLocks(request, releasedLocks);
-    return withAvatars(storage, await listMembers(sql, id, requireCaller(request).userId));
-  });
-
-  async function notifyLocks(request: FastifyRequest, notices: readonly LockReleaseNotice[]) {
-    if (!mailer) return;
-    for (const notice of notices) {
-      await notifyLockReleased(mailer, webOrigin, notice).catch((error: unknown) => request.log.warn(error, 'lock notice not sent'));
+    notifyLocks(request, releasedLocks);
+    if (before && before !== input.role && mailer) {
+      const change = { projectId: id, handle: input.handle, role: input.role, actorId: requireCaller(request).userId };
+      sendLater(request.log, 'role notice', () => notifyRoleChanged(sql, mailer, webOrigin, change));
     }
+    return withAvatars(storage, await listMembers(sql, id, requireCaller(request).userId));
+  });
+
+  /** Removes a member. Anyone but the owner can remove themselves, which leaves the project (and returns no list). */
+  app.delete('/v1/projects/:id/members/:handle', async (request, reply) => {
+    const { id, handle } = parse(idParams.extend({ handle: z.string().min(1).max(39) }), request.params);
+    const actorId = requireCaller(request).userId;
+    const { left, releasedLocks } = await setMember(sql, id, actorId, handle, null);
+    notifyLocks(request, releasedLocks);
+    if (left) return reply.status(204).send();
+    // setMember 404s for someone who isn't a member, so only a member who was just removed is told.
+    if (mailer) sendLater(request.log, 'removal notice', () => notifyMemberRemoved(sql, mailer, webOrigin, { projectId: id, handle, actorId }));
+    return withAvatars(storage, await listMembers(sql, id, requireCaller(request).userId));
+  });
+
+  function notifyLocks(request: FastifyRequest, notices: readonly LockReleaseNotice[]) {
+    if (!mailer) return;
+    for (const notice of notices) sendLater(request.log, 'lock notice', () => notifyLockReleased(mailer, webOrigin, notice));
   }
 
   app.get('/v1/projects/:id/approval-rules', async (request) => {
@@ -132,13 +164,15 @@ export function projectRoutes(app: FastifyInstance, { sql, storage, mailer, webO
     const query = parse(
       z.object({
         after: z.coerce.number().int().min(0).default(0),
+        /** Only events older than this id, for paging back through a `desc` feed. */
+        before: z.coerce.number().int().min(1).optional(),
         limit: z.coerce.number().int().min(1).max(500).default(200),
         /** `desc` lists the newest first, for activity feeds; `asc` (default) is for catching up. */
         order: z.enum(['asc', 'desc']).default('asc'),
       }),
       request.query,
     );
-    return listEvents(sql, id, viewerId(request), query.after, query.limit, query.order);
+    return listEvents(sql, id, viewerId(request), query.after, query.limit, query.order, query.before);
   });
 
   app.get('/v1/projects/:id/releases', async (request) => {

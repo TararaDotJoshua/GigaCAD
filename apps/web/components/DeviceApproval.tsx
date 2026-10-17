@@ -9,7 +9,6 @@ const CODE = /^[A-Z2-9]{4}-[A-Z2-9]{4}$/;
 const MALFORMED = 'Codes look like ABCD-2345: eight letters and digits.';
 const GONE = 'This code expired or was already used. Start signing in again on your device (for the CLI, run giga login) to get a new code.';
 
-
 /** Words for an API refusal: a 404 means the code is gone, whatever the API calls it. */
 function problem(cause: unknown, fallback: string): string {
   if (cause instanceof ApiError && cause.status === 404) return GONE;
@@ -77,10 +76,10 @@ export function DeviceApproval({ handle, initialCode }: { handle: string | null;
   }
 
   if (approved) {
-    return <div className="auth-shell"><div className="auth-card"><h1>Device approved.</h1><p className="auth-intro">{approved} is signed in{handle ? ` as @${handle}` : ''}. You can close this tab and go back to it.</p><p className="auth-hint">You can sign devices out any time from <a href="/settings#devices">Account settings</a>.</p></div></div>;
+    return <div className="auth-shell"><div className="auth-card"><h1>Device approved.</h1><p className="auth-intro">“{approved}” is signed in{handle ? ` as @${handle}` : ''}. You can close this tab and go back to it.</p><p className="auth-hint">You can sign devices out any time from <a href="/settings#devices">Account settings</a>.</p></div></div>;
   }
   if (denied) {
-    return <div className="auth-shell"><div className="auth-card"><h1>Sign-in turned down.</h1><p className="auth-intro">{clientName || 'The device'} wasn’t signed in, and its code no longer works. If you didn’t start this, nothing else is needed.</p></div></div>;
+    return <div className="auth-shell"><div className="auth-card"><h1>Sign-in turned down.</h1><p className="auth-intro">{clientName ? `“${clientName}”` : 'The device'} wasn’t signed in, and its code no longer works. If you didn’t start this, nothing else is needed.</p></div></div>;
   }
 
   const found = Boolean(clientName && pendingCode === code);
@@ -113,9 +112,12 @@ export function DeviceApproval({ handle, initialCode }: { handle: string | null;
         </form>
         {found && (
           <div className="device-request">
-            <p><strong>{clientName}</strong> wants to sign in to your GigaCAD account{handle ? <> as <strong>@{handle}</strong></> : null}.</p>
+            <p>
+              A device that calls itself “{clientName}” wants to sign in to your GigaCAD account{handle ? <> as <strong>@{handle}</strong></> : null}. The device
+              chose that name, so only approve if the code matches the one it shows you.
+            </p>
             <p>Code <span className="mono">{pendingCode}</span> · Expires {new Date(expiresAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</p>
-            <button type="button" className="button auth-submit" disabled={busy} onClick={approve}>Approve {clientName}</button>
+            <button type="button" className="button auth-submit" disabled={busy} onClick={approve}>Approve this device</button>
             <div className="auth-links">
               <button type="button" className="auth-link-button" disabled={busy} onClick={() => void deny()}>This isn’t me</button>
             </div>

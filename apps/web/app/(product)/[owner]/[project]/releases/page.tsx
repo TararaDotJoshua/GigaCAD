@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { EmptyState } from '../../../../../components/product/EmptyState';
+import { MarkdownText } from '../../../../../components/product/MarkdownText';
 import { PageHead } from '../../../../../components/product/PageHead';
 import { RelativeTime } from '../../../../../components/product/RelativeTime';
 import { StatusBadge } from '../../../../../components/product/StatusBadge';
@@ -7,7 +8,10 @@ import { projectPath, releaseDownloadPath, releasePath } from '../../../../../li
 import { getProject, getReleases } from '../../../../../lib/product';
 import type { ProjectParams } from '../layout';
 
-export const metadata = { title: 'Releases' };
+export async function generateMetadata({ params }: { params: Promise<ProjectParams> }) {
+  const { owner, project } = await params;
+  return { title: `Releases · ${owner}/${project}` };
+}
 
 export default async function Releases({ params }: { params: Promise<ProjectParams> }) {
   const { owner, project: slug } = await params;
@@ -35,13 +39,13 @@ export default async function Releases({ params }: { params: Promise<ProjectPara
               <div className="timeline-body">
                 <Link href={releasePath(owner, slug, release.number)} className="timeline-title">
                   <span className="mono">v{release.number}</span>
-                  {release.title && <> · {release.title}</>}
+                  {release.title && <>: {release.title}</>}
                 </Link>
                 <p className="timeline-meta">
                   {index === 0 && <StatusBadge tone="signal">Latest</StatusBadge>} Released <RelativeTime value={release.createdAt} />
                   {release.createdByHandle && ` by @${release.createdByHandle}`} · <a href={releaseDownloadPath(owner, slug, release.number)} download>Download</a>
                 </p>
-                {release.notes && <p className="timeline-text release-notes">{release.notes}</p>}
+                {release.notes && <MarkdownText className="timeline-text release-notes">{release.notes}</MarkdownText>}
               </div>
             </li>
           ))}

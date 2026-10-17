@@ -2,6 +2,7 @@
 
 import { startTransition, useActionState, useState } from 'react';
 import { uploadAvatar, type ActionState } from '../../app/(product)/actions';
+import { safeAction } from '../../lib/safe-action';
 import { FormStatus } from './ActionButton';
 
 const TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
@@ -41,7 +42,8 @@ async function prepare(file: File): Promise<File | string> {
 
 /** One step: choosing an image uploads it. */
 export function AvatarPicker({ hasAvatar }: { hasAvatar: boolean }) {
-  const [state, action, pending] = useActionState(uploadAvatar, {});
+  // A failed request (offline, say) shows here instead of replacing Settings with the error page.
+  const [state, action, pending] = useActionState((previous: ActionState, data: FormData) => safeAction(() => uploadAvatar(previous, data)), {});
   const [problem, setProblem] = useState<ActionState | null>(null);
   const [preparing, setPreparing] = useState(false);
   const busy = pending || preparing;

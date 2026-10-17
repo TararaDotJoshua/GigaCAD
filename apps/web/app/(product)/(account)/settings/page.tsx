@@ -51,7 +51,7 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
         <p className="section-intro">
           Anyone can see your profile{placeholder ? ' once you choose a handle' : <> at <Link href={`/${me.handle}`}>{new URL(APP_URL).host}/{me.handle}</Link></>}.
         </p>
-        <ActionForm action={saveProfile} submitLabel="Save profile">
+        <ActionForm action={saveProfile} submitLabel="Save profile" discardable>
           <HandleField defaultValue={placeholder ? '' : me.handle} saved={placeholder ? null : me.handle} projectCount={owned} />
           <label className="field">
             <span>Display name <em>optional</em></span>
@@ -89,7 +89,7 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
 
       <section className="section">
         <h2>Password</h2>
-        <PasswordForm />
+        <PasswordForm email={emails.email} />
       </section>
 
       <section className="section">

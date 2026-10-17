@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
 import { idParams, parse, requireCaller, sha256Schema, viewerId } from '../http.js';
+import { sendLater } from '../services/notices.js';
 import {
   archiveBranch,
   checkIn,
@@ -57,14 +58,14 @@ export function branchRoutes(app: FastifyInstance, { sql, mailer, webOrigin }: A
   app.post('/v1/branches/:id/force-release', async (request) => {
     const { id } = parse(idParams, request.params);
     const { branch, notice } = await forceRelease(sql, id, requireCaller(request).userId);
-    if (notice && mailer) await notifyLockReleased(mailer, webOrigin, notice).catch((error: unknown) => request.log.warn(error, 'lock notice not sent'));
+    if (notice && mailer) sendLater(request.log, 'lock notice', () => notifyLockReleased(mailer, webOrigin, notice));
     return branch;
   });
 
   app.post('/v1/branches/:id/archive', async (request) => {
     const { id } = parse(idParams, request.params);
     const { branch, notice } = await archiveBranch(sql, id, requireCaller(request).userId);
-    if (notice && mailer) await notifyLockReleased(mailer, webOrigin, notice).catch((error: unknown) => request.log.warn(error, 'lock notice not sent'));
+    if (notice && mailer) sendLater(request.log, 'lock notice', () => notifyLockReleased(mailer, webOrigin, notice));
     return branch;
   });
 

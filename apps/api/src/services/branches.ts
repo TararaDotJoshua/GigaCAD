@@ -1,7 +1,7 @@
-import { diffManifests, planAutosavePrune, type BranchCommit, type CommitKind, type ManifestEntry, type PruneTrigger } from '@gigacad/core';
+import { diffManifests, planAutosavePrune, type BranchCommit, type CommitKind, type ManifestEntry, type ProjectRole, type PruneTrigger } from '@gigacad/core';
 import type { Db, Sql, Tx } from '../db.js';
 import { conflict, forbidden, notFound } from '../errors.js';
-import { projectAccess, requireProjectRole } from './access.js';
+import { lockForViewer, projectAccess, requireProjectRole } from './access.js';
 import type { Mailer } from '../mail.js';
 import { recordEvent } from './events.js';
 import { deleteUnreferencedManifests, insertManifest, loadManifest, resolveFiles, type FileInput } from './manifests.js';
@@ -146,9 +146,15 @@ export async function createBranch(
   });
 }
 
+/** Outsiders see that a branch is locked or archived, but not by whom, as with the activity feed. */
+function branchForViewer(branch: BranchView, role: ProjectRole | null): BranchView {
+  const view = lockForViewer(branch, role);
+  return role === null && view.archivedByHandle ? { ...view, archivedByHandle: null } : view;
+}
+
 export async function listBranches(sql: Sql, projectId: string, userId: string | null): Promise<BranchView[]> {
-  await projectAccess(sql, projectId, userId);
-  return sql<BranchView[]>`
+  const { role } = await projectAccess(sql, projectId, userId);
+  const branches = await sql<BranchView[]>`
     select b.id, b.project_id, b.name, b.status, b.base_release_id, r.number as base_release_number,
            b.head_commit_id, b.checked_out_by, h.handle as checked_out_by_handle,
            b.checked_out_machine, b.checked_out_at, ah.handle as archived_by_handle, ae.created_at as archived_at, b.created_at
@@ -164,6 +170,7 @@ export async function listBranches(sql: Sql, projectId: string, userId: string |
     where b.project_id = ${projectId}
     order by b.created_at desc
   `;
+  return branches.map((branch) => branchForViewer(branch, role));
 }
 
 export async function getBranch(
@@ -172,9 +179,9 @@ export async function getBranch(
   userId: string | null,
 ): Promise<{ branch: BranchView; head: CommitView; files: ManifestEntry[] }> {
   const branch = await branchView(sql, branchId);
-  await projectAccess(sql, branch.projectId, userId);
+  const { role } = await projectAccess(sql, branch.projectId, userId);
   const head = await commitView(sql, branch.headCommitId);
-  return { branch, head, files: await loadManifest(sql, head.manifestId) };
+  return { branch: branchForViewer(branch, role), head, files: await loadManifest(sql, head.manifestId) };
 }
 
 /** Takes the branch's exclusive write lock for this user and machine. Re-checking out the same machine is a no-op. */

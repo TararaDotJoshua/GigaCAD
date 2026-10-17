@@ -1,7 +1,7 @@
 'use client';
 
-import { PageError } from '../../../../components/product/PageError';
+import { LoadError } from '../../../../components/product/LoadError';
 
 export default function ProjectError({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
-  return <PageError reset={reset} />;
+  return <LoadError reset={reset} />;
 }

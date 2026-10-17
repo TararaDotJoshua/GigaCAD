@@ -10,8 +10,15 @@ import { branchPath, commitPath, projectPath } from '../../../../../../lib/paths
 import { getBranchDetail, getCommit, getCommits, getProject } from '../../../../../../lib/product';
 import type { ProjectParams } from '../../layout';
 
-/** A commit's heading: its message, or its label, or what kind it is. */
-const commitTitle = (commit: Commit) => commit.message || commit.versionLabel || (commit.kind === 'autosave' ? 'Autosave' : 'Version');
+/** How long a heading taken from a commit message can be before it's cut. */
+const TITLE_LENGTH = 90;
+
+/** A commit's heading: the first line of its message, cut short, or its label, or what kind it is. */
+const commitTitle = (commit: Commit) => {
+  const line = commit.message.split('\n')[0]!.trim();
+  if (!line) return commit.versionLabel || (commit.kind === 'autosave' ? 'Autosave' : 'Version');
+  return line.length > TITLE_LENGTH ? `${line.slice(0, TITLE_LENGTH - 1).trimEnd()}…` : line;
+};
 
 export async function generateMetadata({ params }: { params: Promise<ProjectParams & { id: string }> }) {
   const { owner, project, id } = await params;
@@ -59,6 +66,7 @@ export default async function CommitPage({ params }: { params: Promise<ProjectPa
           </>
         }
       />
+      {commit.message.trim() && commit.message.trim() !== commitTitle(commit) && <p className="notes">{commit.message.trim()}</p>}
       <nav className="commit-nav" aria-label="Versions">
         {parent ? <Link href={commitPath(owner, slug, parent.commit.id)}>← Previous: {commitTitle(parent.commit)}</Link> : <span className="muted">First on this branch</span>}
         <Link href={branchPath(owner, slug, branch.branch.name)}>All of {branch.branch.name}</Link>

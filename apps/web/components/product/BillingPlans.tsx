@@ -52,8 +52,8 @@ export function BillingPlans({
                     <strong>{plan.name}</strong>
                     <span className="plan-summary">{plan.summary}</span>
                   </td>
-                  <td>{formatBytes(plan.storageBytes)}</td>
-                  <td>{price}</td>
+                  <td className="nowrap">{formatBytes(plan.storageBytes)}</td>
+                  <td className="nowrap">{price}</td>
                   <td className="cell-action">
                     {isCurrent ? (
                       <span className="badge">Current plan</span>

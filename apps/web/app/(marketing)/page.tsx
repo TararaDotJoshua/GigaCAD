@@ -2,13 +2,15 @@ import { BranchDiagram } from "../../components/BranchDiagram";
 import { DiffPickDemo } from "../../components/DiffPickDemo";
 import { PartArt, type PartName } from "../../components/parts";
 import {
+  BranchIcon,
   CheckIcon,
-  DriveIcon,
   FolderIcon,
   LockIcon,
   SyncIcon,
 } from "../../components/icons";
 import { APP_URL } from "../../components/site";
+
+export const metadata = { alternates: { canonical: "/" } };
 
 const heroTiles: { part: PartName; className: string }[] = [
   { part: "gear", className: "tile-a" },
@@ -21,7 +23,7 @@ const heroTiles: { part: PartName; className: string }[] = [
 
 const steps = [
   { title: "Check out", body: "Take the branch. Everyone else sees it read-only until you check it in." },
-  { title: "Save as usual", body: "Every save in SolidWorks becomes an autosave. No extra clicks." },
+  { title: "Save as usual", body: "With the desktop apps, coming soon, every save in SolidWorks becomes an autosave." },
   { title: "Commit a version", body: "Name what changed. Earlier autosaves are cleared." },
   { title: "Open a release request", body: "Pick what ships and rebuild the assembly against it." },
   { title: "Release", body: "Once approved, the branch becomes the next locked version of main." },
@@ -47,8 +49,8 @@ export default function Home() {
             <br /> you build.
           </h1>
           <p className="lead hero-lead">
-            GigaCAD puts your SolidWorks projects in a drive in File Explorer. Work on a branch, save
-            as usual, and release to main when the assembly rebuilds clean.
+            GigaCAD gives your SolidWorks projects branches, versions, and locked releases. Check out
+            a branch, commit, and release to main once it’s approved.
           </p>
           <a className="button button-large" href={`${APP_URL}/signup`}>
             Start a project
@@ -97,41 +99,41 @@ export default function Home() {
             <div className="feature-copy">
               <h2 className="h2">It’s a folder you already know how to use.</h2>
               <p className="body">
-                Projects show up under GigaCAD in the File Explorer sidebar. Open an assembly from
+                Projects show up in a GigaCAD folder in File Explorer and Finder. Open an assembly from
                 your branch folder and SolidWorks finds every reference, even offline. Releases and
                 other people’s branches are there too, read-only.
+              </p>
+              <p className="feature-note">
+                Coming with the <a href="/download">desktop apps</a> for Windows and Mac.
               </p>
             </div>
             <div className="feature-visual">
               <div className="explorer">
                 <div className="explorer-bar">
-                  <span className="mono">GigaCAD › alex › rc-buggy › branches › suspension</span>
+                  <span className="mono">GigaCAD › alex › rc-buggy › Branches › suspension</span>
                 </div>
                 <div className="explorer-body">
                   <ul className="explorer-tree">
                     <li>
-                      <DriveIcon className="icon" /> GigaCAD
+                      <FolderIcon className="icon" /> GigaCAD
                     </li>
                     <li className="indent-1">
+                      <FolderIcon className="icon" /> alex
+                    </li>
+                    <li className="indent-2">
                       <FolderIcon className="icon" /> rc-buggy
                     </li>
-                    <li className="indent-2">
-                      <LockIcon className="icon" /> main
+                    <li className="indent-3">
+                      <BranchIcon className="icon" /> Branches
                     </li>
-                    <li className="indent-2">
-                      <LockIcon className="icon" /> releases
-                    </li>
-                    <li className="indent-2">
-                      <FolderIcon className="icon" /> branches
-                    </li>
-                    <li className="indent-3 is-active">
+                    <li className="indent-4 is-active">
                       <FolderIcon className="icon" /> suspension
                     </li>
-                    <li className="indent-3">
+                    <li className="indent-4">
                       <LockIcon className="icon" /> battery-tray
                     </li>
-                    <li className="indent-2">
-                      <FolderIcon className="icon" /> candidates
+                    <li className="indent-3">
+                      <LockIcon className="icon" /> Releases
                     </li>
                   </ul>
                   <table className="explorer-files">
@@ -245,7 +247,7 @@ export default function Home() {
                   <PartArt part="spring" className="replace-art is-old" />
                   <figcaption>
                     <span className="mono">shock.SLDPRT</span>
-                    <span>main, 9 versions</span>
+                    <span>main, 9 releases</span>
                   </figcaption>
                 </figure>
                 <svg className="replace-arrow" viewBox="0 0 80 16" aria-hidden="true">
@@ -326,8 +328,8 @@ export default function Home() {
             <div>
               <h3 className="h3">Share a project, or keep it private</h3>
               <p className="body">
-                Make a project public and anyone can browse its releases and fork one to start their
-                own.
+                Make a project public and anyone can <a href={`${APP_URL}/explore`}>browse its releases</a>{" "}
+                and fork one to start their own.
               </p>
             </div>
           </div>

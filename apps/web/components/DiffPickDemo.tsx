@@ -57,8 +57,18 @@ export function DiffPickDemo() {
   const [rebuild, setRebuild] = useState<Rebuild>("passed");
   const [approved, setApproved] = useState(true);
   const timer = useRef<number | undefined>(undefined);
+  const rebuildButton = useRef<HTMLButtonElement>(null);
+  const rebuildStatus = useRef<HTMLParagraphElement>(null);
+  // The button goes away when the rebuild passes, so its focus moves to the result.
+  const focusResult = useRef(false);
 
   useEffect(() => () => window.clearTimeout(timer.current), []);
+
+  useEffect(() => {
+    if (rebuild !== "passed" || !focusResult.current) return;
+    focusResult.current = false;
+    rebuildStatus.current?.focus();
+  }, [rebuild]);
 
   function pick(row: number, option: 0 | 1) {
     if (picks[row] === option) return;
@@ -69,8 +79,12 @@ export function DiffPickDemo() {
   }
 
   function runRebuild() {
+    if (rebuild === "running") return;
     setRebuild("running");
-    timer.current = window.setTimeout(() => setRebuild("passed"), 1400);
+    timer.current = window.setTimeout(() => {
+      focusResult.current = document.activeElement === rebuildButton.current;
+      setRebuild("passed");
+    }, 1400);
   }
 
   const approvals = approved ? 1 : 0;
@@ -93,7 +107,8 @@ export function DiffPickDemo() {
           <li className="app-nav-branch">
             <BranchIcon className="icon" />
             suspension
-            <span className="dot dot-signal" aria-label="checked out by you" />
+            <span className="dot dot-signal" aria-hidden="true" />
+            <span className="sr-only">, checked out by you</span>
           </li>
           <li className="app-nav-branch">
             <BranchIcon className="icon" />
@@ -107,7 +122,7 @@ export function DiffPickDemo() {
 
       <div className="app-main">
         <p className="app-crumbs">rc-buggy / Release requests / #12</p>
-        <h3 className="app-title">Longer-travel rear suspension</h3>
+        <p className="app-title">Longer-travel rear suspension</p>
         <p className="app-meta">
           <span className="badge badge-open">Open</span>
           <span className="mono">suspension</span> into <span className="mono">main v7</span>
@@ -151,9 +166,9 @@ export function DiffPickDemo() {
 
       <div className="app-rail">
         <section className="rail-card" aria-live="polite">
-          <h4>Rebuild</h4>
+          <p className="rail-title">Rebuild</p>
           {rebuild === "passed" && (
-            <p className="rail-status is-signal">
+            <p className="rail-status is-signal" ref={rebuildStatus} tabIndex={-1}>
               <CheckIcon className="icon" /> Rebuild passed
             </p>
           )}
@@ -169,16 +184,16 @@ export function DiffPickDemo() {
               : "0 rebuild errors, 0 mate errors in rear_suspension.SLDASM."}
           </p>
           {rebuild !== "passed" && (
-            <button className="rail-button" onClick={runRebuild} disabled={rebuild === "running"}>
+            <button ref={rebuildButton} className="rail-button" onClick={runRebuild} aria-disabled={rebuild === "running"}>
               Rebuild candidate
             </button>
           )}
         </section>
 
         <section className="rail-card" aria-live="polite">
-          <h4>
+          <p className="rail-title">
             Approvals <span className="rail-count">{approvals} of 2</span>
-          </h4>
+          </p>
           <ul className="approvers">
             <li>
               <span className="avatar">A</span> @alex

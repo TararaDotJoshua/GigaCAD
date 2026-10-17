@@ -6,7 +6,11 @@ import { useDismissDetails } from '../../lib/use-dismiss';
 import { FolderIcon } from '../icons';
 import { ActionForm } from './ActionForm';
 
-/** "New folder" as a popover: the name field takes focus, Escape or a click elsewhere closes it. */
+/**
+ * "New folder" as a popover: the name field takes focus, Escape or a click elsewhere closes it.
+ * It opens rightward from its button, so it never covers the sidebar, and ends at the button
+ * instead when opening rightward would leave the screen.
+ */
 export function NewFolderMenu({ projectId, folderId }: { projectId: string; folderId: string | null }) {
   const menu = useRef<HTMLDetailsElement>(null);
   const [open, setOpen] = useState(false);
@@ -16,9 +20,14 @@ export function NewFolderMenu({ projectId, folderId }: { projectId: string; fold
       ref={menu}
       className="menu"
       onToggle={(event) => {
-        const opened = event.currentTarget.open;
+        const details = event.currentTarget;
+        const opened = details.open;
         setOpen(opened);
-        if (opened) event.currentTarget.querySelector<HTMLInputElement>('input[name="name"]')?.focus();
+        if (!opened) return;
+        const panel = details.querySelector<HTMLElement>('.menu-form');
+        const button = details.querySelector('summary')!.getBoundingClientRect();
+        panel?.classList.toggle('is-end', button.left + panel.offsetWidth > document.documentElement.clientWidth - 16);
+        details.querySelector<HTMLInputElement>('input[name="name"]')?.focus();
       }}
     >
       <summary className="btn btn-secondary btn-small">

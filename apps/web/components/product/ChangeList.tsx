@@ -4,6 +4,7 @@ import { previewFormat } from '../../lib/preview';
 import { DownloadButton } from './DownloadButton';
 import { EmptyState } from './EmptyState';
 import { FileGlyph } from './FileGlyph';
+import { PathText } from './PathText';
 import { PreviewButton } from './PreviewButton';
 import { StatusBadge } from './StatusBadge';
 
@@ -35,7 +36,7 @@ export function ChangeList({ projectId, changes, empty = 'No file changes.' }: {
           <li key={change.itemId} className={`change-row is-${change.kind}`}>
             <FileGlyph path={path} />
             <span className="change-path">
-              <span className="mono">{path}</span>
+              <PathText path={path} />
               <span className="change-verb">
                 <StatusBadge tone={change.kind === 'added' ? 'signal' : change.kind === 'deleted' ? 'danger' : 'quiet'}>{change.kind === 'added' ? 'Added' : change.kind === 'deleted' ? 'Removed' : 'Edited'}</StatusBadge>
                 {change.kind === 'modified' && change.moved && <span className="muted"> {changeVerb(change)}</span>}

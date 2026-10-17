@@ -4,6 +4,7 @@ import { ActivityLine } from '../../../../components/product/ActivityLine';
 import { FileGlyph } from '../../../../components/product/FileGlyph';
 import { MemberWelcome } from '../../../../components/product/MemberWelcome';
 import { PageHead } from '../../../../components/product/PageHead';
+import { PathText } from '../../../../components/product/PathText';
 import { ProjectDirectory, TagsCard, type DirectoryParams } from '../../../../components/product/ProjectDirectory';
 import { RelativeTime } from '../../../../components/product/RelativeTime';
 import { StarButton } from '../../../../components/product/StarButton';
@@ -12,7 +13,7 @@ import type { Project, Release } from '../../../../lib/api';
 import { getActivity } from '../../../../lib/activity';
 import { releaseFileOrder, releaseName } from '../../../../lib/describe';
 import { projectPath, releaseDownloadPath, releasePath, treePath } from '../../../../lib/paths';
-import { getBranches, getProject, getRelease, getReleases, getTags, getViewer } from '../../../../lib/product';
+import { getBranches, getProject, getRelease, getReleaseRequests, getReleases, getTags, getViewer } from '../../../../lib/product';
 
 /** How much of the feed the project page shows; the rest is on the activity page. */
 const ACTIVITY_SHOWN = 5;
@@ -93,6 +94,7 @@ export async function ProjectFilesPage({
           </>
         }
       />
+      {isRoot && !searching && <ProjectStatus project={project} />}
       {justForked && project.forkedFrom && project.role === 'owner' && (
         <p className="notice" role="status">
           Forked {project.forkedFrom.ownerHandle}/{project.forkedFrom.slug} v{project.forkedFrom.releaseNumber}. This copy is yours, and its history starts here.
@@ -117,6 +119,29 @@ export async function ProjectFilesPage({
         </section>
       )}
     </div>
+  );
+}
+
+/** What's in progress, which otherwise lives only in the sidebar: "1 release request open · 2 branches checked out". */
+async function ProjectStatus({ project }: { project: Project }) {
+  const [requests, branches] = await Promise.all([getReleaseRequests(project.id), getBranches(project.id)]);
+  const open = requests.filter((request) => request.status === 'open' || request.status === 'candidate').length;
+  const checkedOut = branches.filter((branch) => (branch.status === 'open' || branch.status === 'frozen') && branch.checkedOutBy).length;
+  if (!open && !checkedOut) return null;
+  return (
+    <p className="project-status">
+      {open > 0 && (
+        <Link href={projectPath(project.ownerHandle, project.slug, 'release-requests')}>
+          {open} release {open === 1 ? 'request' : 'requests'} open
+        </Link>
+      )}
+      {open > 0 && checkedOut > 0 && ' · '}
+      {checkedOut > 0 && (
+        <Link href={projectPath(project.ownerHandle, project.slug, 'branches')}>
+          {checkedOut} {checkedOut === 1 ? 'branch' : 'branches'} checked out
+        </Link>
+      )}
+    </p>
   );
 }
 
@@ -155,7 +180,7 @@ async function LatestRelease({ project, release }: { project: Project; release: 
         {shown.map((file) => (
           <li key={file.itemId}>
             <FileGlyph path={file.path} />
-            <span className="mono">{file.path}</span>
+            <PathText path={file.path} />
           </li>
         ))}
       </ul>

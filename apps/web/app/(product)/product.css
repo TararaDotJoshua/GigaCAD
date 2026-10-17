@@ -92,6 +92,8 @@
 .shell .shell-search:focus-within {
   border-color: var(--line-strong);
   color: var(--paper-muted);
+  outline: 2px solid var(--paper);
+  outline-offset: 2px;
 }
 
 .shell-search input {
@@ -173,26 +175,37 @@
 }
 
 .shell .app-nav-branch-name {
+  flex: 1 1 0;
   overflow: hidden;
-  min-width: 0;
+  min-width: 6ch;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 0.8125rem;
 }
 
+/* The holder gives way to the branch name: at most about half the row, then an ellipsis. */
 .shell .app-nav-holder {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
+  flex: 0 1 auto;
+  overflow: hidden;
+  min-width: 0;
+  max-width: 45%;
   margin-left: auto;
   font-size: var(--t-micro);
-  color: var(--paper-faint);
+  color: var(--paper-muted);
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .shell .app-nav-holder .icon {
   width: 12px;
   height: 12px;
+  margin-right: 3px;
+  vertical-align: -2px;
+}
+
+.shell .app-nav-more > a {
+  color: var(--paper-faint);
+  font-size: 0.8125rem;
 }
 
 /* A link whose page is still loading: the row lights up at once and a bar pulses at its edge. */
@@ -251,9 +264,9 @@
   text-align: center;
 }
 
-.shell .app-nav-empty {
+.shell .app-nav li.app-nav-empty {
   padding: 6px 8px;
-  color: var(--paper-faint);
+  color: var(--paper-muted);
 }
 
 .shell-account {
@@ -300,6 +313,7 @@
 /* Work pane */
 
 .shell-pane {
+  color-scheme: light;
   min-width: 0;
   margin: var(--pane-gap) var(--pane-gap) var(--pane-gap) 0;
   border-radius: var(--r-lg);
@@ -355,6 +369,12 @@
   color: var(--ink-muted);
 }
 
+.shell .app-crumbs > span,
+.shell .app-meta > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .shell .app-crumbs a:hover {
   color: var(--ink);
 }
@@ -362,6 +382,34 @@
 .shell .crumb-sep {
   padding: 0 6px;
   color: rgb(10 41 34 / 0.3);
+}
+
+/* Folded middle crumbs: a "…" that opens the folders it stands for. */
+.shell .crumb-more {
+  display: inline-block;
+}
+
+.shell .crumb-more > summary {
+  padding: 0 4px;
+  border-radius: var(--r-xs);
+  cursor: pointer;
+}
+
+.shell .crumb-more > summary:hover {
+  background: var(--mist);
+  color: var(--ink);
+}
+
+.shell .crumb-more .menu-list {
+  z-index: 10;
+  display: grid;
+  max-width: min(360px, calc(100vw - 32px));
+}
+
+.shell .crumb-more .menu-list > * {
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  overflow-wrap: anywhere;
 }
 
 .shell .app-title {
@@ -395,6 +443,7 @@
   margin: -12px 0 28px;
   color: var(--ink-muted);
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* A trailing link under a section, like "Back to branch". */
@@ -422,8 +471,10 @@
 
 .shell .request-rail {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   align-content: start;
+  min-width: 0;
 }
 
 /* Sections: a heading over content, separated by space rather than boxes.
@@ -494,6 +545,7 @@
 
 .shell .rail-card,
 .shell .side {
+  min-width: 0;
   padding: 16px;
   border: 1px solid var(--line-ink);
   border-radius: var(--r-md);
@@ -544,7 +596,9 @@
 
 .shell .activity li {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 2px;
+  overflow-wrap: anywhere;
   padding: 10px 0;
   border-top: 1px solid var(--line-ink);
 }
@@ -722,8 +776,9 @@
   color: var(--forest);
 }
 
+/* Darker than --danger so white badge text passes AA. */
 .shell .badge-danger {
-  background: var(--danger);
+  background: #c0353a;
   color: #fff;
 }
 
@@ -735,17 +790,20 @@
 
 /* Tables */
 
+/* Positioned so a hidden header label can't escape the scroll box and widen the page. */
 .shell .table-wrap {
+  position: relative;
   overflow-x: auto;
 }
 
+/* Clip, not hidden: hidden would make the table its own scroller and stop the sticky action column. */
 .shell .data-table {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
   border: 1px solid var(--line-ink);
   border-radius: var(--r-md);
-  overflow: hidden;
+  overflow: clip;
   background: #fff;
 }
 
@@ -774,6 +832,21 @@
   text-underline-offset: 3px;
 }
 
+/* Times, branch names, and badges read as one unit; the first column takes the wrapping. */
+.shell .data-table time,
+.shell .data-table td.mono {
+  white-space: nowrap;
+}
+
+.shell .data-table td:first-child {
+  overflow-wrap: break-word;
+}
+
+/* In a table that scrolls, the first column keeps room for a few words instead of one per line. */
+.shell .table-wrap .data-table:not(.directory-table) td:first-child {
+  min-width: 160px;
+}
+
 .shell .data-table .row-link {
   display: grid;
   gap: 1px;
@@ -793,11 +866,88 @@
   white-space: nowrap;
 }
 
+/*
+ * When a table is wider than its box, the row actions stay pinned to the right edge, with a
+ * shadow while more of the table sits under them. Browsers without scroll timelines still pin.
+ */
+.shell .table-wrap .data-table td.cell-action:last-child,
+.shell .table-wrap .data-table th:last-child:has(> .sr-only) {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  padding-left: 8px;
+  background: #fff;
+}
+
+.shell .table-wrap .data-table thead th:last-child:has(> .sr-only) {
+  background: var(--mist);
+}
+
+/* A popover (tags, ⋯) opened from a pinned cell has to paint over the next rows' pinned cells. */
+.shell .table-wrap .data-table tr:has(details[open]) > td.cell-action:last-child {
+  z-index: 2;
+}
+
+.shell .table-wrap .data-table tbody tr:hover > td.cell-action:last-child {
+  background: #fcfcfc;
+}
+
+@supports (animation-timeline: scroll()) {
+  .shell .table-wrap {
+    scroll-timeline: --table-scroll inline;
+  }
+
+  .shell .table-wrap .data-table td.cell-action:last-child,
+  .shell .table-wrap .data-table th:last-child:has(> .sr-only) {
+    animation: table-more linear both;
+    animation-timeline: --table-scroll;
+  }
+}
+
+/* A table with no pinned actions fades at its right edge instead, until it's scrolled to the end. */
+@supports (animation-timeline: scroll()) {
+  .shell .table-wrap:not(:has(td.cell-action:last-child)) {
+    animation: table-fade linear both;
+    animation-timeline: scroll(self inline);
+  }
+}
+
+@keyframes table-fade {
+  from,
+  99% {
+    mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+  }
+
+  to {
+    mask-image: none;
+  }
+}
+
+@keyframes table-more {
+  from,
+  99% {
+    box-shadow: -10px 0 10px -10px rgb(10 41 34 / 0.35);
+  }
+
+  to {
+    box-shadow: none;
+  }
+}
+
+/* Tables outside a .table-wrap scroll on their own on phones rather than widen the page. */
+@media (max-width: 600px) {
+  .shell .data-table:not(.table-wrap > .data-table) {
+    display: block;
+    overflow-x: auto;
+  }
+}
+
 .shell .file-table td {
   padding-block: 7px;
 }
 
-.shell .file-table td:nth-child(2) {
+/* Modified is third from the end whether or not search results add a Location column. */
+.shell .file-table td:nth-last-child(3) {
   width: 1%;
   font-size: 0.8125rem;
 }
@@ -1074,6 +1224,12 @@
   color: var(--ink-muted);
 }
 
+/* A trailing link under a change list, like "← v1" on a release. */
+.shell .change-list + .toolbar-note,
+.shell .empty + .toolbar-note {
+  margin-top: 12px;
+}
+
 .shell .menu {
   position: relative;
 }
@@ -1115,6 +1271,7 @@
 
 .shell .timeline {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .shell .timeline-item {
@@ -1268,8 +1425,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 11px;
-  border: 0;
+  padding: 4px 10px;
+  border: 1px solid transparent;
   border-radius: var(--r-xs);
   background: transparent;
   color: var(--ink-muted);
@@ -1322,6 +1479,7 @@
   gap: 4px;
   padding-left: 18px;
   list-style: disc;
+  overflow-wrap: anywhere;
 }
 
 .shell .warning-list {
@@ -1340,12 +1498,39 @@
   justify-content: space-between;
 }
 
+/* What's in progress on the project home, linking to it. */
+.shell .project-status {
+  margin: -16px 0 24px;
+  color: var(--ink-muted);
+}
+
+.shell .project-status a {
+  color: var(--ink);
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: var(--line-ink);
+  text-underline-offset: 3px;
+}
+
+.shell .project-status a:hover {
+  text-decoration-color: currentColor;
+}
+
+/* Said in the page head only once the rail drops below the content. */
+.shell .narrow-only {
+  display: none;
+}
+
 /* Small screens: the sidebar becomes a top bar with a menu. */
 
 @media (max-width: 1080px) {
   .shell .page-grid,
   .shell .request-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .shell .narrow-only {
+    display: inline;
   }
 }
 
@@ -1355,9 +1540,11 @@
   }
 
   .shell-sidebar {
-    position: static;
+    top: 0;
+    z-index: 25;
     height: auto;
     padding: 12px 16px;
+    background: var(--forest);
   }
 
   .shell-sidebar-top {
@@ -1373,8 +1560,24 @@
     padding-bottom: 8px;
   }
 
+  /* The open menu lies over the page instead of pushing it down, and scrolls on its own. */
   .shell-sidebar[data-open="true"] .shell-nav {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    left: 0;
     display: flex;
+    max-height: calc(100svh - 56px);
+    padding: 0 16px 16px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: var(--forest);
+    box-shadow: 0 24px 40px -24px rgb(0 0 0 / 0.6);
+  }
+
+  .shell-sidebar[data-open="true"] .shell-nav > .app-nav {
+    flex: none;
+    overflow: visible;
   }
 
   .shell-pane {
@@ -1392,14 +1595,18 @@
     align-items: flex-start;
   }
 
+  .shell .page-header-text {
+    max-width: 100%;
+  }
+
   .shell .app-title {
     font-size: 1.5rem;
   }
 }
 
 @media (max-width: 600px) {
-  .shell .file-table th:nth-child(2),
-  .shell .file-table td:nth-child(2) {
+  .shell .file-table th:nth-last-child(3),
+  .shell .file-table td:nth-last-child(3) {
     display: none;
   }
 
@@ -1877,12 +2084,6 @@
   margin-right: 4px;
 }
 
-@media (forced-colors: active) {
-  .shell .contrib-graph rect {
-    stroke: CanvasText;
-  }
-}
-
 /* Recent activity */
 
 .shell .activity-month + .activity-month {
@@ -2042,7 +2243,8 @@
 
 /* 3D preview */
 
-.shell .cell-action .icon-button + .icon-button {
+/* Row icons are spaced with ~ rather than +: a preview's closed <dialog> sits between its button and the next. */
+.shell .cell-action :is(.icon-button, .tag-picker) ~ :is(.icon-button, .tag-picker) {
   margin-left: 4px;
 }
 
@@ -2060,7 +2262,7 @@
   width: min(960px, calc(100vw - 32px));
   max-height: calc(100svh - 32px);
   padding: 0;
-  overflow: hidden;
+  overflow: auto;
   border: 1px solid var(--line-ink);
   border-radius: var(--r-lg);
   background: var(--paper);
@@ -2082,7 +2284,7 @@
 }
 
 .shell .model-stage {
-  height: min(620px, calc(100svh - 160px));
+  height: max(160px, min(620px, calc(100svh - 160px)));
   touch-action: none;
 }
 
@@ -2106,7 +2308,7 @@
 }
 
 .shell .model-compare .model-stage {
-  height: min(560px, calc(100svh - 200px));
+  height: max(160px, min(560px, calc(100svh - 200px)));
 }
 
 .shell .model-caption {
@@ -2119,7 +2321,8 @@
   font-weight: 600;
 }
 
-@media (max-width: 700px) {
+/* Stacked only on portrait phones; a landscape phone keeps the panes side by side. */
+@media (max-width: 700px) and (orientation: portrait) {
   .shell .model-compare {
     grid-template-columns: 1fr;
   }
@@ -2130,7 +2333,7 @@
   }
 
   .shell .model-compare .model-stage {
-    height: calc((100svh - 200px) / 2);
+    height: max(140px, calc((100svh - 200px) / 2));
   }
 }
 
@@ -2198,13 +2401,30 @@
 }
 
 .shell .menu-form {
-  right: 0;
+  left: 0;
   width: 280px;
+  max-width: calc(100vw - 32px);
   padding: 12px;
 }
 
+/* MenuDetails flips it to end at its button when opening rightward would leave the screen. */
+.shell .menu-form.is-end {
+  right: 0;
+  left: auto;
+}
+
 .shell .directory-table td:first-child {
-  min-width: 220px;
+  min-width: 180px;
+}
+
+.shell .directory-table td:nth-child(2):nth-last-child(4) {
+  min-width: 12ch;
+}
+
+/* Row actions wrap after four buttons, so a SolidWorks row's exports don't make the pinned column wide. */
+.shell .directory-table td.cell-action {
+  min-width: calc(4 * 30px + 3 * 4px + 26px);
+  white-space: normal;
 }
 
 .shell .file-name-block {
@@ -2243,12 +2463,20 @@
 
 .shell .location-link {
   font-size: 0.8125rem;
-  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
-.shell .modified-by,
 .shell .directory-table time,
 .shell .nowrap {
+  white-space: nowrap;
+}
+
+/* Under the time rather than beside it, so a long handle doesn't push the row actions away. */
+.shell .modified-by {
+  display: block;
+  max-width: 15ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -2294,6 +2522,7 @@
 .shell .tag-picker-list {
   right: 0;
   display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 10px;
   width: 220px;
   padding: 12px;
@@ -2303,7 +2532,9 @@
 
 .shell .tag-picker-list fieldset {
   display: grid;
+  align-content: start;
   gap: 8px;
+  min-height: 0;
   max-height: 260px;
   overflow-y: auto;
   margin: 0;
@@ -2325,7 +2556,9 @@
 
 .shell .side-stack {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
+  min-width: 0;
 }
 
 .shell .tag-list {
@@ -2458,7 +2691,8 @@
 .shell .entry-menu button[role="menuitem"]:hover:not(:disabled),
 .shell .entry-menu button[role="menuitem"]:focus-visible {
   background: var(--mist);
-  outline: none;
+  outline: 2px solid transparent;
+  outline-offset: -2px;
 }
 
 .shell .entry-menu button[role="menuitem"]:disabled {
@@ -2507,9 +2741,14 @@
   font-size: var(--t-micro);
 }
 
-/* Touch screens can't right-click; they use each row's More actions button instead. */
+/* Touch screens can't right-click, so they get the press-and-hold wording instead. */
+.shell .entry-menu-hint .hint-touch {
+  display: none;
+}
+
 @media (hover: none) {
-  .shell .entry-menu-hint { display: none; }
+  .shell .entry-menu-hint .hint-pointer { display: none; }
+  .shell .entry-menu-hint .hint-touch { display: inline; }
 }
 
 .shell .entry-menu-note {
@@ -2606,6 +2845,23 @@
 
 .shell .readme-markdown :is(h4, h5, h6) {
   font-size: 1rem;
+}
+
+/* The README's headings render a level down (ProjectReadme), so each keeps the look of the level it was written at. */
+.shell .readme-body.readme-markdown h2 {
+  padding-bottom: 0;
+  border-bottom: 0;
+  font-size: 1.5rem;
+}
+
+.shell .readme-body.readme-markdown h3 {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line-ink);
+  font-size: 1.25rem;
+}
+
+.shell .readme-body.readme-markdown h4 {
+  font-size: 1.0625rem;
 }
 
 .shell .readme-markdown :is(ul, ol) {
@@ -3055,6 +3311,26 @@
   white-space: nowrap;
 }
 
+/* A path that has to be cut loses its folders first: the file name always shows. */
+.shell .path-text {
+  display: flex;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.shell .path-text > .path-dir {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+
+.shell .path-text > .path-name {
+  flex: none;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .shell .change-verb {
   font-size: var(--t-small);
 }
@@ -3141,6 +3417,7 @@
 
 .shell .pick-files {
   display: inline-flex;
+  gap: 4px;
   margin-left: 4px;
 }
 
@@ -3289,6 +3566,7 @@
 
 .shell .release-notes {
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .shell .toolbar-tabs {
@@ -3364,4 +3642,155 @@
   gap: 16px;
   margin-top: 16px;
   font-weight: 500;
+}
+
+/* Mode overrides last, so they win over the base rules above at the same specificity. */
+
+/* Touch screens: targets of at least 44px where they fit, and room between row icons. */
+@media (pointer: coarse) {
+  .shell-menu-toggle {
+    place-items: center;
+    min-width: 44px;
+    min-height: 44px;
+    margin: -8px -8px -8px 0;
+  }
+
+  .shell .app-nav a,
+  .shell-explore {
+    min-height: 44px;
+  }
+
+  .shell .icon-button {
+    width: 40px;
+    height: 40px;
+  }
+
+  .shell .icon-button.text-button {
+    width: auto;
+    min-width: 40px;
+  }
+
+  .shell .directory-table td.cell-action {
+    min-width: calc(3 * 40px + 2 * 8px + 26px);
+  }
+
+  .shell .cell-action :is(.icon-button, .tag-picker) ~ :is(.icon-button, .tag-picker) {
+    margin-left: 8px;
+  }
+
+  .shell .pick-files {
+    gap: 8px;
+  }
+
+  .shell .segment {
+    min-height: 36px;
+  }
+
+  .shell .sort-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+  }
+}
+
+@media (forced-colors: active) {
+  .shell .app-nav li.is-active > a {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  .shell .dot {
+    forced-color-adjust: none;
+    background: Highlight;
+  }
+}
+
+/* Forced colors drop fills and inset shadows, so boxes that rely on them get a real border. */
+@media (forced-colors: active) {
+  .shell .badge,
+  .shell .tag-chip,
+  .shell .app-nav-count,
+  .shell .notice,
+  .shell .next-step,
+  .shell .confirm-inline,
+  .shell .count-pill {
+    border: 1px solid CanvasText;
+  }
+}
+
+/* Forced colors drop the selected segment's Paper fill and shadow, so draw it in Highlight. */
+@media (forced-colors: active) {
+  .shell .segmented {
+    border: 1px solid CanvasText;
+  }
+
+  .shell .segment.is-selected,
+  .shell .segment[aria-pressed="true"],
+  .shell .segment[aria-current] {
+    forced-color-adjust: none;
+    border-color: Highlight;
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .shell .segment.is-selected .segment-count,
+  .shell .segment[aria-current] .segment-count {
+    color: HighlightText;
+  }
+
+  .shell .segment:first-child.is-selected::before {
+    background: HighlightText;
+  }
+}
+
+@media (forced-colors: active) {
+  .shell .storage-meter,
+  .shell .upload-bar {
+    border: 1px solid CanvasText;
+  }
+
+  .shell .storage-meter > span {
+    forced-color-adjust: none;
+    background: Highlight;
+  }
+
+  .shell .upload-bar {
+    forced-color-adjust: none;
+    background: linear-gradient(to right, Highlight calc(var(--progress) * 100%), Canvas 0);
+  }
+}
+
+@media (forced-colors: active) {
+  .shell .contrib-graph rect {
+    stroke: CanvasText;
+  }
+
+  .shell .contrib-label {
+    fill: CanvasText;
+  }
+
+  .shell .contrib-level-0 {
+    fill: Canvas;
+  }
+
+  .shell .contrib-level-1,
+  .shell .contrib-level-2,
+  .shell .contrib-level-3,
+  .shell .contrib-level-4 {
+    fill: Highlight;
+  }
+
+  .shell .contrib-level-1 { fill-opacity: 0.3; }
+  .shell .contrib-level-2 { fill-opacity: 0.55; }
+  .shell .contrib-level-3 { fill-opacity: 0.8; }
+}
+
+/* The drawn chevron is Ink, which vanishes on a dark forced-colors Canvas; use the system's own arrow. */
+@media (forced-colors: active) {
+  .shell .field select,
+  .shell .pick-replace,
+  .shell .member-role select {
+    appearance: auto;
+    background-image: none;
+  }
 }

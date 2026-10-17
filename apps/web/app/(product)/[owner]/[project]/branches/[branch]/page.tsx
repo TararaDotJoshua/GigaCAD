@@ -60,6 +60,10 @@ export default async function BranchPage({ params }: { params: Promise<ProjectPa
             <span>
               From {branch.baseReleaseNumber ? <Link href={releasePath(owner, slug, branch.baseReleaseNumber)}>v{branch.baseReleaseNumber}</Link> : 'an empty project'}
             </span>
+            {/* On narrow screens the Checked out card falls below the files, so the lock is said up here too. */}
+            {branch.checkedOutByHandle && (
+              <span className="narrow-only">Checked out by {viewer && branch.checkedOutBy === viewer.id ? 'you' : `@${branch.checkedOutByHandle}`}</span>
+            )}
           </>
         }
       />

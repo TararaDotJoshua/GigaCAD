@@ -6,7 +6,7 @@ import { useActionState, useEffect, useId, useState, useTransition } from 'react
 import { changeMemberRole, findPeople, leaveProject, removeMember, type ActionState } from '../../app/(product)/actions';
 import type { Member } from '../../lib/api';
 import { safeAction } from '../../lib/safe-action';
-import { ActionButton, FormStatus } from './ActionButton';
+import { ActionButton, FormStatus, LogInAgain } from './ActionButton';
 import { Avatar } from './Avatar';
 
 /** What each role can do, one line each, said the same way wherever a role is picked. */
@@ -123,6 +123,7 @@ function AddMemberForm({
   const [handle, setHandle] = useState('');
   const [role, setRole] = useState<keyof typeof ROLE_DESCRIPTIONS>('viewer');
   const [people, setPeople] = useState<{ handle: string; displayName: string | null }[]>([]);
+  const [signedOut, setSignedOut] = useState(false);
   const [, formAction, pending] = useActionState(async (previous: ActionState, form: FormData) => {
     // A failed request (offline, say) shows in the status line instead of the error page.
     const result = await safeAction(() => action(previous, form));
@@ -140,7 +141,10 @@ function AddMemberForm({
     let current = true;
     const timer = setTimeout(async () => {
       const found = await findPeople(query);
-      if (current) setPeople(found);
+      if (!current) return;
+      // Without a session there are no suggestions, which would look like nobody has that handle.
+      setSignedOut(!Array.isArray(found));
+      setPeople(Array.isArray(found) ? found : []);
     }, 200);
     return () => {
       current = false;
@@ -178,6 +182,11 @@ function AddMemberForm({
           <small className="field-hint" id={handleHintId}>
             They need a GigaCAD account with a handle. New to GigaCAD? Send them to <Link href="/signup">sign up</Link>.
           </small>
+          {signedOut && (
+            <small className="field-hint is-error" role="alert">
+              You’ve been signed out, so people can’t be suggested. <LogInAgain />
+            </small>
+          )}
         </label>
         <label className="field">
           <span>Role</span>

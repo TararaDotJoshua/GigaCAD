@@ -83,7 +83,7 @@ export interface DirectoryLocation {
   readonly crumbs: readonly { readonly name: string; readonly path: string }[];
   /** The listed root folder; null at the project root and outside the root area. */
   readonly folderId: string | null;
-  readonly branch: (BranchFolder & { readonly name: string }) | null;
+  readonly branch: (BranchFolder & { readonly name: string; readonly headKind: 'autosave' | 'version'; readonly headSavedAt: Date }) | null;
   readonly release: { readonly number: number; readonly createdAt: Date; readonly createdByHandle: string | null } | null;
   /** Whether the caller may add, replace, move, or delete entries here. Only root folders are ever writable. */
   readonly writable: boolean;
@@ -268,12 +268,15 @@ interface BranchRow extends BranchFolder {
   readonly name: string;
   readonly manifestId: string;
   readonly changedAt: Date;
+  /** An autosave head means the folder shows unsaved work. */
+  readonly headKind: 'autosave' | 'version';
 }
 
 const BRANCH_COLUMNS = (db: Db) => db`
   b.id, b.name, b.status, b.checked_out_by, h.handle as checked_out_by_handle, b.checked_out_machine, b.checked_out_at,
-  c.manifest_id, c.created_at as changed_at
+  c.manifest_id, c.created_at as changed_at, c.kind as head_kind
 `;
+
 
 /**
  * The folders and files directly inside `prefix` of one snapshot. Folder names keep the
@@ -324,7 +327,21 @@ async function listBranch(db: Db, projectId: string, branchName: string, inner: 
     db<{ itemId: string; changedAt: Date; handle: string | null }[]>`
       select f.item_id, ch.changed_at, a.handle
       from unnest(${direct.map((file) => file.itemId)}::uuid[], ${direct.map((file) => file.blob)}::text[]) as f (item_id, blob)
-      cross join lateral branch_file_changed(${branch.id}, f.item_id, f.blob) ch
+      cross join lateral (
+        -- The first commit with the file's current content. The branch's first commit only
+        -- copies its base release, so a file unchanged since then dates from the first
+        -- release that had it, with no author.
+        select case when first.parent_id is null then coalesce(rel.created_at, first.created_at) else first.created_at end as changed_at,
+               case when first.parent_id is null then null else first.author_id end as author_id
+        from (
+          select c.created_at, c.author_id, c.parent_id from commits c join manifest_entries me on me.manifest_id = c.manifest_id and me.item_id = f.item_id
+          where c.branch_id = ${branch.id} and me.blob_sha256 = f.blob order by c.created_at limit 1
+        ) first
+        left join lateral (
+          select r.created_at from releases r join manifest_entries me on me.manifest_id = r.manifest_id and me.item_id = f.item_id
+          where r.project_id = ${projectId} and me.blob_sha256 = f.blob order by r.number limit 1
+        ) rel on first.parent_id is null
+      ) ch
       left join profiles a on a.id = ch.author_id
     `,
   ]);
@@ -348,9 +365,9 @@ async function listBranch(db: Db, projectId: string, branchName: string, inner: 
       });
     }),
   ];
-  const { manifestId: _, changedAt: __, ...folder } = branch;
+  const { manifestId: _, changedAt, ...folder } = branch;
   return {
-    location: { area: 'branch' as const, path: base.join('/'), crumbs: crumbsFor(base), folderId: null, branch: folder, release: null },
+    location: { area: 'branch' as const, path: base.join('/'), crumbs: crumbsFor(base), folderId: null, branch: { ...folder, headSavedAt: changedAt }, release: null },
     items,
   };
 }
@@ -420,7 +437,7 @@ async function listBranchFolders(db: Db, projectId: string): Promise<DirectoryIt
     from branches b join commits c on c.id = b.head_commit_id left join profiles h on h.id = b.checked_out_by
     where b.project_id = ${projectId}
   `;
-  return branches.map(({ manifestId: _, changedAt, name, ...branch }) => ({
+  return branches.map(({ manifestId: _, changedAt, name, headKind: __, ...branch }) => ({
     kind: 'folder',
     name,
     path: joinPath('Branches', name),
@@ -538,7 +555,19 @@ export async function searchFiles(sql: Sql, projectId: string, viewerId: string 
       from branches br
       join commits c on c.id = br.head_commit_id
       join manifest_entries me on me.manifest_id = c.manifest_id
-      left join lateral branch_file_changed(br.id, me.item_id, me.blob_sha256) ch on true
+      left join lateral (
+        -- As listBranch: a file unchanged since the base release dates from that release.
+        select case when first.parent_id is null then coalesce(rel.created_at, first.created_at) else first.created_at end as changed_at,
+               case when first.parent_id is null then null else first.author_id end as author_id
+        from (
+          select bc.created_at, bc.author_id, bc.parent_id from commits bc join manifest_entries bme on bme.manifest_id = bc.manifest_id and bme.item_id = me.item_id
+          where bc.branch_id = br.id and bme.blob_sha256 = me.blob_sha256 order by bc.created_at limit 1
+        ) first
+        left join lateral (
+          select r.created_at from releases r join manifest_entries rme on rme.manifest_id = r.manifest_id and rme.item_id = me.item_id
+          where r.project_id = br.project_id and rme.blob_sha256 = me.blob_sha256 order by r.number limit 1
+        ) rel on first.parent_id is null
+      ) ch on true
       where br.project_id = ${projectId} and ${query.area === undefined || query.area === 'branch'}
       union all
       select 'release', null, null, r.number, null, me.item_id, me.path, me.blob_sha256, null,

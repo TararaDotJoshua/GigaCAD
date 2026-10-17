@@ -8,6 +8,7 @@ import { addRootFile, replaceRootFile, type ActionState } from '../../app/(produ
 import { safeAction } from '../../lib/safe-action';
 import { uploadContents, type UploadPhase } from '../../lib/upload';
 import { PlusIcon } from '../icons';
+import { LogInAgain } from './ActionButton';
 import { OPEN_UPLOAD_EVENT } from './OpenUploadButton';
 
 /** Files dropped anywhere on the folder's drop zone arrive as this event. */
@@ -51,6 +52,8 @@ export function UploadFiles({ projectId, parentId, existing, owner }: { projectI
   const [collisions, setCollisions] = useState<File[] | null>(null);
   const [queued, setQueued] = useState<File[]>([]);
   const [full, setFull] = useState<ActionState['storageFull']>();
+  /** Files that weren't saved because the session ended, kept so they can be retried after logging in. */
+  const [unsaved, setUnsaved] = useState<File[] | null>(null);
   useLeaveWarning(pending);
 
   // The name-collision question takes focus, so keyboard users can answer it.
@@ -81,6 +84,7 @@ export function UploadFiles({ projectId, parentId, existing, owner }: { projectI
   async function upload(files: File[], replace: boolean) {
     setCollisions(null);
     setFull(undefined);
+    setUnsaved(null);
     const batch = replace ? files : files.filter((file) => !existing[file.name.toLowerCase()]);
     const skipped = files.filter((file) => !batch.includes(file));
     setItems([...batch.map((file) => ({ name: file.name, phase: 'waiting' as const, progress: 0 })), ...skipped.map((file) => ({ name: file.name, phase: 'skipped' as const, progress: 0 }))]);
@@ -94,6 +98,12 @@ export function UploadFiles({ projectId, parentId, existing, owner }: { projectI
         const result = sha256
           ? await safeAction<ActionState>(() => (replacing ? replaceRootFile(projectId, replacing, sha256) : addRootFile(projectId, parentId, file.name, sha256)))
           : uploaded;
+        if (result.signedOut) {
+          // The rest would fail the same way; keep them all for a retry after logging in.
+          setUnsaved(batch.slice(index));
+          setItems((current) => current.map((item, i) => (i === index ? { ...item, phase: 'failed', error: 'Not saved: you were signed out' } : i > index && item.phase === 'waiting' ? { ...item, phase: 'skipped' } : item)));
+          return;
+        }
         if (result.storageFull) {
           // Every other file would be refused too.
           setFull(result.storageFull);
@@ -164,6 +174,15 @@ export function UploadFiles({ projectId, parentId, existing, owner }: { projectI
           {full && (
             <p className="upload-full" role="alert">
               <StorageFull owner={owner} full={full} />
+            </p>
+          )}
+          {unsaved && !pending && (
+            <p className="upload-full" role="alert">
+              You were signed out, so {unsaved.length === 1 ? 'this file wasn’t' : `${unsaved.length} files weren’t`} saved. <LogInAgain />, then{' '}
+              <button type="button" className="link-button" onClick={() => upload(unsaved, true)}>
+                try again
+              </button>
+              .
             </p>
           )}
           {finished && (

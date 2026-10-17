@@ -9,7 +9,7 @@ import { recordEvent } from './events.js';
 import { snapshotReleaseExports } from './exports.js';
 import { insertManifest, loadManifest } from './manifests.js';
 import { avatarUrl, contributionDays, recentActivity, visibleProject } from './profiles.js';
-import { requireChosenHandle, summarize, type ProjectSummary } from './projects.js';
+import { requireChosenHandle, requireFreeAddress, summarize, type ProjectSummary } from './projects.js';
 
 /** A public project as Explore and profile pages list it. */
 export interface ProjectCard {
@@ -161,6 +161,7 @@ export async function forkProject(
   `;
 
   return sql.begin(async (tx) => {
+    await requireFreeAddress(tx, userId, input.slug);
     await requireStorageFor(tx, userId, blobs);
     const [project] = await tx<{ id: string }[]>`
       insert into projects (owner_id, slug, name, description, visibility, license, forked_from_release_id, must_stay_private)

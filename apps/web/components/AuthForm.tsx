@@ -1,10 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useState } from 'react';
 import { authMessage, LOGIN_ERRORS } from '../lib/auth-messages';
+import type { AuthQuery } from '../lib/auth-query';
 import { dashboardPath } from '../lib/hosts';
+import { commonPasswordProblem } from '../lib/passwords';
 import { createClient } from '../lib/supabase/client';
 import { safeReturnPath } from '../lib/return-path';
 
@@ -26,11 +28,17 @@ export function isRecentRecovery(amr: unknown, now = Date.now()): boolean {
   );
 }
 
-export function AuthForm({ mode }: { mode: Mode }) {
+/** The log-in intro says why you're here when you came from somewhere specific. */
+function loginIntro(rawNext: string | null, next: string): string {
+  if (next.startsWith('/device')) return 'Log in to approve the sign-in from your device. You’ll confirm the code next.';
+  if (rawNext && next !== dashboardPath()) return 'Log in to continue.';
+  return 'Pick up where you left off with your projects and releases.';
+}
+
+export function AuthForm({ mode, query, siteUrl }: { mode: Mode; query: AuthQuery; siteUrl: string }) {
   const router = useRouter();
-  const search = useSearchParams();
-  const next = safeReturnPath(search.get('next'), dashboardPath());
-  const [email, setEmail] = useState(search.get('email') ?? '');
+  const next = safeReturnPath(query.next, dashboardPath());
+  const [email, setEmail] = useState(query.email);
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
@@ -39,7 +47,9 @@ export function AuthForm({ mode }: { mode: Mode }) {
   // Sign-up that needs email confirmation swaps the form for an inbox panel.
   const [sentTo, setSentTo] = useState('');
   // A reset page opened without a recovery session (an old or reused link) can't save anything.
-  const [expired, setExpired] = useState(false);
+  // Null until the session has been checked, so the form never flashes before "expired".
+  const [expired, setExpired] = useState<boolean | null>(mode === 'reset' ? null : false);
+  const [passwordSaved, setPasswordSaved] = useState(false);
   const oauthProviders = [
     process.env.NEXT_PUBLIC_GITHUB_AUTH_ENABLED === 'true' ? 'github' : null,
     process.env.NEXT_PUBLIC_GOOGLE_AUTH_ENABLED === 'true' ? 'google' : null,
@@ -54,12 +64,31 @@ export function AuthForm({ mode }: { mode: Mode }) {
       .then(({ data }) => setExpired(!isRecentRecovery(data?.claims?.amr)));
   }, [mode]);
 
+  // Confirming in another tab signs this browser in; move on instead of waiting on "Check your inbox".
+  useEffect(() => {
+    if (!sentTo) return;
+    const supabase = createClient();
+    const go = () => {
+      router.replace(next);
+      router.refresh();
+    };
+    const check = () => void supabase.auth.getSession().then(({ data }) => data.session && go());
+    const { data } = supabase.auth.onAuthStateChange((event, session) => event === 'SIGNED_IN' && session && go());
+    window.addEventListener('focus', check);
+    document.addEventListener('visibilitychange', check);
+    return () => {
+      data.subscription.unsubscribe();
+      window.removeEventListener('focus', check);
+      document.removeEventListener('visibilitychange', check);
+    };
+  }, [sentTo, next, router]);
+
   /** Links between the sign-in pages keep where you were going and the email you typed. */
   const carry = (path: string) => {
-    const query = new URLSearchParams();
-    if (search.get('next')) query.set('next', next);
-    if (email) query.set('email', email);
-    const text = query.toString();
+    const params = new URLSearchParams();
+    if (query.next) params.set('next', next);
+    if (email) params.set('email', email);
+    const text = params.toString();
     return text ? `${path}?${text}` : path;
   };
 
@@ -71,6 +100,11 @@ export function AuthForm({ mode }: { mode: Mode }) {
     setNotice('');
     if ((mode === 'signup' || mode === 'reset') && password !== confirm) {
       setError('Passwords do not match.');
+      return;
+    }
+    const common = mode === 'signup' || mode === 'reset' ? commonPasswordProblem(password) : null;
+    if (common) {
+      setError(common);
       return;
     }
     setBusy(true);
@@ -92,12 +126,11 @@ export function AuthForm({ mode }: { mode: Mode }) {
         const redirect = new URL('/reset-password', window.location.origin);
         const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: redirect.toString() });
         if (error) throw error;
-        setNotice('If this email has an account, a reset link is on its way. It works once, for an hour.');
+        setNotice('If this email has an account, a reset link is on its way. Only the newest email’s link works, once, for an hour.');
       } else {
         const { error } = await supabase.auth.updateUser({ password });
         if (error) throw error;
-        router.push(dashboardPath());
-        router.refresh();
+        setPasswordSaved(true);
       }
     } catch (cause) {
       setError(authMessage(cause));
@@ -111,7 +144,14 @@ export function AuthForm({ mode }: { mode: Mode }) {
     setNotice('');
     setBusy(true);
     try {
-      const { error } = await createClient().auth.resend({ type: 'signup', email: sentTo, options: { emailRedirectTo: confirmUrl() } });
+      const supabase = createClient();
+      // Already confirmed (in another tab, say): nothing to resend, so go on.
+      if ((await supabase.auth.getSession()).data.session) {
+        router.replace(next);
+        router.refresh();
+        return;
+      }
+      const { error } = await supabase.auth.resend({ type: 'signup', email: sentTo, options: { emailRedirectTo: confirmUrl() } });
       if (error) throw error;
       setNotice('Sent again. It can take a minute to arrive.');
     } catch (cause) {
@@ -137,9 +177,9 @@ export function AuthForm({ mode }: { mode: Mode }) {
 
   const messages = (
     <>
-      {(error || search.has('error')) && (
+      {(error || query.error !== null) && (
         <p className="form-message form-error" role="alert">
-          {error || LOGIN_ERRORS[search.get('error') ?? ''] || 'That email or sign-in link could not be used. Please try again.'}
+          {error || LOGIN_ERRORS[query.error ?? ''] || 'That email or sign-in link could not be used. Please try again.'}
         </p>
       )}
       {notice && <p className="form-message form-success" role="status">{notice}</p>}
@@ -167,6 +207,29 @@ export function AuthForm({ mode }: { mode: Mode }) {
     );
   }
 
+  if (mode === 'reset' && passwordSaved) {
+    return (
+      <div className="auth-shell">
+        <div className="auth-card">
+          <h1>Password changed.</h1>
+          <p className="auth-intro" role="status">You’re signed in. Use the new password the next time you log in.</p>
+          <Link className="button auth-submit" href={dashboardPath()}>Continue to your projects</Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === 'reset' && expired === null) {
+    // The card's frame while the link's session is checked.
+    return (
+      <div className="auth-shell">
+        <div className="auth-card" aria-busy="true">
+          <h1>Checking your link…</h1>
+        </div>
+      </div>
+    );
+  }
+
   if (mode === 'reset' && expired) {
     return (
       <div className="auth-shell">
@@ -185,10 +248,10 @@ export function AuthForm({ mode }: { mode: Mode }) {
       <div className="auth-card">
         <h1>{titles[mode]}</h1>
         <p className="auth-intro">
-          {mode === 'login' && 'Pick up where you left off with your projects and releases.'}
+          {mode === 'login' && loginIntro(query.next, next)}
           {mode === 'signup' && 'Start a project, work on branches, and keep every release locked.'}
           {mode === 'forgot' && 'Enter your account email and we’ll send a reset link.'}
-          {mode === 'reset' && 'Your new password will be used the next time you log in.'}
+          {mode === 'reset' && 'Choose a new password for your account.'}
         </p>
         <form onSubmit={submit} className="auth-form">
           {mode !== 'reset' && <label>Email<input type="email" name="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>}
@@ -204,6 +267,11 @@ export function AuthForm({ mode }: { mode: Mode }) {
           {(mode === 'signup' || mode === 'reset') && <label>Confirm password<input type="password" name="confirm" autoComplete="new-password" minLength={8} value={confirm} onChange={(e) => setConfirm(e.target.value)} required /></label>}
           {messages}
           <button className="button auth-submit" type="submit" disabled={busy}>{busy ? 'Working…' : mode === 'login' ? 'Log in' : mode === 'signup' ? 'Create account' : mode === 'forgot' ? 'Send reset link' : 'Save password'}</button>
+          {mode === 'signup' && (
+            <p className="auth-hint">
+              By creating an account you agree to the <a href={`${siteUrl}/terms`}>Terms</a> and <a href={`${siteUrl}/privacy`}>Privacy Policy</a>.
+            </p>
+          )}
         </form>
         {(mode === 'login' || mode === 'signup') && oauthProviders.length > 0 && <>
           <div className="auth-divider"><span>or continue with</span></div>

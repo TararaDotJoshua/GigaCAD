@@ -1,7 +1,8 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
 import { idParams, parse, requireCaller, viewerId } from '../http.js';
+import { notifyLockReleased, type LockReleaseNotice } from '../services/branches.js';
 import { withAvatars } from '../services/profiles.js';
 import {
   createProject,
@@ -111,8 +112,9 @@ export function projectRoutes(app: FastifyInstance, { sql, storage, mailer, webO
     const { id } = parse(idParams, request.params);
     const input = parse(memberInput, request.body);
     const before = await memberRole(id, input.handle);
-    const { added } = await setMember(sql, id, requireCaller(request).userId, input.handle, input.role);
+    const { added, releasedLocks } = await setMember(sql, id, requireCaller(request).userId, input.handle, input.role);
     if (added && mailer) await notifyNewMember(mailer, webOrigin, added).catch((error: unknown) => request.log.warn(error, 'member notice not sent'));
+    notifyLocks(request, releasedLocks);
     if (before && before !== input.role && mailer) {
       const change = { projectId: id, handle: input.handle, role: input.role, actorId: requireCaller(request).userId };
       sendLater(request.log, 'role notice', () => notifyRoleChanged(sql, mailer, webOrigin, change));
@@ -124,12 +126,18 @@ export function projectRoutes(app: FastifyInstance, { sql, storage, mailer, webO
   app.delete('/v1/projects/:id/members/:handle', async (request, reply) => {
     const { id, handle } = parse(idParams.extend({ handle: z.string().min(1).max(39) }), request.params);
     const actorId = requireCaller(request).userId;
-    const { left } = await setMember(sql, id, actorId, handle, null);
+    const { left, releasedLocks } = await setMember(sql, id, actorId, handle, null);
+    notifyLocks(request, releasedLocks);
     if (left) return reply.status(204).send();
     // setMember 404s for someone who isn't a member, so only a member who was just removed is told.
     if (mailer) sendLater(request.log, 'removal notice', () => notifyMemberRemoved(sql, mailer, webOrigin, { projectId: id, handle, actorId }));
     return withAvatars(storage, await listMembers(sql, id, requireCaller(request).userId));
   });
+
+  function notifyLocks(request: FastifyRequest, notices: readonly LockReleaseNotice[]) {
+    if (!mailer) return;
+    for (const notice of notices) sendLater(request.log, 'lock notice', () => notifyLockReleased(mailer, webOrigin, notice));
+  }
 
   app.get('/v1/projects/:id/approval-rules', async (request) => {
     const { id } = parse(idParams, request.params);

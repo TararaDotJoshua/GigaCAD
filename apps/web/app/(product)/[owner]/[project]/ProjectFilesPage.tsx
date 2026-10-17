@@ -30,6 +30,7 @@ export async function ProjectFilesPage({
   params,
   justForked = false,
   finishStar = false,
+  restored = false,
 }: {
   owner: string;
   slug: string;
@@ -39,6 +40,8 @@ export async function ProjectFilesPage({
   justForked?: boolean;
   /** Clicked Star while signed out, then logged in. */
   finishStar?: boolean;
+  /** Just brought back from Deleted projects. */
+  restored?: boolean;
 }) {
   const project = await getProject(owner, slug);
   const isRoot = path === '';
@@ -93,6 +96,11 @@ export async function ProjectFilesPage({
           </>
         }
       />
+      {restored && (
+        <p className="notice" role="status">
+          Restored {project.name}, with its history, members, and files.
+        </p>
+      )}
       {justForked && project.forkedFrom && project.role === 'owner' && (
         <p className="notice" role="status">
           Forked {project.forkedFrom.ownerHandle}/{project.forkedFrom.slug} v{project.forkedFrom.releaseNumber}. This copy is yours, and its history starts here.
@@ -142,7 +150,7 @@ async function LatestRelease({ project, release }: { project: Project; release: 
           </p>
         </div>
         <div className="latest-release-actions">
-          <a className="btn btn-primary btn-small" href={releaseDownloadPath(owner, slug, release.number)} download>
+          <a className="btn btn-primary btn-small" href={releaseDownloadPath(owner, slug, release.number)}>
             <DownloadIcon className="icon" />
             Download all
           </a>

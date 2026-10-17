@@ -120,6 +120,18 @@ export function FormStatus({ state }: { state: ActionState }) {
     return (
       <span className="form-status is-error" role="alert">
         {state.error}
+        {state.signedOut && (
+          <>
+            {' '}
+            <LogInAgain />
+          </>
+        )}
+        {state.link && (
+          <>
+            {' '}
+            <a href={state.link.href}>{state.link.label}</a>
+          </>
+        )}
       </span>
     );
   }
@@ -131,4 +143,14 @@ export function FormStatus({ state }: { state: ActionState }) {
     );
   }
   return null;
+}
+
+/** Logging in again in a new tab keeps this page, and whatever was typed on it, as it is. */
+export function LogInAgain() {
+  const next = typeof window === 'undefined' ? '' : window.location.pathname + window.location.search;
+  return (
+    <a href={`/login?next=${encodeURIComponent(next)}`} target="_blank" rel="noopener">
+      Log in (new tab)
+    </a>
+  );
 }

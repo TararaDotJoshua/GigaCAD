@@ -54,7 +54,7 @@ export default async function ReleasePage({ params }: { params: Promise<ReleaseP
           </>
         }
         actions={
-          <a className="btn btn-primary" href={releaseDownloadPath(owner, slug, release.number)} download>
+          <a className="btn btn-primary" href={releaseDownloadPath(owner, slug, release.number)}>
             <DownloadIcon className="icon" />
             Download all ({files.length} {files.length === 1 ? 'file' : 'files'})
           </a>

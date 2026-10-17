@@ -202,6 +202,9 @@ export interface Branch {
   checkedOutByHandle: string | null;
   checkedOutMachine: string | null;
   checkedOutAt: string | null;
+  /** Who archived it and when, while it's archived. */
+  archivedByHandle: string | null;
+  archivedAt: string | null;
   createdAt: string;
 }
 
@@ -437,7 +440,7 @@ export interface DirectoryListing extends FilePage<DirectoryItem> {
     path: string;
     crumbs: { name: string; path: string }[];
     folderId: string | null;
-    branch: (BranchFolder & { name: string }) | null;
+    branch: (BranchFolder & { name: string; headKind: 'autosave' | 'version'; headSavedAt: string }) | null;
     release: { number: number; createdAt: string; createdByHandle: string | null } | null;
     writable: boolean;
   };

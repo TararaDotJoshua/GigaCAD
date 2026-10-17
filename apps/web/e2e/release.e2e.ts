@@ -155,11 +155,31 @@ const projectUrl = (...rest: (string | number)[]) => ['', world.handle, world.sl
 
 test('picks files, regenerates the candidate, approves, and releases', async ({ page }) => {
   await logIn(page);
+  // Realtime confirms the subscription once row-level security has let the session in.
+  const subscribed = page.waitForEvent('websocket').then((socket) =>
+    socket.waitForEvent('framereceived', { predicate: (frame) => String(frame.payload).includes('Subscribed to PostgreSQL') }),
+  );
   await page.goto(projectUrl('release-requests', world.requestNumber));
+  await subscribed;
 
   // Opening the request built the candidate from the default picks.
   const release = page.getByRole('button', { name: 'Approve and release v2' });
   await expect(release).toBeEnabled();
+  await release.click();
+  await expect(page.getByRole('group', { name: 'Confirm Approve and release v2' })).toBeVisible();
+
+  // Someone regenerates the candidate while the confirm is open. The live update closes the
+  // confirm and holds approving and releasing until the new candidate has been looked at.
+  const detail = await api(world.token, 'GET', `/v1/projects/${world.projectId}/release-requests`);
+  const requestId = detail.find((request: { number: number }) => request.number === world.requestNumber).id;
+  await api(world.token, 'POST', `/v1/release-requests/${requestId}/candidate`);
+  await expect(page.getByText('The candidate changed.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Confirm Approve and release v2' })).toHaveCount(0);
+  await expect(release).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Approve candidate' })).toBeDisabled();
+  await page.getByRole('button', { name: 'I’ve reviewed the new candidate' }).click();
+  await expect(release).toBeEnabled();
+
   const pickFor = (path: string) => page.locator(`[aria-label="Pick for ${path}"]`);
   await pickFor('parts/P1.SLDPRT').getByRole('button', { name: 'Keep main' }).click();
   await pickFor('parts/P2.SLDPRT').getByRole('button', { name: 'Take branch' }).click();
@@ -233,6 +253,10 @@ test('lets a named viewer approve only the candidate on screen, and shows files 
   await api(world.token, 'POST', `/v1/release-requests/${requestId}/candidate`);
   await approve.click();
   await expect(page.getByText('The candidate changed since this page loaded. Look it over again, then try again.')).toBeVisible();
+  // The page now shows the new candidate, and approving waits until the reviewer says they've looked at it.
+  await expect(page.getByText('The candidate changed.', { exact: true })).toBeVisible();
+  await expect(approve).toBeDisabled();
+  await page.getByRole('button', { name: 'I’ve reviewed the new candidate' }).click();
   await approve.click();
   await expect(page.getByText(`Approved. @${world.handle} or a maintainer can release it.`)).toBeVisible();
   await expect(page.locator('.approvers li', { hasText: `@${reviewer.handle}` }).getByText('Approved')).toBeVisible();

@@ -6,25 +6,53 @@ import { ActionButton } from './ActionButton';
 
 /**
  * What a release request page shares between its parts: whether the picks have unsaved
- * changes, which holds back approving and releasing until they're saved, and the latest
- * result of an action, which outlives the button that ran it.
+ * changes, which holds back approving and releasing until they're saved; the latest result of
+ * an action, which outlives the button that ran it; and the candidate the viewer is reviewing.
+ *
+ * Live updates bring a regenerated or rebuilt candidate onto the page as soon as it exists.
+ * Approving and releasing stay on the candidate the viewer was reviewing (`reviewedId`), so
+ * the API refuses them as stale, and are held until the viewer says they've looked at the
+ * new one. A change the viewer made here, like saving picks, needs no second look.
  */
 interface RequestDraft {
   readonly dirty: boolean;
   readonly setDirty: (dirty: boolean) => void;
   readonly notice: string | null;
   readonly setNotice: (notice: string | null) => void;
+  readonly reviewedId: string | null;
+  /** The candidate on the page isn't the one the viewer was reviewing. */
+  readonly changed: boolean;
+  readonly acknowledge: () => void;
+  /** The next candidate change is this viewer's own. */
+  readonly expectOwnChange: () => void;
 }
 
-const Context = createContext<RequestDraft>({ dirty: false, setDirty: () => undefined, notice: null, setNotice: () => undefined });
+const Context = createContext<RequestDraft>({
+  dirty: false,
+  setDirty: () => undefined,
+  notice: null,
+  setNotice: () => undefined,
+  reviewedId: null,
+  changed: false,
+  acknowledge: () => undefined,
+  expectOwnChange: () => undefined,
+});
 
 export const useRequestDraft = () => useContext(Context);
 
 const LEAVE = 'You have unsaved picks. Leave this page and lose them?';
 
-export function RequestDraftProvider({ children }: { children: React.ReactNode }) {
+export function RequestDraftProvider({ candidateId, children }: { candidateId: string | null; children: React.ReactNode }) {
   const [dirty, setDirty] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [reviewedId, setReviewedId] = useState(candidateId);
+  const [expecting, setExpecting] = useState(false);
+  // Saving picks clears the candidate before it's rebuilt, so an own change ends with the new one.
+  if (candidateId !== reviewedId && expecting) {
+    setReviewedId(candidateId);
+    if (candidateId) setExpecting(false);
+  }
+  const changed = candidateId !== reviewedId;
   useEffect(() => {
     if (!dirty) return;
     const beforeUnload = (event: BeforeUnloadEvent) => {
@@ -50,7 +78,22 @@ export function RequestDraftProvider({ children }: { children: React.ReactNode }
       window.removeEventListener('click', click, true);
     };
   }, [dirty]);
-  const value = useMemo(() => ({ dirty, setDirty, notice, setNotice }), [dirty, notice]);
+  const value = useMemo(
+    () => ({
+      dirty,
+      setDirty,
+      notice,
+      setNotice,
+      reviewedId,
+      changed,
+      acknowledge: () => {
+        setReviewedId(candidateId);
+        setNotice(null);
+      },
+      expectOwnChange: () => setExpecting(true),
+    }),
+    [dirty, notice, reviewedId, changed, candidateId],
+  );
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 
@@ -58,8 +101,20 @@ export function RequestDraftProvider({ children }: { children: React.ReactNode }
  * The "Next:" banner. Unsaved picks take it over, since nothing else can happen until
  * they're saved. `action` is a control that belongs with the sentence, like Build candidate.
  */
-export function NextStep({ tone, children, action }: { tone: 'plain' | 'ready' | 'caution'; children: React.ReactNode; action?: React.ReactNode }) {
-  const { dirty, notice } = useRequestDraft();
+export function NextStep({ tone, children, action, change }: { tone: 'plain' | 'ready' | 'caution'; children: React.ReactNode; action?: React.ReactNode; change?: string | null }) {
+  const { dirty, notice, changed, acknowledge } = useRequestDraft();
+  if (changed && !dirty) {
+    return (
+      <div className="next-step is-waiting" role="alert">
+        <p>
+          <strong>The candidate changed.</strong> {change ? `${change} while you were reviewing. ` : ''}Review it again: approving and releasing wait until you have.
+        </p>
+        <button type="button" className="btn btn-secondary btn-small" onClick={acknowledge}>
+          I’ve reviewed the new candidate
+        </button>
+      </div>
+    );
+  }
   if (dirty) {
     return (
       <div className="next-step is-waiting" role="status">
@@ -82,7 +137,8 @@ export function NextStep({ tone, children, action }: { tone: 'plain' | 'ready' |
 
 /**
  * A request action whose result shows in the Next banner, since the button usually goes
- * away once it worked. Approving and building wait while picks are unsaved.
+ * away once it worked. It waits while picks are unsaved. With `changesCandidate`, the
+ * candidate it builds is the viewer's own doing, so it needs no second review.
  */
 export function RequestActionButton({
   action,
@@ -91,6 +147,7 @@ export function RequestActionButton({
   confirm,
   pendingLabel,
   disabled,
+  changesCandidate,
 }: {
   action: () => Promise<ActionState>;
   children: React.ReactNode;
@@ -98,8 +155,9 @@ export function RequestActionButton({
   confirm?: string | undefined;
   pendingLabel?: string;
   disabled?: boolean;
+  changesCandidate?: boolean;
 }) {
-  const { dirty, setNotice } = useRequestDraft();
+  const { dirty, setNotice, expectOwnChange } = useRequestDraft();
   return (
     <>
       <ActionButton
@@ -108,6 +166,7 @@ export function RequestActionButton({
         pendingLabel={pendingLabel}
         disabled={disabled || dirty}
         action={async () => {
+          if (changesCandidate) expectOwnChange();
           const result = await action();
           if (result.error) return result;
           setNotice(result.message ?? null);
@@ -117,6 +176,31 @@ export function RequestActionButton({
         {children}
       </ActionButton>
       {dirty && <span className="form-hint">Save your picks first.</span>}
+    </>
+  );
+}
+
+/**
+ * Approves the candidate the viewer reviewed, which may not be the newest one on the page. If
+ * the API says it's stale, the page reloads with the new candidate and asks for another look.
+ */
+export function ApproveButton({ action }: { action: (candidateManifestId: string) => Promise<ActionState> }) {
+  const { dirty, changed, reviewedId, setNotice } = useRequestDraft();
+  return (
+    <>
+      <ActionButton
+        className="btn btn-primary"
+        disabled={dirty || changed || !reviewedId}
+        action={async () => {
+          const result = await action(reviewedId!);
+          if (result.error) return result;
+          setNotice(result.message ?? null);
+          return {};
+        }}
+      >
+        Approve candidate
+      </ActionButton>
+      {dirty ? <span className="form-hint">Save your picks first.</span> : changed ? <span className="form-hint">Review the new candidate first.</span> : null}
     </>
   );
 }

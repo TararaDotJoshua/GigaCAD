@@ -100,7 +100,9 @@ export function releaseRequestRoutes(app: FastifyInstance, { sql }: AppDeps): vo
 
   app.post('/v1/release-requests/:id/approvals', async (request) => {
     const { id } = parse(idParams, request.params);
-    return approve(sql, id, requireCaller(request).userId, parse(z.object(reviewed), request.body ?? {}));
+    const input = parse(z.object(reviewed), request.body ?? {});
+    if (!input.candidateManifestId) request.log.warn({ userAgent: request.headers['user-agent'] }, 'approval names no candidate; acting on the current one');
+    return approve(sql, id, requireCaller(request).userId, input);
   });
 
   app.delete('/v1/release-requests/:id/approvals', async (request) => {
@@ -111,6 +113,7 @@ export function releaseRequestRoutes(app: FastifyInstance, { sql }: AppDeps): vo
   app.post('/v1/release-requests/:id/release', async (request, reply) => {
     const { id } = parse(idParams, request.params);
     const input = parse(z.object({ ...reviewed, notes: z.string().max(20_000).optional() }), request.body ?? {});
+    if (!input.candidateManifestId) request.log.warn({ userAgent: request.headers['user-agent'] }, 'release names no candidate; releasing the current one');
     reply.status(201);
     return release(sql, id, requireCaller(request).userId, input);
   });

@@ -8,7 +8,7 @@ import { PickEditor } from '../../../../../../components/product/PickEditor';
 import { PreviewButton } from '../../../../../../components/product/PreviewButton';
 import { RelativeTime } from '../../../../../../components/product/RelativeTime';
 import { ReleaseForm } from '../../../../../../components/product/ReleaseForm';
-import { NextStep, RequestActionButton, RequestDraftProvider } from '../../../../../../components/product/RequestDraft';
+import { ApproveButton, NextStep, RequestActionButton, RequestDraftProvider } from '../../../../../../components/product/RequestDraft';
 import { StatusBadge } from '../../../../../../components/product/StatusBadge';
 import type { ReleaseBlocker } from '@gigacad/core';
 import type { ReleaseRequestDetail } from '../../../../../../lib/api';
@@ -64,7 +64,10 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
   const mayApprove = eligible.some((member) => member.userId === me?.id);
   const counted = new Set(approvals.evaluation?.countedUserIds ?? []);
   const approved = Boolean(me && counted.has(me.id));
-  const mine = approvals.given.find((approval) => approval.userId === me?.id && approval.candidateManifestId === request.candidateManifestId);
+  // An approval of this candidate stops counting if an export of one of its files changed after it.
+  const exportChanged = (approval: { candidateManifestId: string; createdAt: string }) =>
+    approval.candidateManifestId === request.candidateManifestId && Boolean(approvals.exportsChangedAt && approval.createdAt < approvals.exportsChangedAt);
+  const mine = approvals.given.find((approval) => approval.userId === me?.id && approval.candidateManifestId === request.candidateManifestId && !exportChanged(approval));
   const releaseNumber = latestRelease ? latestRelease.number + 1 : 1;
   const blockers = approvals.evaluation?.blockers ?? [];
   const approvalBlocker = blockers.find((blocker) => blocker.kind === 'needs_approvals');
@@ -124,7 +127,7 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
         rebuild,
       });
   const buildButton = (
-    <RequestActionButton action={generateCandidate.bind(null, request.id)} className="btn btn-primary" pendingLabel="Building…">
+    <RequestActionButton action={generateCandidate.bind(null, request.id)} className="btn btn-primary" pendingLabel="Building…" changesCandidate>
       Build candidate
     </RequestActionButton>
   );
@@ -135,6 +138,7 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
       className="btn btn-primary"
       pendingLabel="Regenerating…"
       confirm={resetWarning ? `Regenerating the candidate clears ${resetWarning}.` : undefined}
+      changesCandidate
     >
       Regenerate candidate
     </RequestActionButton>
@@ -152,8 +156,8 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
             <span className="muted">
               {report.reportedAt && <RelativeTime value={report.reportedAt} />}
               {report.reportedBy && ` by @${report.reportedBy.handle ?? 'someone'}`}
-              {report.via === 'device' ? ` from “${report.deviceName ?? 'a desktop sign-in'}”` : report.via === 'session' ? ' from the website' : ''}
-              {report.reportedBy && report.reportedBy.userId === request.requesterId && ', who opened this request'}
+              {report.via === 'device' ? (report.deviceName ? ` from “${report.deviceName}”` : ' from a desktop sign-in') : report.via === 'session' ? ' from the website' : ''}
+              {report.reportedBy?.handle && report.reportedBy.handle === request.requesterHandle && ', who opened this request'}
               {!reportCurrent ? ' · for an older candidate' : reportOutdated ? ' · for an outdated candidate' : ''}
             </span>
           </p>
@@ -216,7 +220,7 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
       ) : (
         <>
           <ReleaseForm
-            action={releaseCandidate.bind(null, request.id, owner, slug, candidate.manifestId)}
+            action={releaseCandidate.bind(null, request.id, owner, slug)}
             releaseNumber={releaseNumber}
             fileCount={candidate.files.length}
             approve={approveAndRelease}
@@ -250,7 +254,7 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
           </>
         }
       />
-      <RequestDraftProvider>
+      <RequestDraftProvider candidateId={candidate?.manifestId ?? null}>
         {releasedRelease && (
           <p className="next-step is-done" role="status">
             <span>
@@ -273,7 +277,11 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
           </p>
         )}
         {step && (
-          <NextStep tone={step.tone} action={step.build ? buildButton : undefined}>
+          <NextStep
+            tone={step.tone}
+            action={step.build ? buildButton : undefined}
+            change={history.lastCandidateChange ? `${history.lastCandidateChange.actorHandle ? `@${history.lastCandidateChange.actorHandle}` : 'Someone'} ${CHANGE_TEXT[history.lastCandidateChange.kind]}` : null}
+          >
             {step.text}
             {step.rules && canManage && (
               <>
@@ -380,16 +388,21 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
                 <ul className="approvers">
                   {eligible.map((member) => {
                     const approval = approvals.given.find((given) => given.userId === member.userId);
-                    const isCurrent = approval?.candidateManifestId === request.candidateManifestId;
+                    const isCurrent = approval?.candidateManifestId === request.candidateManifestId && !exportChanged(approval);
                     return (
                       <li key={member.userId}>
                         <span>@{member.handle}</span>
-                        <span className={isCurrent ? 'badge badge-signal' : 'muted'}>{approval ? (isCurrent ? 'Approved' : 'Older candidate') : 'Waiting'}</span>
+                        <span className={isCurrent ? 'badge badge-signal' : 'muted'}>{approval ? (isCurrent ? 'Approved' : exportChanged(approval) ? 'Export changed' : 'Older candidate') : 'Waiting'}</span>
                       </li>
                     );
                   })}
                 </ul>
               ) : null}
+              {!finished && approvals.given.some(exportChanged) && (
+                <p className="muted">
+                  A STEP or STL export of a file in the candidate changed after {approvals.given.filter(exportChanged).length === 1 ? 'an approval' : 'some approvals'}, so they need giving again.
+                </p>
+              )}
               {!finished && approvals.given.some((approval) => approval.candidateManifestId !== request.candidateManifestId) && history.lastCandidateChange && (
                 <p className="muted">
                   The candidate changed after the older approvals: {history.lastCandidateChange.actorHandle ? `@${history.lastCandidateChange.actorHandle}` : 'someone'} {CHANGE_TEXT[history.lastCandidateChange.kind]}{' '}
@@ -401,9 +414,7 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
                 mine ? (
                   <ActionButton action={withdrawApproval.bind(null, request.id)}>Withdraw approval</ActionButton>
                 ) : (
-                  <RequestActionButton action={approveCandidate.bind(null, request.id, candidate!.manifestId, canDrive ? null : `${requester} or a maintainer`)} className="btn btn-primary">
-                    Approve candidate
-                  </RequestActionButton>
+                  <ApproveButton action={approveCandidate.bind(null, request.id, canDrive ? null : `${requester} or a maintainer`)} />
                 )
               )}
             </section>

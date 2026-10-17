@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { snapshotMissingReleaseExports } from '../src/jobs.js';
-import { client, commitVersion, createHarness, createUser, MACHINE, sha256, upload, type Client, type Harness, type TestUser } from './helpers.js';
+import { call, client, commitVersion, createHarness, createUser, MACHINE, sha256, upload, type Client, type Harness, type TestUser } from './helpers.js';
 
 /**
  * The review loop around a release request: approvals and releases bound to the candidate
@@ -94,6 +94,27 @@ describe('approving and releasing what was reviewed', () => {
     const released = await asCam.post(`/v1/release-requests/${id}/release`, {});
     expect(released.status).toBe(201);
     expect(released.body.release.number).toBe(2);
+  });
+
+  it('stops counting approvals given before an export of a candidate file changed', async () => {
+    const projectId = await team();
+    const { id, detail } = await requestOn(projectId, asCam, { 'Robot.SLDASM': 'asm', 'parts/Wheel.SLDPRT': 'wheel for exports' });
+    const reviewed = { candidateManifestId: detail.candidate.manifestId };
+    await asBea.post(`/v1/release-requests/${id}/approvals`, reviewed);
+
+    // After the approval, a contributor attaches a STEP to a file in the candidate. The release would lock it in.
+    const [step] = (await upload(harness, asCam, projectId, [`ISO-10303-21; ${randomUUID()}`])) as [string];
+    expect((await asCam.put(`/v1/projects/${projectId}/exports`, { source: sha256('wheel for exports'), format: 'step', blob: step })).status).toBe(200);
+    const after = (await asCam.get(`/v1/release-requests/${id}`)).body;
+    expect(after.approvals.evaluation.countedUserIds).toEqual([]);
+    expect(after.approvals.exportsChangedAt).toBeTruthy();
+    expect((await asCam.post(`/v1/release-requests/${id}/release`, reviewed)).body.error.code).toBe('approval_required');
+
+    // Approving again covers the export, and the release keeps it.
+    await asBea.post(`/v1/release-requests/${id}/approvals`, reviewed);
+    expect((await asCam.post(`/v1/release-requests/${id}/release`, reviewed)).status).toBe(201);
+    const lookup = await asVic.post(`/v1/projects/${projectId}/exports/lookup`, { sha256s: [sha256('wheel for exports')], releaseNumber: 2 });
+    expect(lookup.body.exports[sha256('wheel for exports')]).toMatchObject([{ format: 'step', sha256: step }]);
   });
 
   it('lets a viewer named as an approver approve, but only the requester or a maintainer release', async () => {
@@ -224,6 +245,21 @@ describe('rebuilds', () => {
       { level: 'warning', message: 'Mate is over-defined', path: 'Robot.SLDASM' },
     ]);
 
+    // Outsiders of a public project see who reported it, but not their member id or device's name.
+    await asAlex.patch(`/v1/projects/${projectId}`, { visibility: 'public' });
+    const started = await client(harness, null).post('/v1/auth/device/code', { clientName: 'giga CLI on Cams-MacBook-Pro' });
+    await asCam.post('/v1/auth/device/approve', { userCode: started.body.userCode });
+    const device = (await client(harness, null).post('/v1/auth/device/token', { deviceCode: started.body.deviceCode })).body.accessToken as string;
+    expect((await call(harness, device, 'POST', `/v1/release-requests/${id}/rebuild-report`, { candidateManifestId, status: 'failed', messages })).status).toBe(200);
+    const member = (await asVic.get(`/v1/release-requests/${id}`)).body.releaseRequest;
+    expect(member.rebuildReport).toMatchObject({ via: 'device', deviceName: 'giga CLI on Cams-MacBook-Pro', reportedBy: { userId: cam.id, handle: cam.handle } });
+    const outsider = (await client(harness, null).get(`/v1/release-requests/${id}`)).body.releaseRequest;
+    expect(outsider.rebuildReport.via).toBe('device');
+    expect(outsider.rebuildReport.deviceName).toBeUndefined();
+    expect(outsider.rebuildReport.reportedBy).toEqual({ handle: cam.handle });
+    expect(outsider.rebuildReportedBy).toBeNull();
+    expect(JSON.stringify(outsider)).not.toContain('Cams-MacBook-Pro');
+
     const page = await asVic.get(`/v1/release-requests/${id}/rebuild-report?offset=50&limit=20`);
     expect(page.body).toMatchObject({ status: 'failed', total: 62 });
     expect(page.body.messages.map((message: { message: string }) => message.message)).toEqual(Array.from({ length: 12 }, (_, index) => `Note ${index + 48}`));
@@ -274,8 +310,9 @@ describe('released exports', () => {
     const projectId = await team({ 'parts/Wheel.SLDPRT': 'wheel v1' });
     const branch = (await asCam.post(`/v1/projects/${projectId}/branches`, { name: 'exports', fromRelease: 1 })).body.id as string;
     await commitVersion(harness, asCam, projectId, branch, { 'parts/Wheel.SLDPRT': part });
-    const [first, second] = (await upload(harness, asCam, projectId, [`ISO-10303-21; first ${part}`, `ISO-10303-21; second ${part}`])) as [string, string];
+    const [first, second, stl] = (await upload(harness, asCam, projectId, [`ISO-10303-21; first ${part}`, `ISO-10303-21; second ${part}`, `solid ${part}`])) as [string, string, string];
     expect((await asCam.put(`/v1/projects/${projectId}/exports`, { source: sha256(part), format: 'step', blob: first })).status).toBe(200);
+    expect((await asCam.put(`/v1/projects/${projectId}/exports`, { source: sha256(part), format: 'stl', blob: stl })).status).toBe(200);
 
     const opened = await asCam.post(`/v1/branches/${branch}/release-requests`, { title: 'New wheel' });
     const reviewed = { candidateManifestId: opened.body.candidate.manifestId };
@@ -285,8 +322,8 @@ describe('released exports', () => {
     // A contributor swaps the current export after the release.
     expect((await asCam.put(`/v1/projects/${projectId}/exports`, { source: sha256(part), format: 'step', blob: second })).status).toBe(200);
     const lookup = (releaseNumber?: number) => asVic.post(`/v1/projects/${projectId}/exports/lookup`, { sha256s: [sha256(part)], ...(releaseNumber ? { releaseNumber } : {}) });
-    expect((await lookup()).body.exports[sha256(part)]).toMatchObject([{ format: 'step', sha256: second }]);
-    expect((await lookup(2)).body.exports[sha256(part)]).toMatchObject([{ format: 'step', sha256: first }]);
+    expect((await lookup()).body.exports[sha256(part)]).toMatchObject([{ format: 'step', sha256: second }, { format: 'stl', sha256: stl }]);
+    expect((await lookup(2)).body.exports[sha256(part)]).toMatchObject([{ format: 'step', sha256: first }, { format: 'stl', sha256: stl }]);
     expect((await lookup(1)).body.exports).toEqual({});
     expect((await lookup(9)).status).toBe(404);
 
@@ -297,9 +334,12 @@ describe('released exports', () => {
     await expect(harness.sql`delete from release_exports where project_id = ${projectId}`).rejects.toThrow(/permanently locked/);
 
     // Thumbnails drawn from the exports follow the same split: the release keeps its own.
-    await harness.sql`update thumbnails set status = 'ready' where blob_sha256 in (${first}, ${second})`;
+    // An STL draws the thumbnail when it has one; otherwise the STEP does.
+    await harness.sql`update thumbnails set status = 'ready' where blob_sha256 in (${first}, ${second}, ${stl})`;
     const thumbnail = async (releaseNumber?: number) =>
       (await asVic.post(`/v1/projects/${projectId}/thumbnails`, { sha256s: [sha256(part)], ...(releaseNumber ? { releaseNumber } : {}) })).body.thumbnails[sha256(part)] as string;
+    expect(await thumbnail(2)).toContain(stl);
+    await harness.sql`update thumbnails set status = 'failed' where blob_sha256 = ${stl}`;
     expect(await thumbnail()).toContain(second);
     expect(await thumbnail(2)).toContain(first);
   });

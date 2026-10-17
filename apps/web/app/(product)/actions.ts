@@ -369,10 +369,10 @@ function refreshIfStale(error: unknown): void {
 }
 
 /**
- * Approves the candidate this page showed (`candidateManifestId`). `releaser` names who
- * can release it when the approver can't, so they know what happens next.
+ * Approves the candidate the viewer reviewed (`candidateManifestId`, sent by the page).
+ * `releaser` names who can release it when the approver can't, so they know what happens next.
  */
-export async function approveCandidate(requestId: string, candidateManifestId: string, releaser: string | null): Promise<ActionState> {
+export async function approveCandidate(requestId: string, releaser: string | null, candidateManifestId: string): Promise<ActionState> {
   const token = await requireAccessToken();
   try {
     await apiRequest(token, `/v1/release-requests/${id(requestId)}/approvals`, json('POST', { candidateManifestId: id(candidateManifestId) }));
@@ -393,19 +393,18 @@ export async function closeReleaseRequest(requestId: string): Promise<ActionStat
 }
 
 /**
- * Releases the candidate this page showed. With `approve`, approves it first: for someone
- * whose own approval is the last one needed and who chose to do both. If the approval
- * lands but the release doesn't, the page says so and shows the approval.
+ * Releases the candidate the viewer reviewed (sent by the page). With `approve`, approves it
+ * first: for someone whose own approval is the last one needed and who chose to do both. If
+ * the approval lands but the release doesn't, the page says so and shows the approval.
  */
 export async function releaseCandidate(
   requestId: string,
   owner: string,
   slug: string,
-  candidateManifestId: string,
-  input: { approve: boolean; notes: string },
+  input: { candidateManifestId: string; approve: boolean; notes: string },
 ): Promise<ActionState> {
   const token = await requireAccessToken();
-  const reviewed = { candidateManifestId: id(candidateManifestId) };
+  const reviewed = { candidateManifestId: id(input.candidateManifestId) };
   let approved = false;
   let number: number;
   try {

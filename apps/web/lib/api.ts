@@ -295,8 +295,8 @@ export interface ReleaseRequestDetail {
       messages: RebuildMessage[];
       total: number;
       counts: Record<RebuildMessage['level'], number>;
-      /** Who reported it, when, and from where; missing on older reports. */
-      reportedBy?: { userId: string; handle: string | null };
+      /** Who reported it, when, and from where; missing on older reports. Outsiders get no user id or device name. */
+      reportedBy?: { userId?: string; handle: string | null };
       reportedAt?: string;
       via?: 'session' | 'device';
       deviceName?: string;
@@ -333,6 +333,8 @@ export interface ReleaseRequestDetail {
   approvals: {
     given: { userId: string; handle: string; candidateManifestId: string; createdAt: string }[];
     evaluation: ApprovalEvaluation | null;
+    /** When an export of a candidate file last changed; approvals from before then no longer count. */
+    exportsChangedAt: string | null;
     /** Today's rules while active; the rules it finished under once released or closed; null if those weren't recorded. */
     rules: ApprovalRules | null;
   };

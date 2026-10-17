@@ -76,8 +76,8 @@ export interface RebuildReportSummary {
   readonly messages: RebuildMessage[];
   readonly total: number;
   readonly counts: { readonly error: number; readonly warning: number; readonly info: number };
-  /** Who sent the report and when; missing on reports from before 2026-10-16. */
-  readonly reportedBy?: { readonly userId: string; readonly handle: string | null } | undefined;
+  /** Who sent the report and when; missing on reports from before 2026-10-16. Outsiders get no user id. */
+  readonly reportedBy?: { readonly userId?: string; readonly handle: string | null } | undefined;
   readonly reportedAt?: string | undefined;
   /** Where it came from: a website session, or a named desktop, add-in, or CLI sign-in. */
   readonly via?: 'session' | 'device' | undefined;
@@ -134,6 +134,8 @@ export interface ReleaseRequestDetail {
   readonly approvals: {
     readonly given: readonly { readonly userId: string; readonly handle: string; readonly candidateManifestId: string; readonly createdAt: Date }[];
     readonly evaluation: ApprovalEvaluation | null;
+    /** When an export of a candidate file last changed; approvals from before then no longer count. */
+    readonly exportsChangedAt: Date | null;
     /**
      * The rules the evaluation used: today's while the request is active, the ones it finished
      * under after. Null for a request finished before those were recorded.
@@ -271,20 +273,39 @@ async function candidateInputs(db: Db, request: ReleaseRequestRow, against: 'lat
   return { base, branchHead, latestMain, picks: request.picks, references };
 }
 
+/**
+ * When a STEP or STL export of a candidate file last changed. A release keeps the exports its
+ * files have, so approvals given before an export changed don't cover what would be released.
+ */
+async function exportsChangedAt(db: Db, request: ReleaseRequestRow): Promise<Date | null> {
+  if (!request.candidateManifestId) return null;
+  const [row] = await db<{ changedAt: Date | null }[]>`
+    select max(x.created_at) as changed_at from file_exports x
+    where x.project_id = ${request.projectId}
+      and x.source_sha256 in (select me.blob_sha256 from manifest_entries me where me.manifest_id = ${request.candidateManifestId})
+  `;
+  return row?.changedAt ?? null;
+}
+
 async function evaluate(db: Db, request: ReleaseRequestRow, rules: ApprovalRules): Promise<ApprovalEvaluation | null> {
   if (!request.candidateManifestId || !request.requesterId) return null;
-  const [members, approvals] = await Promise.all([
+  const [members, approvals, changedAt] = await Promise.all([
     db<{ userId: string; role: ProjectRole }[]>`select user_id, role from project_members where project_id = ${request.projectId}`,
-    db<{ userId: string; candidateManifestId: string }[]>`
-      select user_id, candidate_manifest_id from approvals where release_request_id = ${request.id}
+    db<{ userId: string; candidateManifestId: string; createdAt: Date }[]>`
+      select user_id, candidate_manifest_id, created_at from approvals where release_request_id = ${request.id}
     `,
+    exportsChangedAt(db, request),
   ]);
   return evaluateApprovals({
     rules,
     requesterId: request.requesterId,
     memberRoles: new Map(members.map((member) => [member.userId, member.role])),
     candidateManifestId: request.candidateManifestId,
-    approvals,
+    // An approval from before an export changed is for something else than what would be released now.
+    approvals: approvals.map(({ userId, candidateManifestId, createdAt }) => ({
+      userId,
+      candidateManifestId: changedAt && createdAt < changedAt ? `${candidateManifestId}:exports-changed` : candidateManifestId,
+    })),
     rebuildReport:
       request.rebuildManifestId && request.rebuildStatus
         ? { candidateManifestId: request.rebuildManifestId, status: request.rebuildStatus }
@@ -296,9 +317,27 @@ export async function getReleaseRequest(sql: Sql, id: string, userId: string | n
   const request = await loadRequest(sql, id);
   const { role } = await projectAccess(sql, request.projectId, userId);
   const result = await detail(sql, request);
-  // Outsiders don't learn member ids, so the people the rules name stay private, as on /approval-rules.
+  return role === null ? forOutsiders(result) : result;
+}
+
+/**
+ * What people outside the project see of a request: no member ids for the people the rules
+ * name (as on /approval-rules) or who filed the rebuild report, and no device names, which
+ * carry the reporter's computer name.
+ */
+function forOutsiders(result: ReleaseRequestDetail): ReleaseRequestDetail {
   const { rules } = result.approvals;
-  return role === null && rules ? { ...result, approvals: { ...result.approvals, rules: { ...rules, approverUserIds: [] } } } : result;
+  const report = result.releaseRequest.rebuildReport;
+  const { deviceName: _device, reportedBy, ...rest } = report ?? {};
+  return {
+    ...result,
+    releaseRequest: {
+      ...result.releaseRequest,
+      rebuildReportedBy: null,
+      rebuildReport: report ? ({ ...rest, ...(reportedBy ? { reportedBy: { handle: reportedBy.handle } } : {}) } as RebuildReportSummary) : null,
+    },
+    approvals: { ...result.approvals, rules: rules ? { ...rules, approverUserIds: [] } : null },
+  };
 }
 
 async function detail(db: Db, request: ReleaseRequestRow): Promise<ReleaseRequestDetail> {
@@ -365,7 +404,7 @@ async function detail(db: Db, request: ReleaseRequestRow): Promise<ReleaseReques
     preview,
     changesMain: !leavesMainAsIs(picked, inputs.latestMain),
     candidate,
-    approvals: { given, evaluation, rules },
+    approvals: { given, evaluation, rules, exportsChangedAt: active ? await exportsChangedAt(db, request) : null },
     history,
   };
 }

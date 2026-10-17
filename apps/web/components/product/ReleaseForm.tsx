@@ -10,6 +10,7 @@ import { useRequestDraft } from './RequestDraft';
  * stays on the page while the candidate is current, so notes typed here survive a request
  * briefly becoming blocked; `blocked` says why the button is off. With `approve`, the
  * button approves the candidate too, for someone whose approval is the last one missing.
+ * It releases the candidate the viewer reviewed: a new one arriving closes the confirm.
  */
 export function ReleaseForm({
   action,
@@ -19,29 +20,31 @@ export function ReleaseForm({
   blocked,
   caution,
 }: {
-  action: (input: { approve: boolean; notes: string }) => Promise<ActionState>;
+  action: (input: { candidateManifestId: string; approve: boolean; notes: string }) => Promise<ActionState>;
   releaseNumber: number;
   fileCount: number;
   approve: boolean;
   blocked: string | null;
   caution: string | null;
 }) {
-  const { dirty } = useRequestDraft();
+  const { dirty, changed, reviewedId } = useRequestDraft();
   const [notes, setNotes] = useState('');
   const [asking, setAsking] = useState(false);
   const [pending, start] = useTransition();
   const [state, setState] = useState<ActionState>({});
   const version = `v${releaseNumber}`;
   const label = approve ? `Approve and release ${version}` : `Release ${version}`;
-  const held = dirty ? 'Save your picks first.' : blocked;
+  const held = dirty ? 'Save your picks first.' : changed || !reviewedId ? 'The candidate changed. Review it again.' : blocked;
   const files = `${fileCount} ${fileCount === 1 ? 'file' : 'files'}`;
   useEffect(() => {
     if (held) setAsking(false);
   }, [held]);
+  // A confirm is for one candidate only.
+  useEffect(() => setAsking(false), [reviewedId]);
 
   const submit = () => {
     setAsking(false);
-    start(async () => setState(await action({ approve, notes })));
+    if (reviewedId) start(async () => setState(await action({ candidateManifestId: reviewedId, approve, notes })));
   };
 
   return (

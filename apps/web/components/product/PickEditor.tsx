@@ -64,7 +64,7 @@ export function PickEditor({
   const [pending, start] = useTransition();
   const [state, setState] = useState<ActionState>({});
   const [asking, setAsking] = useState(false);
-  const { setDirty } = useRequestDraft();
+  const { setDirty, expectOwnChange } = useRequestDraft();
   const dirty = !samePicks(rows, saved, draft);
   const changedElsewhere = !samePicks(rows, saved, incoming);
   if (changedElsewhere && (!dirty || samePicks(rows, incoming, draft))) {
@@ -94,6 +94,7 @@ export function PickEditor({
   const rebuilt = rebuiltElsewhere ? `, plus ${rebuiltElsewhere} ${rebuiltElsewhere === 1 ? 'file' : 'files'} rebuilt in SolidWorks` : '';
   const save = () => {
     setAsking(false);
+    expectOwnChange();
     start(async () => setState(await savePicks(requestId, picksFromDraft(rows, draft))));
   };
 

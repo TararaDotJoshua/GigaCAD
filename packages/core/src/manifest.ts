@@ -1,4 +1,4 @@
-import { comparePaths, InvalidPathError, normalizePath, validateProjectPath } from './paths.js';
+import { comparePaths, InvalidPathError, normalizePath, validateWindowsPath } from './paths.js';
 
 export type Sha256 = string;
 export type ItemId = string;
@@ -31,12 +31,12 @@ export type ItemChange =
 
 /**
  * Checks a snapshot's structure: unique items, unique paths, normalized paths. With
- * `strictNames`, every name must also be one Windows can store (see `validateProjectPath`).
- * Paths already stored on the server were allowed before that rule, so only clients that
- * can't store them (Windows) and new paths in commits apply it.
+ * `strictNames`, every name must also be one Windows can store at all (see
+ * `validateWindowsPath`). Clients on Windows use it for snapshots from the server, whose
+ * paths may predate the stricter rule new commits follow (`validateProjectPath`).
  */
 export function validateManifest(manifest: Manifest, options: { strictNames?: boolean } = {}): ManifestIssue[] {
-  const check = options.strictNames ? validateProjectPath : normalizePath;
+  const check = options.strictNames ? validateWindowsPath : normalizePath;
   const issues: ManifestIssue[] = [];
   const seenItems = new Set<ItemId>();
   const byPathKey = new Map<string, ManifestEntry[]>();

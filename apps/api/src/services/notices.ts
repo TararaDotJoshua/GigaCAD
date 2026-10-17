@@ -100,11 +100,19 @@ export async function notifyProjectDeleted(sql: Sql, mailer: Mailer, deleted: { 
 
 export type RequestNotice = 'candidate' | 'approved' | 'released' | 'closed';
 
-/** Whether this person already approved the request's current candidate, so approving again isn't news. */
+/**
+ * Whether this person's approval of the request's current candidate still counts, so approving
+ * again isn't news. One given before an export of a candidate file changed no longer does.
+ */
 export async function approvedAlready(sql: Sql, requestId: string, userId: string): Promise<boolean> {
   const [row] = await sql`
     select 1 from approvals a join release_requests r on r.id = a.release_request_id
     where a.release_request_id = ${requestId} and a.user_id = ${userId} and a.candidate_manifest_id = r.candidate_manifest_id
+      and not exists (
+        select 1 from file_exports x
+        where x.project_id = r.project_id and x.created_at > a.created_at
+          and x.source_sha256 in (select me.blob_sha256 from manifest_entries me where me.manifest_id = r.candidate_manifest_id)
+      )
   `;
   return Boolean(row);
 }

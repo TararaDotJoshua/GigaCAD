@@ -255,7 +255,7 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
           </>
         }
       />
-      <RequestDraftProvider candidateId={candidate?.manifestId ?? null}>
+      <RequestDraftProvider candidateId={candidate?.manifestId ?? null} exportsChangedAt={approvals.exportsChangedAt}>
         {releasedRelease && (
           <p className="next-step is-done" role="status">
             <span>

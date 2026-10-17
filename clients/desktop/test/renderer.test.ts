@@ -5,6 +5,7 @@ import { bannerFor } from '../src/renderer/banner.js';
 import { groupHistory, type Commit } from '../src/renderer/history.js';
 import { FIXTURES } from '../src/renderer/preview/fixtures.js';
 import { sidebarProjects } from '../src/renderer/shortcuts.js';
+import { approvableCandidate, candidateChangedSinceReview } from '../src/renderer/review.js';
 import { mainView } from '../src/renderer/view.js';
 
 const ready: UpdateState = { kind: 'ready', version: '0.3.0', notes: 'Faster sync', notesUrl: null, restarting: false, lastChecked: null };
@@ -82,5 +83,26 @@ describe('sidebarProjects', () => {
     expect(sidebarProjects(state).map((project) => project.id)).toEqual(['rover', 'gripper', 'drone']);
     const hidden = { ...state, projects: state.projects.map((project) => (project.id === 'rover' ? { ...project, hidden: true } : project)) };
     expect(sidebarProjects(hidden).map((project) => project.id)).toEqual(['gripper', 'drone']);
+  });
+});
+
+describe('approving from the release request list', () => {
+  const request = { number: 7, status: 'candidate', candidateManifestId: 'cand-b' };
+
+  it('approves only the candidate opened for review from here', () => {
+    expect(approvableCandidate(request, new Map())).toBeNull();
+    expect(approvableCandidate(request, new Map([[7, 'cand-b']]))).toBe('cand-b');
+  });
+
+  it('asks for another review once the candidate changed', () => {
+    const reviewed = new Map([[7, 'cand-a']]);
+    expect(approvableCandidate(request, reviewed)).toBeNull();
+    expect(candidateChangedSinceReview(request, reviewed)).toBe(true);
+    expect(approvableCandidate({ ...request, status: 'released' }, new Map([[7, 'cand-b']]))).toBeNull();
+  });
+
+  it('asks nothing of a request that was released or closed after it changed', () => {
+    const reviewed = new Map([[7, 'cand-a']]);
+    for (const status of ['released', 'closed']) expect(candidateChangedSinceReview({ ...request, status }, reviewed)).toBe(false);
   });
 });

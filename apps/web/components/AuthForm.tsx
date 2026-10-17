@@ -17,6 +17,15 @@ const titles: Record<Mode, string> = {
   reset: 'Choose a new password.',
 };
 
+/** Whether the session's sign-in methods include a reset link used in the last hour. */
+export function isRecentRecovery(amr: unknown, now = Date.now()): boolean {
+  if (!Array.isArray(amr)) return false;
+  return amr.some(
+    (entry: { method?: unknown; timestamp?: unknown }) =>
+      (entry?.method === 'recovery' || entry?.method === 'otp') && typeof entry.timestamp === 'number' && now / 1000 - entry.timestamp < 3600,
+  );
+}
+
 export function AuthForm({ mode }: { mode: Mode }) {
   const router = useRouter();
   const search = useSearchParams();
@@ -38,7 +47,11 @@ export function AuthForm({ mode }: { mode: Mode }) {
 
   useEffect(() => {
     if (mode !== 'reset') return;
-    createClient().auth.getSession().then(({ data }) => setExpired(!data.session));
+    // Only a session that came from a reset link may set a password here, within the link's hour.
+    // An ordinary signed-in session changes it in Account settings, with the current password.
+    createClient()
+      .auth.getClaims()
+      .then(({ data }) => setExpired(!isRecentRecovery(data?.claims?.amr)));
   }, [mode]);
 
   /** Links between the sign-in pages keep where you were going and the email you typed. */

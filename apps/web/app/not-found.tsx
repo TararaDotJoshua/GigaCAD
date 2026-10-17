@@ -1,4 +1,6 @@
+import { AccountLink } from '../components/AccountLink';
 import { Logo } from '../components/Logo';
+import { APP_URL } from '../components/site';
 import { dashboardPath, sites } from '../lib/hosts';
 
 export const metadata = { title: 'Page not found' };
@@ -13,11 +15,11 @@ export default function NotFound() {
       </header>
       <main id="main" className="auth-shell">
         <div className="auth-card">
-          <h1>Page not found.</h1>
+          <h1>Page not found</h1>
           <p className="auth-intro">There’s nothing at this address. It may have moved, or the link may be mistyped.</p>
           <div className="auth-links">
             <a href={siteUrl}>GigaCAD home</a>
-            <a href={dashboardPath()}>Your projects</a>
+            <AccountLink dashboard={dashboardPath()} login={`${APP_URL}/login`} />
           </div>
         </div>
       </main>

@@ -33,6 +33,7 @@ export function NewProjectFields({ owner }: { owner: string }) {
             required
           />
         </span>
+        <span className="field-hint">Part of the project’s link. It can’t be changed later.</span>
       </label>
     </>
   );

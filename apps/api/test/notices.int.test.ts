@@ -126,8 +126,9 @@ describe('member notices', () => {
     const opened = await asLeaver.post(`/v1/branches/${branch.body.id}/release-requests`, { title: 'Left behind' });
     await asOwner.delete(`/v1/projects/${projectId}/members/${leaver.handle}`);
     await asOwner.post(`/v1/release-requests/${opened.body.releaseRequest.id}/close`);
+    // Only the earlier request's close email; nothing tells the leaver theirs was closed.
     expect(await mail('closed #')).toHaveLength(1);
-    expect(await mail('Left behind')).toHaveLength(0);
+    expect((await mail('Left behind')).filter((message) => message.subject.includes('closed'))).toHaveLength(0);
   });
 });
 

@@ -23,13 +23,31 @@ const RELEASE_FILES_SHOWN = 8;
  * The project page and its folders. At the root: the latest release, then the project's
  * files, with tags and recent activity beside them. In a folder: just the folder.
  */
-export async function ProjectFilesPage({ owner, slug, path, params }: { owner: string; slug: string; path: string; params: DirectoryParams }) {
+export async function ProjectFilesPage({
+  owner,
+  slug,
+  path,
+  params,
+  justForked = false,
+  finishStar = false,
+}: {
+  owner: string;
+  slug: string;
+  path: string;
+  params: DirectoryParams;
+  /** Arrived here from the fork form. */
+  justForked?: boolean;
+  /** Clicked Star while signed out, then logged in. */
+  finishStar?: boolean;
+}) {
   const project = await getProject(owner, slug);
   const isRoot = path === '';
   const searching = Boolean(params.q || params.tags || params.view);
   const [branches, releases, viewer] = await Promise.all([getBranches(project.id), getReleases(project.id), getViewer()]);
   const latest = releases.reduce<Release | null>((best, release) => (!best || release.number > best.number ? release : best), null);
   const openBranches = branches.filter((branch) => branch.status === 'open' || branch.status === 'frozen').length;
+  // Forking a private project is for its maintainers (the API enforces it).
+  const canFork = project.visibility === 'public' || project.role === 'owner' || project.role === 'maintainer';
 
   return (
     <div className="page">
@@ -57,9 +75,9 @@ export async function ProjectFilesPage({ owner, slug, path, params }: { owner: s
           <>
             {/* Starring your own private project only ever counts you. */}
             {(project.visibility === 'public' || project.starred) && (
-              <StarButton projectId={project.id} starred={project.starred} count={project.starCount} signedIn={!!viewer} next={projectPath(owner, slug)} />
+              <StarButton projectId={project.id} starred={project.starred} count={project.starCount} signedIn={!!viewer} next={projectPath(owner, slug)} finish={finishStar} />
             )}
-            {latest ? (
+            {latest && canFork ? (
               <Link href={projectPath(owner, slug, 'fork')} className="btn btn-secondary" title={project.forkCount ? `${project.forkCount} public ${project.forkCount === 1 ? 'fork' : 'forks'}` : undefined}>
                 <ForkIcon className="icon" />
                 Fork{project.forkCount ? ` ${project.forkCount}` : ''}
@@ -75,6 +93,11 @@ export async function ProjectFilesPage({ owner, slug, path, params }: { owner: s
           </>
         }
       />
+      {justForked && project.forkedFrom && project.role === 'owner' && (
+        <p className="notice" role="status">
+          Forked {project.forkedFrom.ownerHandle}/{project.forkedFrom.slug} v{project.forkedFrom.releaseNumber}. This copy is yours, and its history starts here.
+        </p>
+      )}
       {isRoot ? (
         <div className="page-grid">
           <div className="stack">

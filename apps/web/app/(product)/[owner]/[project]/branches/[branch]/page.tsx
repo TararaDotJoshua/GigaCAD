@@ -37,6 +37,9 @@ export default async function BranchPage({ params }: { params: Promise<ProjectPa
   const canManage = project.role === 'owner' || project.role === 'maintainer';
   const canWrite = canManage || project.role === 'contributor';
   const timeline = groupTimeline(commits);
+  // Autosaves at the head are saved as a version when a request opens.
+  const unsaved = timeline[0]?.kind === 'autosaves' ? timeline[0].commits : [];
+  const unsavedAuthors = [...new Set(unsaved.map((commit) => commit.authorHandle).filter(Boolean))];
   const { siteUrl } = sites();
   // Nothing done on it yet beyond the commit it started from: one next step instead of empty sections.
   const fresh = canWrite && branch.status === 'open' && changes.length === 0 && commits.every((commit) => commit.parentId === null);
@@ -161,10 +164,22 @@ export default async function BranchPage({ params }: { params: Promise<ProjectPa
               </>
             )}
           </section>
-          {canWrite && branch.status === 'open' && (
+          {canWrite && branch.status === 'open' && changes.length === 0 && (
+            <section className="rail-card">
+              <h2>Open release request</h2>
+              <p className="muted">Nothing to release yet: {branch.baseReleaseNumber ? `this branch has no changes from v${branch.baseReleaseNumber}` : 'this branch has no files'}.</p>
+            </section>
+          )}
+          {canWrite && branch.status === 'open' && changes.length > 0 && (
             <section className="rail-card">
               <h2>Open release request</h2>
               <p className="muted">This checks the branch in and freezes it: nobody can save to it until the request is released or closed. You can close the request any time to unfreeze it.</p>
+              {unsaved.length > 0 && (
+                <p className="muted">
+                  {unsaved.length} unsaved {unsaved.length === 1 ? 'autosave' : 'autosaves'}
+                  {unsavedAuthors.length ? ` from ${unsavedAuthors.map((handle) => `@${handle}`).join(', ')}` : ''} will be saved as a version and included.
+                </p>
+              )}
               <ActionForm action={openReleaseRequest.bind(null, branch.id, owner, slug)} submitLabel="Open release request" pendingLabel="Opening…">
                 <label className="field">
                   <span>Title</span>
@@ -182,7 +197,7 @@ export default async function BranchPage({ params }: { params: Promise<ProjectPa
           {canManage && branch.status === 'open' && (
             <section className="rail-card">
               <h2>Archive branch</h2>
-              <p className="muted">Archived branches are read-only and hidden from the branch list. Their history stays.</p>
+              <p className="muted">Archived branches are read-only and hidden from the sidebar and the Branches folder. Their history stays.</p>
               <ActionButton action={archiveBranch.bind(null, branch.id)} className="btn btn-danger btn-small" confirm={`Archive ${branch.name}? It becomes read-only.`}>
                 Archive
               </ActionButton>

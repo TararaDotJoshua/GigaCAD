@@ -10,7 +10,10 @@ import { branchPath, projectPath } from '../../../../../lib/paths';
 import { getBranches, getProject, getReleases, getViewer } from '../../../../../lib/product';
 import type { ProjectParams } from '../layout';
 
-export const metadata = { title: 'Branches' };
+export async function generateMetadata({ params }: { params: Promise<ProjectParams> }) {
+  const { owner, project } = await params;
+  return { title: `Branches · ${owner}/${project}` };
+}
 
 export default async function Branches({ params }: { params: Promise<ProjectParams> }) {
   const { owner, project: slug } = await params;

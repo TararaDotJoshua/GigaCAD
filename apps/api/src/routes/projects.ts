@@ -28,7 +28,7 @@ export const visibility = z.enum(['public', 'private']);
 export const slug = z.string().regex(/^[a-z0-9](?:[a-z0-9._-]{0,98}[a-z0-9])?$/, 'Use lowercase letters, digits, dots, dashes, or underscores');
 
 export function projectRoutes(app: FastifyInstance, { sql, storage, mailer, webOrigin }: AppDeps): void {
-  /** Someone's role in the project before a change, to tell them what changed. Null if they aren't a member. */
+  /** Someone's role in the project before a role change, to tell them it changed. Null if they aren't a member. */
   const memberRole = async (projectId: string, handle: string) => {
     const [row] = await sql<{ role: string }[]>`
       select m.role from project_members m join profiles p on p.id = m.user_id where m.project_id = ${projectId} and p.handle = ${handle}
@@ -94,11 +94,24 @@ export function projectRoutes(app: FastifyInstance, { sql, storage, mailer, webO
     return withAvatars(storage, await listMembers(sql, id, viewerId(request)));
   });
 
+  const memberInput = z.object({ handle: z.string().min(1).max(39), role });
+
+  /** Adds someone new. An existing member is a 409 `already_member`, so adding never changes a role by surprise. */
+  app.post('/v1/projects/:id/members', async (request, reply) => {
+    const { id } = parse(idParams, request.params);
+    const input = parse(memberInput, request.body);
+    const { added } = await setMember(sql, id, requireCaller(request).userId, input.handle, input.role, { onlyNew: true });
+    if (added && mailer) await notifyNewMember(mailer, webOrigin, added).catch((error: unknown) => request.log.warn(error, 'member notice not sent'));
+    reply.status(201);
+    return withAvatars(storage, await listMembers(sql, id, requireCaller(request).userId));
+  });
+
+  /** Sets a member's role, adding them if needed. */
   app.put('/v1/projects/:id/members', async (request) => {
     const { id } = parse(idParams, request.params);
-    const input = parse(z.object({ handle: z.string().min(1).max(39), role }), request.body);
+    const input = parse(memberInput, request.body);
     const before = await memberRole(id, input.handle);
-    const added = await setMember(sql, id, requireCaller(request).userId, input.handle, input.role);
+    const { added } = await setMember(sql, id, requireCaller(request).userId, input.handle, input.role);
     if (added && mailer) await notifyNewMember(mailer, webOrigin, added).catch((error: unknown) => request.log.warn(error, 'member notice not sent'));
     if (before && before !== input.role && mailer) {
       const change = { projectId: id, handle: input.handle, role: input.role, actorId: requireCaller(request).userId };
@@ -107,13 +120,14 @@ export function projectRoutes(app: FastifyInstance, { sql, storage, mailer, webO
     return withAvatars(storage, await listMembers(sql, id, requireCaller(request).userId));
   });
 
-  app.delete('/v1/projects/:id/members/:handle', async (request) => {
+  /** Removes a member. Anyone but the owner can remove themselves, which leaves the project (and returns no list). */
+  app.delete('/v1/projects/:id/members/:handle', async (request, reply) => {
     const { id, handle } = parse(idParams.extend({ handle: z.string().min(1).max(39) }), request.params);
     const actorId = requireCaller(request).userId;
-    const was = await memberRole(id, handle);
-    await setMember(sql, id, actorId, handle, null);
-    // Only someone who was a member is told they were removed, and only once.
-    if (was && mailer) sendLater(request.log, 'removal notice', () => notifyMemberRemoved(sql, mailer, webOrigin, { projectId: id, handle, actorId }));
+    const { left } = await setMember(sql, id, actorId, handle, null);
+    if (left) return reply.status(204).send();
+    // setMember 404s for someone who isn't a member, so only a member who was just removed is told.
+    if (mailer) sendLater(request.log, 'removal notice', () => notifyMemberRemoved(sql, mailer, webOrigin, { projectId: id, handle, actorId }));
     return withAvatars(storage, await listMembers(sql, id, requireCaller(request).userId));
   });
 

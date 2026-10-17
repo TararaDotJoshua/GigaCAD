@@ -1,6 +1,7 @@
 import {
   InvalidPathError,
   normalizePath,
+  validateProjectPath,
   pathKey,
   validateManifest,
   type Manifest,
@@ -75,9 +76,13 @@ export async function resolveFiles(
   files: readonly FileInput[],
   previous: Manifest,
 ): Promise<ManifestEntry[]> {
+  // New and renamed paths must be names every client can store. Paths already in the branch
+  // were allowed by older rules, so they keep working (and can be renamed away).
+  const stored = new Set(previous.map((entry) => pathKey(entry.path)));
   const normalized = files.map((file) => {
     try {
-      return { ...file, path: normalizePath(file.path) };
+      const path = normalizePath(file.path);
+      return { ...file, path: stored.has(path.toLowerCase()) ? path : validateProjectPath(file.path) };
     } catch (error) {
       if (error instanceof InvalidPathError) throw unprocessable('invalid_path', error.message, { path: file.path });
       throw error;
@@ -86,8 +91,12 @@ export async function resolveFiles(
 
   const explicitIds = [...new Set(normalized.flatMap((file) => (file.itemId ? [file.itemId] : [])))];
   if (explicitIds.length > 0) {
+    // A root file's item never goes in a manifest: claiming one would carry its tags onto the
+    // branch file and leave the root file impossible to delete.
     const known = await db<{ id: string }[]>`
-      select id from items where project_id = ${projectId} and id = any(${explicitIds}::uuid[])
+      select i.id from items i
+      where i.project_id = ${projectId} and i.id = any(${explicitIds}::uuid[])
+        and not exists (select 1 from directory_entries e where e.item_id = i.id)
     `;
     const knownIds = new Set(known.map((row) => row.id));
     const unknown = explicitIds.filter((id) => !knownIds.has(id));

@@ -1,5 +1,5 @@
-import type { ApprovalRules, ItemChange, PickRow, ProjectRole, ReleaseBlocker } from '@gigacad/core';
-import type { Branch, Commit, Member, ProjectEvent, ReleaseRequestStatus } from './api';
+import type { ApprovalRules, CandidateError, CandidateWarning, ItemChange, PickRow, ProjectRole, ReleaseBlocker } from '@gigacad/core';
+import type { Branch, Commit, Member, ProjectEvent, RebuildStatus, ReleaseRequestStatus } from './api';
 
 /**
  * Every state has exactly one treatment (docs/design/README.md, "Color").
@@ -27,6 +27,27 @@ export const REQUEST_STATUS_LABEL: Record<ReleaseRequestStatus, string> = {
   candidate: 'Candidate ready',
   released: 'Released',
   closed: 'Closed',
+};
+
+/**
+ * One badge for a request, the same in the list and on its page. A candidate is only
+ * "ready" while it is built on the latest main and its rebuild (when required) passed.
+ */
+export function requestBadge(
+  request: { status: ReleaseRequestStatus; upToDate: boolean; rebuildStatus: RebuildStatus | null },
+  requireCleanRebuild: boolean,
+): { label: string; tone: Tone } {
+  if (request.status !== 'candidate') return { label: REQUEST_STATUS_LABEL[request.status], tone: requestTone(request.status) };
+  if (!request.upToDate) return { label: 'Needs regenerating', tone: 'caution' };
+  if (request.rebuildStatus === 'failed') return { label: 'Rebuild failed', tone: 'danger' };
+  if (requireCleanRebuild && !request.rebuildStatus) return { label: 'Waiting for rebuild', tone: 'open' };
+  return { label: REQUEST_STATUS_LABEL.candidate, tone: 'open' };
+}
+
+export const REBUILD_STATUS_LABEL: Record<RebuildStatus, string> = {
+  passed: 'Passed',
+  passed_with_warnings: 'Passed with warnings',
+  failed: 'Failed',
 };
 
 /** The note under a file in the pick table. */
@@ -64,15 +85,61 @@ export function changeVerb(change: ItemChange): string {
 export function blockerText(blocker: ReleaseBlocker): string {
   switch (blocker.kind) {
     case 'needs_approvals':
-      return `Needs ${blocker.need - blocker.have} more approval${blocker.need - blocker.have === 1 ? '' : 's'}`;
+      return `Needs ${blocker.need - blocker.have} more approval${blocker.need - blocker.have === 1 ? '' : 's'}.`;
     case 'not_enough_eligible_approvers':
-      return `Only ${blocker.eligible} of the ${blocker.need} required approvers are eligible. Change the approval rules in settings.`;
+      return `Only ${blocker.eligible} of the ${blocker.need} required approvers can approve this request.`;
     case 'rebuild_missing':
-      return 'Needs a clean rebuild of this candidate from the SolidWorks add-in';
+      return 'Needs a clean SolidWorks rebuild of this candidate.';
     case 'rebuild_stale':
-      return 'The rebuild report is for an older candidate';
+      return 'The rebuild report is for an older candidate. It needs a new rebuild.';
     case 'rebuild_failed':
-      return 'The rebuild failed. Fix the errors and rebuild again';
+      return 'The SolidWorks rebuild of this candidate failed.';
+  }
+}
+
+/** Who may approve under the rules, in words: "an owner, a maintainer or @kim". `handles` names people by user id. */
+export function approverText(rules: ApprovalRules, handles: ReadonlyMap<string, string> = new Map()): string {
+  const roles = rules.approverRoles.map((role) => `${role === 'owner' ? 'an' : 'a'} ${role}`);
+  const named = rules.approverUserIds.map((id) => handles.get(id)).filter((handle): handle is string => Boolean(handle));
+  const people = named.length === rules.approverUserIds.length ? named.map((handle) => `@${handle}`) : rules.approverUserIds.length ? ['someone named in the rules'] : [];
+  const who = [...roles, ...people];
+  return who.length === 0 ? 'no one' : who.length === 1 ? who[0]! : `${who.slice(0, -1).join(', ')} or ${who.at(-1)}`;
+}
+
+/** The approval rule in one line, for the top of the Approvals card. */
+export function ruleSummary(rules: ApprovalRules, handles?: ReadonlyMap<string, string>): string {
+  if (rules.requiredCount === 0) return 'No approval is needed to release.';
+  const count = rules.requiredCount === 1 ? '1 approval' : `${rules.requiredCount} approvals`;
+  return `Needs ${count} from ${approverText(rules, handles)}. ${rules.allowSelfApproval ? 'The requester can approve too.' : 'The requester can’t approve their own request.'}`;
+}
+
+/** A pick warning as a sentence, naming every file it is about. */
+export function warningText(warning: CandidateWarning): string {
+  switch (warning.kind) {
+    case 'overwrites_main_change':
+      return `${warning.path} takes the branch’s version over a newer change on main.`;
+    case 'discards_branch_change':
+      return `${warning.path} keeps main’s version, so the branch’s change to it is left out.`;
+    case 'replacement_discards_branch_change':
+      return `${warning.toPath} replaces ${warning.path}, so the branch’s edit to ${warning.path} is left out.`;
+    case 'missing_reference':
+      return `${warning.path} references ${warning.referencedPath}, which isn’t in the release.`;
+    case 'mixed_sources':
+      return `${warning.path} comes from the branch but references ${warning.referencedPath}, which keeps main’s version.`;
+    case 'needs_repoint':
+      return `${warning.path} references ${warning.fromPath}, which ${warning.toPath} replaces. The SolidWorks rebuild must repoint it.`;
+  }
+}
+
+/** A pick error as a sentence. `pathOf` names items by path where it can. */
+export function errorText(error: CandidateError, pathOf: (itemId: string) => string | undefined): string {
+  switch (error.kind) {
+    case 'unknown_item':
+      return `A saved pick names a file that isn’t in this request’s changes (${pathOf(error.itemId) ?? `item ${error.itemId.slice(0, 8)}`}). Save your picks to drop it.`;
+    case 'invalid_replacement':
+      return `${pathOf(error.branchItemId) ?? 'A new file'} can’t replace ${pathOf(error.mainItemId) ?? 'that main file'}: ${error.reason}.`;
+    case 'path_collision':
+      return `${error.itemIds.length} files would end up at ${error.path}. Keep only one of them.`;
   }
 }
 
@@ -172,8 +239,14 @@ export function describeEvent(event: ProjectEvent, names: EventNames): Line | un
     return names.href ? { text, href: names.href.request(number) } : text;
   };
   switch (event.kind) {
-    case 'project_created':
-      return [`${who} created the project`];
+    case 'project_created': {
+      const from = payload.forkedFrom as { ownerHandle?: string; slug?: string; releaseNumber?: number } | string | undefined;
+      return [typeof from === 'object' && from?.ownerHandle ? `${who} forked @${from.ownerHandle}/${from.slug} v${from.releaseNumber}` : `${who} created the project`];
+    }
+    case 'project_forked': {
+      const fork = payload.fork as { ownerHandle?: string; slug?: string } | undefined;
+      return [`${who} forked v${String(payload.releaseNumber)} into ${fork?.ownerHandle}/${fork?.slug}`];
+    }
     case 'project_updated':
       return [`${who} ${projectChanges(payload)}`];
     case 'project_deleted':
@@ -201,25 +274,31 @@ export function describeEvent(event: ProjectEvent, names: EventNames): Line | un
     case 'release_request_opened':
       return [`${who} opened release request `, request()];
     case 'release_request_picks_changed':
-      return [`${who} changed the picks on `, request()];
+      return [`${who} changed the picks on `, request(), ', which resets its approvals'];
     case 'release_request_candidate_generated':
-      return [`${who} built a candidate for `, request()];
-    case 'release_request_candidate_updated':
-      return [`${who} replaced ${Number(payload.changedFiles ?? 0) === 1 ? '1 file' : `${Number(payload.changedFiles ?? 0)} files`} in the candidate for `, request()];
+      return [`${who} built the candidate for `, request()];
+    case 'release_request_candidate_updated': {
+      const count = Number(payload.changedFiles ?? 0);
+      return [`${who} saved ${count === 1 ? 'a rebuilt file' : `${count} rebuilt files`} into the candidate for `, request(), ', which resets its approvals'];
+    }
     case 'release_request_rebuild_reported':
       return [`${who} reported a ${String(payload.status).replace(/_/g, ' ')} rebuild of `, request()];
     case 'release_request_approved':
-      return [`${who} approved `, request()];
+      return [`${who} approved the candidate for `, request()];
     case 'release_request_approval_withdrawn':
       return [`${who} withdrew their approval of `, request()];
     case 'release_request_closed':
       return [`${who} closed `, request()];
     case 'release_created': {
       const number = Number(payload.number);
-      const text = releaseName({ number, title: names.release?.(number) });
+      const text = releaseName({ number, title: names.release?.(number) ?? (typeof payload.title === 'string' ? payload.title : null) });
       return [`${who} released `, names.href ? { text, href: names.href.release(number) } : text];
     }
+    case 'export_attached':
+    case 'export_replaced':
+      return [`${who} ${event.kind === 'export_replaced' ? 'replaced the' : 'attached a'} ${String(payload.format).toUpperCase()} export of ${String(payload.path ?? 'a SolidWorks file')}`];
     case 'member_changed':
+      if (payload.left) return [`${who} left the project`];
       return [payload.role ? `${who} made @${String(payload.handle)} a ${String(payload.role)}` : `${who} removed @${String(payload.handle)}`];
     case 'approval_rules_changed':
       return [`${who} changed the approval rules to ${rulesSummary(payload)}`];

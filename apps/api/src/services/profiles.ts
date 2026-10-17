@@ -67,8 +67,9 @@ function contributions(sql: Sql, userId: string, since: Date) {
     select 'release_request', rr.created_at, rr.project_id, rr.number, rr.title, null, null, null
     from release_requests rr where rr.requester_id = ${userId} and rr.created_at >= ${since}
     union all
-    select 'release', r.created_at, r.project_id, r.number, null, null, null, null
-    from releases r where r.created_by = ${userId} and r.created_at >= ${since}
+    select 'release', r.created_at, r.project_id, r.number, rr.title, null, null, null
+    from releases r left join release_requests rr on rr.id = r.release_request_id
+    where r.created_by = ${userId} and r.created_at >= ${since}
     union all
     select 'approval', a.created_at, rr.project_id, rr.number, rr.title, null, null, null
     from approvals a join release_requests rr on rr.id = a.release_request_id

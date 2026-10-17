@@ -63,12 +63,14 @@ function Describe({ item }: { item: Activity }) {
       return (
         <>
           Released <Link href={releasePath(owner, slug, item.number!)}>v{item.number}</Link> of {project}
+          {item.title && <span className="activity-detail">{item.title}</span>}
         </>
       );
     case 'approval':
       return (
         <>
           Approved <Link href={releaseRequestPath(owner, slug, item.number!)}>release request #{item.number}</Link> in {project}
+          {item.title && <span className="activity-detail">{item.title}</span>}
         </>
       );
   }

@@ -319,6 +319,25 @@ function EmptyFolder({ searching, view, listing }: { searching: boolean; view: s
   );
 }
 
+/**
+ * Looks something up for each file by its contents, asking once per area: a file in a release
+ * gets what that release was made with (its STEP and STL exports and the thumbnails drawn from
+ * them), which never change; every other file gets the current ones.
+ */
+async function byArea<T>(files: readonly DirectoryFile[], load: (sha256s: string[], releaseNumber?: number) => Promise<Record<string, T>>) {
+  const releaseOf = (file: DirectoryFile) => (file.location.area === 'release' ? file.location.releaseNumber : null);
+  const releases = [...new Set(files.flatMap((file) => releaseOf(file) ?? []))];
+  const [current, ...released] = await Promise.all([
+    load(files.filter((file) => releaseOf(file) === null).map((file) => file.blob)),
+    ...releases.map((number) => load(files.filter((file) => releaseOf(file) === number).map((file) => file.blob), number)),
+  ]);
+  const byRelease = new Map(releases.map((number, index) => [number, released[index]!]));
+  return (file: DirectoryFile): T | undefined => {
+    const number = releaseOf(file);
+    return (number === null ? current : byRelease.get(number))?.[file.blob];
+  };
+}
+
 async function DirectoryTable({
   project,
   entries,
@@ -345,9 +364,9 @@ async function DirectoryTable({
   const files = entries.filter((entry): entry is DirectoryFile => entry.kind === 'file');
   // Contributors get a right-click menu on root files and folders.
   const editable = canTag && entries.some((entry) => entry.entryId);
-  const [thumbnails, exports, folders] = await Promise.all([
-    getThumbnails(project.id, files.filter((file) => previewFormat(file.name) || isSolidWorks(file.name)).map((file) => file.blob)),
-    getFileExports(project.id, files.filter((file) => isSolidWorks(file.name)).map((file) => file.blob)),
+  const [thumbnails, exportsFor, folders] = await Promise.all([
+    byArea(files.filter((file) => previewFormat(file.name) || isSolidWorks(file.name)), (sha256s, release) => getThumbnails(project.id, sha256s, release)),
+    byArea(files.filter((file) => isSolidWorks(file.name)), (sha256s, release) => getFileExports(project.id, sha256s, release)),
     editable ? getRootFolders(project.id) : [],
   ]);
   const menuData = (entry: DirectoryItem): Record<string, string> =>
@@ -440,8 +459,8 @@ async function DirectoryTable({
                 canTag={canTag}
                 signedIn={signedIn}
                 showLocation={showLocation}
-                thumbnailUrl={thumbnails[entry.blob]}
-                fileExports={exports[entry.blob] ?? []}
+                thumbnailUrl={thumbnails(entry)}
+                fileExports={exportsFor(entry) ?? []}
                 tagLink={tagLink}
                 menuData={menuData(entry)}
               />

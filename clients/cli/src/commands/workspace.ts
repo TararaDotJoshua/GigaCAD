@@ -96,10 +96,14 @@ async function statCache(root: string, files: readonly ManifestEntry[]): Promise
   return Object.fromEntries(entries);
 }
 
-function checkManifest(files: readonly ManifestEntry[]): void {
-  const issues = validateManifest(files);
+/** Refuses a snapshot this computer can't write: Windows can't store some names other systems can. */
+function checkManifest(files: readonly ManifestEntry[], platform: NodeJS.Platform): void {
+  const issues = validateManifest(files, { strictNames: platform === 'win32' });
   if (issues.length > 0) {
-    throw new CliError('invalid_snapshot', 'The branch contains paths this computer can’t store', { details: issues });
+    // Nothing is written yet, so name the first bad path for whoever has to rename it.
+    const first = issues.find((issue) => issue.kind === 'invalid_path');
+    const which = first ? ` (${first.path}: ${first.reason})` : '';
+    throw new CliError('invalid_snapshot', `The branch contains paths this computer can’t store${which}`, { details: issues });
   }
 }
 
@@ -121,7 +125,7 @@ async function clone(rt: Runtime, projectInput: string, directory: string | unde
   const project = await findProject(session.api, ref);
   const branch = await findBranch(session.api, project.id, options.branch);
   const detail = await session.api.get<BranchDetail>(`/v1/branches/${branch.id}`);
-  checkManifest(detail.files);
+  checkManifest(detail.files, ctx.platform);
 
   const root = resolve(ctx.cwd, directory ?? project.slug);
   const empty = await checkTarget(root);
@@ -180,7 +184,7 @@ async function syncToHead(rt: Runtime, workspace: Workspace, api: Api): Promise<
   const { root, state } = workspace;
   const detail = await api.get<BranchDetail>(`/v1/branches/${state.branchId}`);
   if (detail.head.id === state.headCommitId) return { headCommitId: state.headCommitId, updated: false, written: [], deleted: [] };
-  checkManifest(detail.files);
+  checkManifest(detail.files, rt.ctx.platform);
 
   const hashed = await scan(workspace);
   const plan = planPull(state, hashed, detail.files);
@@ -276,7 +280,7 @@ async function status(rt: Runtime): Promise<void> {
   else {
     if (remote.status !== 'open') lines.push(`The branch is ${remote.status}; it can't be changed.`);
     else if (lockedHere) lines.push('Checked out on this computer.');
-    else if (remote.checkedOutBy) lines.push(`Checked out by @${remote.checkedOutByHandle} on ${remote.checkedOutMachine}.`);
+    else if (remote.checkedOutBy || remote.checkedOutByHandle) lines.push(`Checked out by @${remote.checkedOutByHandle}${remote.checkedOutMachine ? ` on ${remote.checkedOutMachine}` : ''}.`);
     else lines.push('Not checked out. Run `giga checkout` before committing.');
     if (behind) lines.push('The branch has newer commits. Run `giga pull`.');
   }

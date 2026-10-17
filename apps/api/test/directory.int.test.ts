@@ -44,9 +44,9 @@ async function project(visibility: 'public' | 'private' = 'private') {
 async function release(projectId: string, branchId: string) {
   const opened = await api.post(`/v1/branches/${branchId}/release-requests`, { title: 'Release' });
   const requestId = opened.body.releaseRequest.id;
-  await api.post(`/v1/release-requests/${requestId}/candidate`);
-  await api.post(`/v1/release-requests/${requestId}/approvals`);
-  const released = await api.post(`/v1/release-requests/${requestId}/release`);
+  const candidateManifestId = (await api.post(`/v1/release-requests/${requestId}/candidate`)).body.candidate.manifestId;
+  await api.post(`/v1/release-requests/${requestId}/approvals`, { candidateManifestId });
+  const released = await api.post(`/v1/release-requests/${requestId}/release`, { candidateManifestId });
   expect(released.status).toBe(201);
   return released.body.release.number as number;
 }

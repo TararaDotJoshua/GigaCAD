@@ -1,7 +1,7 @@
 import { comparePaths, InvalidPathError, isReservedRootName, MAX_PATH_LENGTH, validateEntryName } from '@gigacad/core';
 import type { Db, Sql, Tx } from '../db.js';
 import { conflict, notFound, unprocessable } from '../errors.js';
-import { projectAccess, requireProjectRole } from './access.js';
+import { lockForViewer, projectAccess, requireProjectRole } from './access.js';
 import type { BranchStatus } from './branches.js';
 import { recordEvent } from './events.js';
 import { loadManifest } from './manifests.js';
@@ -370,6 +370,19 @@ async function listRelease(db: Db, projectId: string, label: string, inner: read
   if (!found) throw notFound(`Folder ${joinPath('Releases', label, ...inner)}`);
   const base = ['Releases', `v${release.number}`, ...names];
   const sizes = await blobSizes(db, direct.map((file) => file.blob));
+  // Each file shows when its contents last changed in a release, and who committed them, not the release itself.
+  const changed = new Map(
+    direct.length === 0
+      ? []
+      : (
+          await db<{ itemId: string; changedAt: Date; handle: string | null }[]>`
+            select f.item_id, c.changed_at, p.handle
+            from unnest(${direct.map((file) => file.itemId)}::uuid[], ${direct.map((file) => file.blob)}::text[]) as f (item_id, blob)
+            cross join lateral release_file_changed(${projectId}, ${release.number}, f.item_id, f.blob) c
+            left join profiles p on p.id = c.author_id
+          `
+        ).map((row) => [row.itemId, row]),
+  );
   const items: DirectoryItem[] = [
     ...folders.map((name): DirectoryFolder => ({ kind: 'folder', name, path: joinPath(...base, name), entryId: null, virtual: null, modifiedAt: release.createdAt, branch: null, release: null })),
     ...direct.map((file) =>
@@ -380,8 +393,8 @@ async function listRelease(db: Db, projectId: string, label: string, inner: read
         itemId: file.itemId,
         blob: file.blob,
         size: sizes.get(file.blob) ?? 0,
-        modifiedAt: release.createdAt,
-        modifiedByHandle: release.createdByHandle,
+        modifiedAt: changed.get(file.itemId)?.changedAt ?? release.createdAt,
+        modifiedByHandle: changed.get(file.itemId)?.handle ?? null,
         entryId: null,
         revision: null,
         location: { area: 'release', branchId: null, branchName: null, releaseNumber: release.number, path: file.path },
@@ -468,7 +481,10 @@ export async function listDirectory(
 
   const writable = result.location.area === 'root' && role !== null && role !== 'viewer';
   const page = await decorate(sql, projectId, viewerId, sortAndPage(result.items, paging));
-  return { location: { ...result.location, writable }, ...page };
+  // Branch folders show their lock; outsiders don't learn the holder's id or computer.
+  const entries = page.entries.map((item) => ('branch' in item && item.branch ? { ...item, branch: lockForViewer(item.branch, role) } : item));
+  const branch = result.location.branch ? lockForViewer(result.location.branch, role) : null;
+  return { location: { ...result.location, branch, writable }, ...page, entries };
 }
 
 // Search -------------------------------------------------------------------
@@ -525,8 +541,10 @@ export async function searchFiles(sql: Sql, projectId: string, viewerId: string 
       left join lateral branch_file_changed(br.id, me.item_id, me.blob_sha256) ch on true
       where br.project_id = ${projectId} and ${query.area === undefined || query.area === 'branch'}
       union all
-      select 'release', null, null, r.number, null, me.item_id, me.path, me.blob_sha256, null, r.created_at, r.created_by
+      select 'release', null, null, r.number, null, me.item_id, me.path, me.blob_sha256, null,
+             coalesce(rc.changed_at, r.created_at), rc.author_id
       from releases r join manifest_entries me on me.manifest_id = r.manifest_id
+      left join lateral release_file_changed(r.project_id, r.number, me.item_id, me.blob_sha256) rc on true
       where r.project_id = ${projectId} and ${query.area === undefined || query.area === 'release'}
     )
     select l.area, l.branch_id, l.branch_name, l.release_number, l.entry_id, l.item_id, l.inner_path,

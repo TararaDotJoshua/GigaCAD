@@ -55,7 +55,7 @@ async function exportRelease(rt: Runtime, number: string, directory: string | un
   const project = await resolveProject(session.api, options.project, await rt.workspace());
   const releaseNumber = parseReleaseNumber(number);
   const { release, files } = await session.api.get<ReleaseDetail>(`/v1/projects/${project.id}/releases/${releaseNumber}`);
-  if (validateManifest(files).length > 0) throw new CliError('invalid_snapshot', 'The release contains paths this computer can’t store');
+  if (validateManifest(files, { strictNames: rt.ctx.platform === 'win32' }).length > 0) throw new CliError('invalid_snapshot', 'The release contains paths this computer can’t store');
 
   const root = resolve(rt.ctx.cwd, directory ?? `${project.slug}-v${release.number}`);
   const existing = await readdir(root).catch((error: NodeJS.ErrnoException) => {

@@ -9,11 +9,20 @@ import { getExplore, getViewer } from '../../../lib/product';
 
 export const metadata = { title: 'Explore' };
 
-export default async function Explore({ searchParams }: { searchParams: Promise<{ q?: string; sort?: string }> }) {
+const PAGE_SIZE = 30;
+
+export default async function Explore({ searchParams }: { searchParams: Promise<{ q?: string; sort?: string; page?: string }> }) {
   const query = await searchParams;
-  const q = (query.q ?? '').trim().slice(0, 100);
+  // Control characters can't match anything, and the API refuses them.
+  const q = (query.q ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 100);
   const sort = query.sort === 'recent' ? 'recent' : 'stars';
-  const [projects, viewer] = await Promise.all([getExplore(q, sort), getViewer()]);
+  // The API allows offsets up to 10,000.
+  const page = Math.min(Math.max(1, Math.floor(Number(query.page)) || 1), Math.floor(10_000 / PAGE_SIZE) + 1);
+  // One extra card says whether there's a next page.
+  const [found, viewer] = await Promise.all([getExplore(q, sort, (page - 1) * PAGE_SIZE, PAGE_SIZE + 1), getViewer()]);
+  const projects = found.slice(0, PAGE_SIZE);
+  const hasNext = found.length > PAGE_SIZE;
+  const pageHref = (to: number) => `/explore?${new URLSearchParams({ ...(q ? { q } : {}), ...(sort === 'recent' ? { sort } : {}), ...(to > 1 ? { page: String(to) } : {}) })}`;
   const tab = (value: 'stars' | 'recent', label: string) => (
     <Link
       href={`/explore?${new URLSearchParams({ ...(q ? { q } : {}), ...(value === 'recent' ? { sort: value } : {}) })}`}
@@ -40,9 +49,39 @@ export default async function Explore({ searchParams }: { searchParams: Promise<
           </nav>
         </div>
         {projects.length > 0 ? (
-          <ProjectCards projects={projects} />
+          <>
+            <ProjectCards projects={projects} />
+            {(page > 1 || hasNext) && (
+              <nav className="pager" aria-label="Pages">
+                {page > 1 && (
+                  <Link href={pageHref(page - 1)} className="btn btn-secondary btn-small" rel="prev">
+                    Previous
+                  </Link>
+                )}
+                <span className="muted">Page {page}</span>
+                {hasNext && (
+                  <Link href={pageHref(page + 1)} className="btn btn-secondary btn-small" rel="next">
+                    Next
+                  </Link>
+                )}
+              </nav>
+            )}
+          </>
+        ) : q ? (
+          <EmptyState title={`No public projects match “${q.length > 40 ? `${q.slice(0, 40)}…` : q}”.`}>
+            <p>Try a shorter word or an owner’s handle.</p>
+            <Link href={sort === 'recent' ? '/explore?sort=recent' : '/explore'} className="btn btn-secondary btn-small">
+              Clear search
+            </Link>
+          </EmptyState>
+        ) : page > 1 ? (
+          <EmptyState title="No more public projects.">
+            <Link href={pageHref(1)} className="btn btn-secondary btn-small">
+              Back to the first page
+            </Link>
+          </EmptyState>
         ) : (
-          <EmptyState title={q ? `No public projects match “${q}”.` : viewer ? 'No public projects yet.' : 'No public projects yet. Check back soon.'}>
+          <EmptyState title={viewer ? 'No public projects yet.' : 'No public projects yet. Check back soon.'}>
             {viewer && <p>Make a project public in its settings, and it shows up here for anyone to see, star, and fork.</p>}
           </EmptyState>
         )}

@@ -125,7 +125,7 @@ test('a fork that fails keeps every field, stays private, and focuses the addres
 
   await page.getByLabel('Address').fill(`${world.slug}-fork`);
   await page.getByRole('button', { name: 'Fork project' }).click();
-  await page.waitForURL(`**/${world.owner.handle}/${world.slug}-fork`);
+  await page.waitForURL(`**/${world.owner.handle}/${world.slug}-fork?forked=1`);
   const fork = await api(world.owner.token, 'GET', `/v1/users/${world.owner.handle}/projects/${world.slug}-fork`);
   expect(fork.visibility).toBe('private');
   // The sidebar lists the new project without a reload.
@@ -256,14 +256,15 @@ test('confirming asks with focus on Cancel, Escape backs out, and the result out
 
   await remove.click();
   await row.getByRole('button', { name: 'Remove' }).click();
-  await expect(page.locator('.action-toast')).toHaveText(new RegExp(`Removed @${mate.handle}\\.`));
+  // The members table has one status line for every change made in it.
+  await expect(page.locator('.members-status')).toHaveText(new RegExp(`Removed @${mate.handle}\\.`));
   await expect(page.getByRole('row', { name: new RegExp(mate.handle) })).toHaveCount(0);
   expect(await focused(page)).not.toMatch(/^BODY/);
 
   // An unknown handle gets a sentence, and the form keeps it to fix.
   await page.getByLabel('Handle').fill('no-such-person-here');
   await page.getByRole('button', { name: 'Add member' }).click();
-  await expect(formError(page)).toHaveText('No one has the handle @no-such-person-here. Check the spelling, or ask them to sign up first.');
+  await expect(formError(page)).toHaveText('No one has the handle @no-such-person-here. They need a GigaCAD account with a handle first.');
   await expect(page.getByLabel('Handle')).toHaveValue('no-such-person-here');
 
   // Activity still names the person who left, and links the request.

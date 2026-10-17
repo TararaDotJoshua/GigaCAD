@@ -1,7 +1,8 @@
 import { formatBytes } from '@gigacad/core';
+import Form from 'next/form';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { createFolder, createTag } from '../../app/(product)/actions';
+import { createTag } from '../../app/(product)/actions';
 import type { DirectoryFile, DirectoryItem, DirectoryListing, FileExport, FilePage, Project, ProjectTag } from '../../lib/api';
 import { BRANCH_STATUS_LABEL, branchTone } from '../../lib/describe';
 import { pager } from '../../lib/directory';
@@ -20,6 +21,7 @@ import { FileGlyph } from './FileGlyph';
 import { GettingStarted } from './GettingStarted';
 import { IntentLink } from './IntentLink';
 import { ManageTag } from './ManageTag';
+import { NewFolderMenu } from './NewFolderMenu';
 import { ProjectReadme } from './ProjectReadme';
 import { RefreshSoon } from './RefreshSoon';
 import { RelativeTime } from './RelativeTime';
@@ -28,6 +30,12 @@ import { TagPicker } from './TagPicker';
 import { UploadFiles } from './UploadFiles';
 
 const PAGE_SIZE = 100;
+
+/** The page of a folder the URL asks for, as getDirectory takes it. The tab title reads the same page, so they share one request. */
+export function directoryPaging(params: DirectoryParams) {
+  const { sort, order, offset } = readParams(params);
+  return { sort, order, offset, limit: PAGE_SIZE };
+}
 
 /** What the URL asks for: a folder, or a search, recent files, or favorites across the whole project. */
 export interface DirectoryParams {
@@ -89,7 +97,7 @@ export async function ProjectDirectory({
   const slug = project.slug;
   const { q, tagIds, view, sort, order, offset, under, showReleased } = readParams(params);
   const searching = Boolean(q || tagIds.length || view);
-  const paging = { sort, order, offset, limit: PAGE_SIZE };
+  const paging = directoryPaging(params);
 
   const [listing, results, tags] = await Promise.all([
     searching ? null : getDirectory(project.id, path, paging),
@@ -146,7 +154,7 @@ export async function ProjectDirectory({
     <div className="directory">
       {!embedded && (
       <div className="toolbar directory-toolbar">
-        <form action={projectPath(owner, slug)} className="app-search explore-search" role="search">
+        <Form action={projectPath(owner, slug)} className="app-search explore-search" role="search">
           <SearchIcon className="icon" />
           <label className="sr-only" htmlFor="directory-q">
             Search files in this project
@@ -155,7 +163,7 @@ export async function ProjectDirectory({
           {scope && <input type="hidden" name="under" value={scope} />}
           {tagIds.length > 0 && <input type="hidden" name="tags" value={tagIds.join(',')} />}
           {view && <input type="hidden" name="view" value={view} />}
-        </form>
+        </Form>
         <nav className="segmented interval-toggle" aria-label="Files view">
           {tab(null, 'All files')}
           {tab('recent', 'Recent')}
@@ -298,20 +306,7 @@ async function FolderBar({ project, listing, owner: storageOwner }: { project: P
 
       {location.writable && (
         <div className="folder-actions">
-          <details className="menu">
-            <summary className="btn btn-secondary btn-small">
-              <FolderIcon className="icon" />
-              New folder
-            </summary>
-            <div className="menu-list menu-form">
-              <ActionForm action={createFolder.bind(null, project.id, location.folderId)} submitLabel="Create folder" submitClassName="btn btn-primary btn-small">
-                <label className="field">
-                  <span>Folder name</span>
-                  <input name="name" required maxLength={255} autoComplete="off" />
-                </label>
-              </ActionForm>
-            </div>
-          </details>
+          <NewFolderMenu projectId={project.id} folderId={location.folderId} />
           <UploadFiles projectId={project.id} parentId={location.folderId} folderPath={location.path} existing={existing} owner={storageOwner} storageFull={storageFull} />
         </div>
       )}
@@ -322,7 +317,7 @@ async function FolderBar({ project, listing, owner: storageOwner }: { project: P
           {location.branch.checkedOutByHandle
             ? `Checked out by @${location.branch.checkedOutByHandle}${location.branch.checkedOutMachine ? ` on ${location.branch.checkedOutMachine}` : ''}. `
             : 'No one has this branch checked out. '}
-          These are the files at the branch head. Change them by checking out the branch in the GigaCAD drive or with{' '}
+          These are the files at the branch head. Change them by checking out the branch with{' '}
           <code className="mono">giga checkout</code>. <Link href={branchPath(owner, slug, location.branch.name)}>Branch history</Link>
         </p>
       )}
@@ -378,6 +373,25 @@ function EmptyFolder({
   );
 }
 
+/**
+ * Looks something up for each file by its contents, asking once per area: a file in a release
+ * gets what that release was made with (its STEP and STL exports and the thumbnails drawn from
+ * them), which never change; every other file gets the current ones.
+ */
+async function byArea<T>(files: readonly DirectoryFile[], load: (sha256s: string[], releaseNumber?: number) => Promise<Record<string, T>>) {
+  const releaseOf = (file: DirectoryFile) => (file.location.area === 'release' ? file.location.releaseNumber : null);
+  const releases = [...new Set(files.flatMap((file) => releaseOf(file) ?? []))];
+  const [current, ...released] = await Promise.all([
+    load(files.filter((file) => releaseOf(file) === null).map((file) => file.blob)),
+    ...releases.map((number) => load(files.filter((file) => releaseOf(file) === number).map((file) => file.blob), number)),
+  ]);
+  const byRelease = new Map(releases.map((number, index) => [number, released[index]!]));
+  return (file: DirectoryFile): T | undefined => {
+    const number = releaseOf(file);
+    return (number === null ? current : byRelease.get(number))?.[file.blob];
+  };
+}
+
 async function DirectoryTable({
   project,
   entries,
@@ -404,9 +418,15 @@ async function DirectoryTable({
   const files = entries.filter((entry): entry is DirectoryFile => entry.kind === 'file');
   // Contributors get a right-click menu on root files and folders.
   const editable = canTag && entries.some((entry) => entry.entryId);
-  const [{ thumbnails, pending }, exports, folders] = await Promise.all([
-    getThumbnailLinks(project.id, files.filter((file) => hasModel(file.name)).map((file) => file.blob)),
-    getFileExports(project.id, files.filter((file) => isSolidWorks(file.name)).map((file) => file.blob)),
+  // Thumbnails still being drawn, so the table can look again for them.
+  const pending: string[] = [];
+  const [thumbnails, exportsFor, folders] = await Promise.all([
+    byArea(files.filter((file) => hasModel(file.name)), async (sha256s, release) => {
+      const links = await getThumbnailLinks(project.id, sha256s, release);
+      pending.push(...links.pending);
+      return links.thumbnails;
+    }),
+    byArea(files.filter((file) => isSolidWorks(file.name)), (sha256s, release) => getFileExports(project.id, sha256s, release)),
     editable ? getRootFolders(project.id) : [],
   ]);
   const menuData = (entry: DirectoryItem): Record<string, string> =>
@@ -503,8 +523,8 @@ async function DirectoryTable({
                 canTag={canTag}
                 signedIn={signedIn}
                 showLocation={showLocation}
-                thumbnailUrl={thumbnails[entry.blob]}
-                fileExports={exports[entry.blob] ?? []}
+                thumbnailUrl={thumbnails(entry)}
+                fileExports={exportsFor(entry) ?? []}
                 tagLink={tagLink}
                 menuData={menuData(entry)}
               />
@@ -635,7 +655,7 @@ export function TagsCard({ project, tags }: { project: Project; tags: ProjectTag
       {canManage && (
         <details className="manage-tags">
           <summary>Manage tags</summary>
-          <ActionForm action={createTag.bind(null, project.id)} submitLabel="Add tag" submitClassName="btn btn-secondary btn-small" className="form form-inline">
+          <ActionForm action={createTag.bind(null, project.id)} submitLabel="Add tag" submitClassName="btn btn-secondary btn-small" className="form form-inline" resetOnSuccess>
             <label className="field">
               <span className="sr-only">New tag</span>
               <input name="name" required maxLength={50} placeholder="New tag" autoComplete="off" />

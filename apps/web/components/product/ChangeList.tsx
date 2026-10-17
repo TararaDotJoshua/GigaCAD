@@ -23,13 +23,24 @@ export function changeSummary(changes: readonly ItemChange[]): string {
  * Files that differ between two snapshots, each with what happened and, when it still
  * exists, its thumbnail, a preview, and downloads of the new contents and their exports.
  */
-export async function ChangeList({ projectId, changes, empty = 'No file changes.' }: { projectId: string; changes: readonly ItemChange[]; empty?: string }) {
+export async function ChangeList({
+  projectId,
+  changes,
+  empty = 'No file changes.',
+  releaseNumber,
+}: {
+  projectId: string;
+  changes: readonly ItemChange[];
+  empty?: string;
+  /** For a release's changes: show the exports and thumbnails it was made with. */
+  releaseNumber?: number;
+}) {
   if (changes.length === 0) return <EmptyState title={empty} />;
   const sorted = [...changes].sort((a, b) => pathOf(a).localeCompare(pathOf(b)));
   const current = sorted.flatMap((change) => (change.kind === 'deleted' ? [] : [change.after]));
   const [thumbnails, exports] = await Promise.all([
-    getThumbnails(projectId, current.filter((file) => hasModel(file.path)).map((file) => file.blob)),
-    getFileExports(projectId, current.filter((file) => isSolidWorks(file.path)).map((file) => file.blob)),
+    getThumbnails(projectId, current.filter((file) => hasModel(file.path)).map((file) => file.blob), releaseNumber),
+    getFileExports(projectId, current.filter((file) => isSolidWorks(file.path)).map((file) => file.blob), releaseNumber),
   ]);
   return (
     <ul className="change-list">

@@ -61,8 +61,9 @@ async function releaseBranch(api: Client, branchId: string, picks?: object) {
   if (picks) expect((await api.put(`/v1/release-requests/${id}/picks`, picks)).status).toBe(200);
   const candidate = await api.post(`/v1/release-requests/${id}/candidate`);
   expect(candidate.status).toBe(200);
-  expect((await api.post(`/v1/release-requests/${id}/approvals`)).status).toBe(200);
-  const released = await api.post(`/v1/release-requests/${id}/release`);
+  const reviewed = { candidateManifestId: candidate.body.candidate.manifestId };
+  expect((await api.post(`/v1/release-requests/${id}/approvals`, reviewed)).status).toBe(200);
+  const released = await api.post(`/v1/release-requests/${id}/release`, reviewed);
   expect(released.status).toBe(201);
   return released.body as { release: { id: string; number: number } };
 }
@@ -117,9 +118,11 @@ describe('release workflow', () => {
     expect(picked.status).toBe(200);
     expect(picked.body.preview.errors).toEqual([]);
 
-    expect((await asAlex.post(`/v1/release-requests/${rrId}/candidate`)).status).toBe(200);
-    expect((await asAlex.post(`/v1/release-requests/${rrId}/approvals`)).status).toBe(200);
-    const released = await asAlex.post(`/v1/release-requests/${rrId}/release`);
+    const built = await asAlex.post(`/v1/release-requests/${rrId}/candidate`);
+    expect(built.status).toBe(200);
+    const reviewed = { candidateManifestId: built.body.candidate.manifestId };
+    expect((await asAlex.post(`/v1/release-requests/${rrId}/approvals`, reviewed)).status).toBe(200);
+    const released = await asAlex.post(`/v1/release-requests/${rrId}/release`, reviewed);
     expect(released.status).toBe(201);
     expect(released.body.release.number).toBe(3);
 
@@ -146,24 +149,27 @@ describe('release workflow', () => {
     await commitVersion(harness, asAlex, projectId, slow, { 'A.SLDPRT': 'slow' });
     const opened = await asAlex.post(`/v1/branches/${slow}/release-requests`, { title: 'Slow' });
     const rrId = opened.body.releaseRequest.id;
-    await asAlex.post(`/v1/release-requests/${rrId}/candidate`);
-    await asAlex.post(`/v1/release-requests/${rrId}/approvals`);
+    const firstCandidate = { candidateManifestId: (await asAlex.post(`/v1/release-requests/${rrId}/candidate`)).body.candidate.manifestId };
+    await asAlex.post(`/v1/release-requests/${rrId}/approvals`, firstCandidate);
 
     await commitVersion(harness, asAlex, projectId, fast, { 'A.SLDPRT': 'fast' });
     await releaseBranch(asAlex, fast);
 
-    const blocked = await asAlex.post(`/v1/release-requests/${rrId}/release`);
+    const blocked = await asAlex.post(`/v1/release-requests/${rrId}/release`, firstCandidate);
     expect(blocked.status).toBe(409);
     expect(blocked.body.error.code).toBe('main_moved');
+    // Nor can anyone approve a candidate built on an older main.
+    expect((await asAlex.post(`/v1/release-requests/${rrId}/approvals`, firstCandidate)).body.error.code).toBe('main_moved');
 
     // Regenerating picks up v2, warns that the branch overwrites it, and then releases.
     const regenerated = await asAlex.post(`/v1/release-requests/${rrId}/candidate`);
     expect(regenerated.body.preview.warnings.map((w: { kind: string }) => w.kind)).toEqual(['overwrites_main_change']);
+    const second = { candidateManifestId: regenerated.body.candidate.manifestId };
     // The earlier approval was for the old candidate, so it no longer counts.
-    const unapproved = await asAlex.post(`/v1/release-requests/${rrId}/release`);
+    const unapproved = await asAlex.post(`/v1/release-requests/${rrId}/release`, second);
     expect(unapproved.body.error.code).toBe('approval_required');
-    await asAlex.post(`/v1/release-requests/${rrId}/approvals`);
-    expect((await asAlex.post(`/v1/release-requests/${rrId}/release`)).status).toBe(201);
+    await asAlex.post(`/v1/release-requests/${rrId}/approvals`, second);
+    expect((await asAlex.post(`/v1/release-requests/${rrId}/release`, second)).status).toBe(201);
   });
 
   it('closing a release request unfreezes the branch', async () => {
@@ -190,9 +196,9 @@ describe('release workflow', () => {
     const id = opened.body.releaseRequest.id as string;
     const bItem = opened.body.preview.rows.find((row: { path: string }) => row.path === 'B.SLDPRT').itemId as string;
     expect((await asAlex.put(`/v1/release-requests/${id}/picks`, { actions: { [bItem]: 'keep_main' } })).status).toBe(200);
-    await asAlex.post(`/v1/release-requests/${id}/candidate`);
-    await asAlex.post(`/v1/release-requests/${id}/approvals`);
-    expect((await asAlex.post(`/v1/release-requests/${id}/release`)).status).toBe(201);
+    const reviewed = { candidateManifestId: (await asAlex.post(`/v1/release-requests/${id}/candidate`)).body.candidate.manifestId };
+    await asAlex.post(`/v1/release-requests/${id}/approvals`, reviewed);
+    expect((await asAlex.post(`/v1/release-requests/${id}/release`, reviewed)).status).toBe(201);
 
     // Main is now v2, yet the finished request still shows its two rows against v1.
     const detail = (await asAlex.get(`/v1/release-requests/${id}`)).body;
@@ -395,8 +401,8 @@ describe('approvals', () => {
     const candidate = await asAlex.post(`/v1/release-requests/${rrId}/candidate`);
     const manifestId = candidate.body.candidate.manifestId;
 
-    expect((await asAlex.post(`/v1/release-requests/${rrId}/approvals`)).status).toBe(403);
-    const blocked = await asAlex.post(`/v1/release-requests/${rrId}/release`);
+    expect((await asAlex.post(`/v1/release-requests/${rrId}/approvals`, { candidateManifestId: manifestId })).status).toBe(403);
+    const blocked = await asAlex.post(`/v1/release-requests/${rrId}/release`, { candidateManifestId: manifestId });
     expect(blocked.body.error.code).toBe('approval_required');
     expect(blocked.body.error.details.blockers).toEqual([
       { kind: 'needs_approvals', have: 0, need: 1 },
@@ -426,8 +432,8 @@ describe('approvals', () => {
       messages: [{ level: 'warning', message: 'Mate "Concentric3" is over-defined', path: 'Robot.SLDASM' }],
     });
 
-    expect((await asBea.post(`/v1/release-requests/${rrId}/approvals`)).status).toBe(200);
-    const released = await asAlex.post(`/v1/release-requests/${rrId}/release`);
+    expect((await asBea.post(`/v1/release-requests/${rrId}/approvals`, { candidateManifestId: rebuiltManifestId })).status).toBe(200);
+    const released = await asAlex.post(`/v1/release-requests/${rrId}/release`, { candidateManifestId: rebuiltManifestId });
     expect(released.status).toBe(201);
     const v1 = await asAlex.get(`/v1/projects/${projectId}/releases/1`);
     expect(v1.body.files.find((f: { path: string }) => f.path === 'Robot.SLDASM').blob).toBe(rebuilt);

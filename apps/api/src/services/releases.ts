@@ -57,16 +57,16 @@ export async function getRelease(
 const EXPORTABLE = /\.(sldprt|sldasm)$/i;
 
 /**
- * The STEP and STL exports of a release's SolidWorks files, as `exports/<path>.step` and
- * `.stl`. A part and an assembly with the same name keep their extensions, so their exports
- * don't collide.
+ * The STEP and STL exports a release was made with (its snapshot, which never changes), as
+ * `exports/<path>.step` and `.stl`. A part and an assembly with the same name keep their
+ * extensions, so their exports don't collide.
  */
-async function exportFiles(sql: Sql, projectId: string, files: readonly ManifestEntry[]): Promise<{ path: string; blob: string }[]> {
+async function exportFiles(sql: Sql, releaseId: string, files: readonly ManifestEntry[]): Promise<{ path: string; blob: string }[]> {
   const sources = files.filter((file) => EXPORTABLE.test(file.path));
   if (sources.length === 0) return [];
   const rows = await sql<{ source: string; format: string; blob: string }[]>`
-    select source_sha256 as source, format, blob_sha256 as blob from file_exports
-    where project_id = ${projectId} and source_sha256 = any(${[...new Set(sources.map((file) => file.blob))]}::text[])
+    select source_sha256 as source, format, blob_sha256 as blob from release_exports
+    where release_id = ${releaseId} and source_sha256 = any(${[...new Set(sources.map((file) => file.blob))]}::text[])
     order by format
   `;
   const bySource = new Map<string, { format: string; blob: string }[]>();
@@ -96,7 +96,7 @@ export async function releaseArchive(
 ): Promise<{ filename: string; size: number; length: number; stream: Readable }> {
   const { release, files } = await getRelease(sql, projectId, number, userId);
   const [project] = await sql<{ slug: string }[]>`select slug from projects where id = ${projectId}`;
-  const listed: { path: string; blob: string }[] = [...files, ...(options.exports ? await exportFiles(sql, projectId, files) : [])];
+  const listed: { path: string; blob: string }[] = [...files, ...(options.exports ? await exportFiles(sql, release.id, files) : [])];
   const sizes = new Map(
     (await sql<{ sha256: string; size: number }[]>`select sha256, size::float8 as size from blobs where sha256 = any(${listed.map((file) => file.blob)}::text[])`).map((row) => [row.sha256, row.size]),
   );

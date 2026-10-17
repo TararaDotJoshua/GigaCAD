@@ -18,6 +18,7 @@ import {
   type ProjectTag,
   type Commit,
   type Member,
+  type PublicMember,
   type Profile,
   type Project,
   type ProjectCard,
@@ -55,35 +56,39 @@ export const getMe = cache(() => get<Profile>('/v1/me'));
 /** The signed-in user, or null for a signed-out visitor to a public page. */
 export const getViewer = cache(async () => ((await getAccessToken()) ? getMe() : null));
 export const getMyProjectsIfSignedIn = cache(async () => ((await getAccessToken()) ? getMyProjects() : []));
-export const getExplore = cache((q: string, sort: 'stars' | 'recent') =>
-  get<ProjectCard[]>(`/v1/explore?${new URLSearchParams({ sort, ...(q ? { q } : {}) })}`),
+export const getExplore = cache((q: string, sort: 'stars' | 'recent', offset = 0, limit = 30) =>
+  get<ProjectCard[]>(`/v1/explore?${new URLSearchParams({ sort, ...(q ? { q } : {}), offset: String(offset), limit: String(limit) })}`),
 );
 export const getUserPage = cache((handle: string) => orNotFound(get<UserPage>(`/v1/users/${encodeURIComponent(handle)}`)));
 export const getUserStars = cache((handle: string) => orNotFound(get<ProjectCard[]>(`/v1/users/${encodeURIComponent(handle)}/stars`)));
 /**
- * Thumbnail links for a project's files, and which are still being rendered. They're a nicety,
+ * Thumbnail links for a project's files, and which are still being rendered. With a release
+ * number, the thumbnails drawn from the exports that release was made with. They're a nicety,
  * so a failure shows file glyphs instead of an error.
  */
-export async function getThumbnailLinks(projectId: string, sha256s: readonly string[]): Promise<ThumbnailLinks> {
+export async function getThumbnailLinks(projectId: string, sha256s: readonly string[], releaseNumber?: number): Promise<ThumbnailLinks> {
   if (sha256s.length === 0) return { thumbnails: {}, pending: [] };
   try {
     const links = await apiRequest<ThumbnailLinks>(await getAccessToken(), `/v1/projects/${projectId}/thumbnails`, {
       method: 'POST',
-      body: JSON.stringify({ sha256s: [...new Set(sha256s)].slice(0, 1000) }),
+      body: JSON.stringify({ sha256s: [...new Set(sha256s)].slice(0, 1000), ...(releaseNumber ? { releaseNumber } : {}) }),
     });
     return { thumbnails: links.thumbnails, pending: links.pending ?? [] };
   } catch {
     return { thumbnails: {}, pending: [] };
   }
 }
-export const getThumbnails = async (projectId: string, sha256s: readonly string[]) => (await getThumbnailLinks(projectId, sha256s)).thumbnails;
-/** STEP and STL exports of a project's SolidWorks files, by file hash. Like thumbnails, a failure just leaves them out. */
-export async function getFileExports(projectId: string, sha256s: readonly string[]): Promise<Record<string, FileExport[]>> {
+export const getThumbnails = async (projectId: string, sha256s: readonly string[], releaseNumber?: number) => (await getThumbnailLinks(projectId, sha256s, releaseNumber)).thumbnails;
+/**
+ * STEP and STL exports of a project's SolidWorks files, by file hash. With a release number,
+ * the exports that release was made with. Like thumbnails, a failure just leaves them out.
+ */
+export async function getFileExports(projectId: string, sha256s: readonly string[], releaseNumber?: number): Promise<Record<string, FileExport[]>> {
   if (sha256s.length === 0) return {};
   try {
     const result = await apiRequest<{ exports: Record<string, FileExport[]> }>(await getAccessToken(), `/v1/projects/${projectId}/exports/lookup`, {
       method: 'POST',
-      body: JSON.stringify({ sha256s: [...new Set(sha256s)].slice(0, 1000) }),
+      body: JSON.stringify({ sha256s: [...new Set(sha256s)].slice(0, 1000), ...(releaseNumber ? { releaseNumber } : {}) }),
     });
     return result.exports;
   } catch {
@@ -91,13 +96,21 @@ export async function getFileExports(projectId: string, sha256s: readonly string
   }
 }
 export const getBilling = cache(() => get<Billing>('/v1/me/billing'));
-/** Projects the signed-in user deleted that can still be restored. */
-export const getDeletedProjects = cache(() => get<DeletedProject[]>('/v1/me/deleted-projects'));
 export const getMyProjects = cache(() => get<Project[]>('/v1/projects'));
+
+/** One request per project per page render, shared by getProject and findProject. */
+const fetchProject = cache((owner: string, slug: string) => get<Project>(`/v1/users/${encodeURIComponent(owner)}/projects/${encodeURIComponent(slug)}`));
+
+/** A project, or null when it's missing or private to this viewer. Other failures (a server error, say) still throw. */
+export const findProject = (owner: string, slug: string) =>
+  fetchProject(owner, slug).catch((error: unknown) => {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  });
 
 export const getProject = cache(async (owner: string, slug: string) => {
   try {
-    return await get<Project>(`/v1/users/${encodeURIComponent(owner)}/projects/${encodeURIComponent(slug)}`);
+    return await fetchProject(owner, slug);
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
       // Private projects look missing to outsiders. A signed-out visitor may just need to log in,
@@ -114,7 +127,8 @@ export const getBranches = cache((projectId: string) => get<Branch[]>(`/v1/proje
 export const getBranchDetail = cache((branchId: string) => orNotFound(get<BranchDetail>(`/v1/branches/${branchId}`)));
 export const getCommits = cache((branchId: string) => get<Commit[]>(`/v1/branches/${branchId}/commits`));
 /** The id comes from the URL, so anything that isn't a UUID is simply not found. */
-export const getCommit = cache((commitId: string) => {
+export const getCommit = cache(async (commitId: string) => {
+  // Async, so a bad id rejects the promise like any other miss instead of throwing on the call.
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(commitId)) notFound();
   return orNotFound(get<CommitDetail>(`/v1/commits/${commitId}`));
 });
@@ -138,9 +152,31 @@ export const getReleaseRequestByNumber = cache(async (projectId: string, number:
   return getReleaseRequest(summary.id);
 });
 
+type RebuildMessage = { level: 'info' | 'warning' | 'error'; message: string; path?: string };
+
+/** Every message of a request's rebuild report, most severe first, read a page (of up to 1,000) at a time. */
+export const getRebuildReport = cache(async (requestId: string) => {
+  const messages: RebuildMessage[] = [];
+  let total = 0;
+  do {
+    const page = await get<{ total: number; messages: RebuildMessage[] }>(`/v1/release-requests/${requestId}/rebuild-report?offset=${messages.length}&limit=1000`);
+    total = page.total;
+    if (page.messages.length === 0) break;
+    messages.push(...page.messages);
+  } while (messages.length < total);
+  return { total, messages };
+});
+export const getDeletedProjects = cache(() => get<DeletedProject[]>('/v1/me/deleted-projects'));
+/** Members with ids and roles, for the project's own members. Outsiders get `PublicMember`s; see `getVisibleMembers`. */
 export const getMembers = cache((projectId: string) => get<Member[]>(`/v1/projects/${projectId}/members`));
+/** Members as the viewer may see them: full `Member`s for members, handles only for everyone else. */
+export const getVisibleMembers = cache((projectId: string) => get<(Member | PublicMember)[]>(`/v1/projects/${projectId}/members`));
+/** Whether a member came with an id and role, which only the project's own members get. */
+export const isFullMember = (member: Member | PublicMember): member is Member => 'userId' in member;
 export const getApprovalRules = cache((projectId: string) => get<ApprovalRules>(`/v1/projects/${projectId}/approval-rules`));
-export const getEvents = cache((projectId: string, limit = 20) => get<ProjectEvent[]>(`/v1/projects/${projectId}/events?order=desc&limit=${limit}`));
+export const getEvents = cache((projectId: string, limit = 20, before?: string) =>
+  get<ProjectEvent[]>(`/v1/projects/${projectId}/events?order=desc&limit=${limit}${before && /^\d+$/.test(before) ? `&before=${before}` : ''}`),
+);
 
 export interface FileQuery {
   sort?: 'name' | 'modified' | 'size';
@@ -152,10 +188,18 @@ export interface FileQuery {
 const fileQuery = (query: object) =>
   new URLSearchParams(Object.entries(query).flatMap(([key, value]) => (value === undefined || value === '' || value === false ? [] : [[key, String(value)]])));
 
+/** Cached by the query string, so a page and its title asking for the same folder share one request. */
+const fetchDirectory = cache((projectId: string, query: string) => get<DirectoryListing>(`/v1/projects/${projectId}/directory?${query}`));
+
 /** One folder of the project directory, by its path from the root. A folder that doesn't exist is the not-found page. */
-export const getDirectory = cache((projectId: string, path: string, query: FileQuery = {}) =>
-  orNotFound(get<DirectoryListing>(`/v1/projects/${projectId}/directory?${fileQuery({ path, ...query })}`)),
-);
+export const getDirectory = (projectId: string, path: string, query: FileQuery = {}) => orNotFound(fetchDirectory(projectId, fileQuery({ path, ...query }).toString()));
+
+/** The same folder, or null when it doesn't exist. Other failures (a server error, say) still throw. */
+export const findDirectory = (projectId: string, path: string, query: FileQuery = {}) =>
+  fetchDirectory(projectId, fileQuery({ path, ...query }).toString()).catch((error: unknown) => {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  });
 export const searchFiles = cache(
   (projectId: string, query: FileQuery & { q?: string; tags?: string; favorites?: boolean; area?: 'root' | 'branch' | 'release'; under?: string; history?: boolean }) =>
     get<FilePage<DirectoryFile>>(`/v1/projects/${projectId}/files?${fileQuery(query)}`),

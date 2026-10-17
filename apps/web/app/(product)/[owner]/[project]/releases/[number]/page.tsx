@@ -1,12 +1,13 @@
 import { diffManifests } from '@gigacad/core';
 import Link from 'next/link';
 import { ChangeList, changeSummary } from '../../../../../../components/product/ChangeList';
+import { MarkdownText } from '../../../../../../components/product/MarkdownText';
 import { PageHead } from '../../../../../../components/product/PageHead';
 import { ProjectDirectory, type DirectoryParams } from '../../../../../../components/product/ProjectDirectory';
 import { RelativeTime } from '../../../../../../components/product/RelativeTime';
 import { DownloadIcon, LockIcon } from '../../../../../../components/icons';
 import { projectPath, releaseDownloadPath, releasePath, releaseRequestPath } from '../../../../../../lib/paths';
-import { getFileExports, getProject, getRelease, getViewer, parseNumber } from '../../../../../../lib/product';
+import { getFileExports, getProject, getRelease, getReleases, getViewer, parseNumber } from '../../../../../../lib/product';
 import type { ProjectParams } from '../../layout';
 
 type ReleaseParams = ProjectParams & { number: string };
@@ -18,17 +19,20 @@ export async function generateMetadata({ params }: { params: Promise<ReleasePara
     .then((project) => getRelease(project.id, parseNumber(number)))
     .then((detail) => detail.release)
     .catch(() => null);
-  return { title: `${release?.title ? `v${release.number}: ${release.title}` : `v${number}`} · ${owner}/${slug}` };
+  if (!release) return { title: 'Not found' };
+  return { title: `${release.title ? `v${release.number}: ${release.title}` : `v${release.number}`} · ${owner}/${slug}` };
 }
 
 /** A release: what it's called, what changed since the one before, and all its files, locked. */
 export default async function ReleasePage({ params, searchParams }: { params: Promise<ReleaseParams>; searchParams: Promise<DirectoryParams & { download?: string }> }) {
   const [{ owner, project: slug, number }, { sort, order, offset, download }] = await Promise.all([params, searchParams]);
   const project = await getProject(owner, slug);
-  const [{ release, files }, viewer] = await Promise.all([getRelease(project.id, parseNumber(number)), getViewer()]);
+  const [{ release, files }, viewer, releases] = await Promise.all([getRelease(project.id, parseNumber(number)), getViewer(), getReleases(project.id)]);
+  // The exports this release was made with, which never change.
   const exportable = files.filter((file) => /\.(sldprt|sldasm)$/i.test(file.path)).map((file) => file.blob);
-  const exported = getFileExports(project.id, exportable);
+  const exported = getFileExports(project.id, exportable, release.number);
   const previous = release.number > 1 ? await getRelease(project.id, release.number - 1) : null;
+  const newer = releases.some((other) => other.number === release.number + 1) ? release.number + 1 : null;
   const changes = diffManifests(previous?.files ?? [], files);
   // The lookup takes 1000 files at a time; a release with more offers its exports either way.
   const hasExports = exportable.length > 1000 || Object.keys(await exported).length > 0;
@@ -39,7 +43,7 @@ export default async function ReleasePage({ params, searchParams }: { params: Pr
         title={
           <>
             <span className="mono">v{release.number}</span>
-            {release.title && <span className="release-title">{release.title}</span>}
+            {release.title && <span className="release-title">: {release.title}</span>}
           </>
         }
         meta={
@@ -73,21 +77,22 @@ export default async function ReleasePage({ params, searchParams }: { params: Pr
           This release couldn’t be downloaded. Try again in a moment.
         </p>
       )}
-      {release.notes && <p className="notes release-notes">{release.notes}</p>}
+      {release.notes && <MarkdownText className="notes release-notes">{release.notes}</MarkdownText>}
       <div className="stack">
         <section className="section">
           <h2>{previous ? `Changes from v${previous.release.number}` : 'First release'}</h2>
           {previous ? (
             <>
               {changes.length > 0 && <p className="change-summary">{changeSummary(changes)}</p>}
-              <ChangeList projectId={project.id} changes={changes} empty={`Same files as v${previous.release.number}.`} />
+              <ChangeList projectId={project.id} changes={changes} empty={`Same files as v${previous.release.number}.`} releaseNumber={release.number} />
             </>
           ) : (
             <p className="muted">Everything below is new in v1.</p>
           )}
-          {previous && (
-            <p className="toolbar-note">
-              <Link href={releasePath(owner, slug, previous.release.number)}>← v{previous.release.number}</Link>
+          {(previous || newer) && (
+            <p className="toolbar-note release-nav">
+              {previous && <Link href={releasePath(owner, slug, previous.release.number)}>← v{previous.release.number}</Link>}
+              {newer && <Link href={releasePath(owner, slug, newer)}>v{newer} →</Link>}
             </p>
           )}
         </section>

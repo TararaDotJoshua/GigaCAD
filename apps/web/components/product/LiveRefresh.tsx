@@ -68,10 +68,15 @@ export function LiveRefresh({ projectId }: { projectId: string }) {
         })
         .subscribe();
     })();
+    // Signing out (here or in another tab) drops the subscription at once, rather than when the token expires.
+    const { data: auth } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') void supabase.removeAllChannels();
+    });
     return () => {
       cancelled = true;
       clearTimeout(timer);
       document.removeEventListener('visibilitychange', visibility);
+      auth.subscription.unsubscribe();
       if (channel) void supabase.removeChannel(channel);
     };
   }, [projectId, router]);

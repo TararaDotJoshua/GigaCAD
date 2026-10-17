@@ -2,6 +2,7 @@
 
 import { useOptimistic, useState, useTransition } from 'react';
 import { setFavorite } from '../../app/(product)/actions';
+import { safeAction } from '../../lib/safe-action';
 import { StarIcon } from '../icons';
 
 /** Adds a file to the viewer's own favorites in this project, wherever the file appears. */
@@ -17,12 +18,12 @@ export function FavoriteButton({ projectId, itemId, favorite, name }: { projectI
         className={`icon-button favorite-button${shown ? ' is-favorite' : ''}`}
         aria-pressed={shown}
         aria-label={label}
-        title={error || label}
+        title={label}
         disabled={pending}
         onClick={() =>
           start(async () => {
             setShown(!shown);
-            setError((await setFavorite(projectId, itemId, !shown)).error ?? '');
+            setError((await safeAction(() => setFavorite(projectId, itemId, !shown))).error ?? '');
           })
         }
       >

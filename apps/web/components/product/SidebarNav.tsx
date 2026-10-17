@@ -1,15 +1,17 @@
 'use client';
 
 import { isPlaceholderHandle } from '@gigacad/core';
-import Link from 'next/link';
+import Link, { useLinkStatus } from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { projectPath } from '../../lib/paths';
 import { createClient } from '../../lib/supabase/client';
+import { useDismiss } from '../../lib/use-dismiss';
 import { BranchIcon, LockIcon, LogOutIcon, MenuIcon, SearchIcon, StarIcon } from '../icons';
 import { Logo } from '../Logo';
 import { Avatar } from './Avatar';
 import { IntentLink } from './IntentLink';
+import { RelativeTime } from './RelativeTime';
 
 export interface NavProject {
   readonly owner: string;
@@ -18,7 +20,7 @@ export interface NavProject {
   readonly canManage?: boolean;
   readonly activeRequests?: number;
   /** Open and frozen branches. `holder` is "you", someone's handle, or null when nobody has it checked out. */
-  readonly branches?: readonly { readonly name: string; readonly holder: string | null; readonly since?: string | null; readonly age?: string | null }[];
+  readonly branches?: readonly { readonly name: string; readonly holder: string | null; readonly since?: string | null }[];
 }
 
 export function SidebarNav({
@@ -38,6 +40,13 @@ export function SidebarNav({
   const router = useRouter();
   const [filter, setFilter] = useState('');
   const [open, setOpen] = useState(false);
+  const sidebar = useRef<HTMLElement>(null);
+  const toggle = useRef<HTMLButtonElement>(null);
+  // The phone menu closes on Escape (back to its button) or a tap outside it.
+  useDismiss(open, sidebar, (how) => {
+    setOpen(false);
+    if (how === 'escape') toggle.current?.focus();
+  });
   const shown = projects.filter((p) => `${p.owner}/${p.slug} ${p.name}`.toLowerCase().includes(filter.trim().toLowerCase()));
   const isCurrent = (p: NavProject) => current?.owner === p.owner && current.slug === p.slug;
 
@@ -55,12 +64,12 @@ export function SidebarNav({
   }
 
   return (
-    <aside className="shell-sidebar" data-open={open}>
+    <aside ref={sidebar} className="shell-sidebar" data-open={open}>
       <div className="shell-sidebar-top">
         <Link href={home} className="shell-logo" aria-label="Your projects">
           <Logo />
         </Link>
-        <button type="button" className="shell-menu-toggle" aria-expanded={open} aria-controls="shell-nav" onClick={() => setOpen(!open)}>
+        <button ref={toggle} type="button" className="shell-menu-toggle" aria-expanded={open} aria-controls="shell-nav" onClick={() => setOpen(!open)}>
           <MenuIcon className="icon" />
           <span className="sr-only">Menu</span>
         </button>
@@ -76,14 +85,20 @@ export function SidebarNav({
         <Link href="/explore" className={`shell-explore${pathname === '/explore' ? ' is-active' : ''}`} onClick={() => setOpen(false)}>
           <StarIcon className="icon" />
           Explore public projects
+          <Pending />
         </Link>
 
         <p className="app-sidebar-heading">{me || !current ? 'Projects' : 'This project'}</p>
         <ul className="app-nav">
           {shown.map((p) => (
             <li key={`${p.owner}/${p.slug}`} className={isCurrent(p) ? 'is-current' : undefined}>
-              <IntentLink href={projectPath(p.owner, p.slug)} onClick={() => setOpen(false)} title={p.name}>
-                <span className="app-nav-project-name">{p.name}</span>
+              <IntentLink href={projectPath(p.owner, p.slug)} title={`${p.owner}/${p.slug}`} onClick={() => setOpen(false)}>
+                {/* Someone else's project shows whose it is, so a fork and its source never look the same. */}
+                <span className="app-nav-project-name">
+                  {p.owner !== me?.handle && <span className="app-nav-owner">{p.owner}/</span>}
+                  {p.name}
+                </span>
+                <Pending />
               </IntentLink>
               {isCurrent(p) && current && <ProjectSections project={current} pathname={pathname} onNavigate={() => setOpen(false)} />}
             </li>
@@ -131,6 +146,7 @@ function ProjectSections({ project, pathname, onNavigate }: { project: NavProjec
       <li className={active ? 'is-active' : undefined}>
         <Link href={href} onClick={onNavigate} aria-current={active ? 'page' : undefined}>
           {label}
+          <Pending />
         </Link>
       </li>
     );
@@ -147,12 +163,18 @@ function ProjectSections({ project, pathname, onNavigate }: { project: NavProjec
             <IntentLink href={href} onClick={onNavigate}>
               <BranchIcon className="icon" />
               <span className="mono app-nav-branch-name">{branch.name}</span>
+              <Pending />
               {branch.holder === 'you' ? (
                 <span className="dot dot-signal" title="Checked out by you" aria-label="checked out by you" />
               ) : branch.holder ? (
-                <span className="app-nav-holder" title={`Checked out by @${branch.holder}${branch.since ? ` since ${branch.since.slice(0, 16).replace('T', ' ')} UTC` : ''}`}>
+                <span className="app-nav-holder" title={`Checked out by @${branch.holder}`}>
                   <LockIcon className="icon" />@{branch.holder}
-                  {branch.age && <span className="app-nav-age"> · {branch.age}</span>}
+                  {branch.since && (
+                    <span className="app-nav-age">
+                      {' · '}
+                      <RelativeTime value={branch.since} compact />
+                    </span>
+                  )}
                 </span>
               ) : null}
             </IntentLink>
@@ -167,7 +189,17 @@ function ProjectSections({ project, pathname, onNavigate }: { project: NavProjec
         </>,
       )}
       {section(`${base}/releases`, 'Releases')}
+      {section(`${base}/activity`, 'Activity', true)}
       {project.canManage && section(`${base}/settings`, 'Settings')}
     </ul>
   );
+}
+
+/**
+ * A dot that pulses while its link's page loads, since most pages have no loading skeleton
+ * and a click would otherwise look dead on a slow connection. The row highlights too (CSS).
+ */
+function Pending() {
+  const { pending } = useLinkStatus();
+  return <span aria-hidden="true" className={pending ? 'nav-pending is-pending' : 'nav-pending'} />;
 }

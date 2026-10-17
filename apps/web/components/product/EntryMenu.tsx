@@ -6,6 +6,8 @@ import { useEffect, useLayoutEffect, useRef, useState, useTransition, type React
 import { entryContents, moveEntryTo, removeEntry, renameEntry } from '../../app/(product)/actions';
 import { deleteSummary, type EntryContents } from '../../lib/directory';
 import { treePath } from '../../lib/paths';
+import { focusAfterRefresh } from '../../lib/focus';
+import { safeAction } from '../../lib/safe-action';
 
 /** A root file or folder the menu acts on, read from its row's `data-entry-*` attributes. */
 interface Target {
@@ -150,9 +152,11 @@ export function EntryMenu({
   useEffect(() => {
     if (!target || mode !== 'delete' || contents !== null) return;
     let current = true;
-    entryContents(projectId, target.id).then((found) => {
-      if (current) setContents(found ?? false);
-    });
+    entryContents(projectId, target.id)
+      .catch(() => null)
+      .then((found) => {
+        if (current) setContents(found ?? false);
+      });
     return () => {
       current = false;
     };
@@ -164,16 +168,30 @@ export function EntryMenu({
     return () => window.clearTimeout(timer);
   }, [notice]);
 
-  const run = (label: string, action: () => Promise<{ error?: string }>, done: ReactNode) => {
+  /**
+   * Runs a menu action, says what it did, and puts focus back where it makes sense. The refresh
+   * replaces the row (a rename changes its key) or removes it, so focus then goes to the entry's
+   * new row, or the row after it when it left this folder.
+   */
+  const run = (label: string, action: () => Promise<{ error?: string }>, done: ReactNode, stays: boolean) => {
+    if (!target) return;
+    const row = document.querySelector(`tr[data-entry-id="${target.id}"]`);
+    const neighbor = row?.nextElementSibling ?? row?.previousElementSibling;
+    const nextId = stays ? target.id : (neighbor instanceof HTMLElement ? neighbor.dataset.entryId : undefined);
     setBusy(label);
     start(async () => {
-      const result = await action();
+      const result = await safeAction(action);
       setBusy('');
-      if (result.error) setError(result.error);
-      else {
-        close();
-        setNotice({ text: done, key: Date.now() });
-      }
+      if (result.error) return setError(result.error);
+      close(false);
+      setNotice({ text: done, key: Date.now() });
+      focusAfterRefresh(
+        () =>
+          (nextId && document.querySelector<HTMLElement>(`tr[data-entry-id="${nextId}"] a`)) ||
+          (neighbor instanceof HTMLElement && neighbor.isConnected ? neighbor.querySelector<HTMLElement>('a') : null) ||
+          document.querySelector<HTMLElement>('#main h1'),
+        row ?? null,
+      );
     });
   };
 
@@ -219,7 +237,7 @@ export function EntryMenu({
   const moveTo = (folder: { id: string | null; path: string }) => {
     if (!target) return;
     const label = folder.path || 'the project root';
-    run(`Moving to ${label}…`, () => moveEntryTo(projectId, target.id, folder.id), <>Moved <span className="mono">{target.name}</span> to {folderLink(folder.path)}.</>);
+    run(`Moving to ${label}…`, () => moveEntryTo(projectId, target.id, folder.id), <>Moved <span className="mono">{target.name}</span> to {folderLink(folder.path)}.</>, false);
   };
 
   return (
@@ -313,7 +331,7 @@ export function EntryMenu({
                 role="menuitem"
                 className="is-danger"
                 disabled={pending}
-                onClick={() => run('Deleting…', () => removeEntry(projectId, target.id), <>Deleted <span className="mono">{target.path}</span>.</>)}
+                onClick={() => run('Deleting…', () => removeEntry(projectId, target.id), <>Deleted <span className="mono">{target.path}</span>.</>, false)}
               >
                 {busy || 'Delete permanently'}
               </button>
@@ -329,7 +347,7 @@ export function EntryMenu({
                 event.preventDefault();
                 const name = String(new FormData(event.currentTarget).get('name') ?? '').trim();
                 if (!name || name === target.name) return close();
-                run('Renaming…', () => renameEntry(projectId, target.id, name), <>Renamed <span className="mono">{target.name}</span> to <span className="mono">{name}</span>.</>);
+                run('Renaming…', () => renameEntry(projectId, target.id, name), <>Renamed <span className="mono">{target.name}</span> to <span className="mono">{name}</span>.</>, true);
               }}
             >
               <label className="field">

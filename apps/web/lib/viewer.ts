@@ -39,6 +39,12 @@ const INK = '#0A2922';
 const ZOOM_STEP = 0.8;
 
 export interface ModelView {
+  /** The model's bounding box, in the file's own units. */
+  readonly size: { readonly width: number; readonly depth: number; readonly height: number };
+  /** Half the bounding box's diagonal: what the camera frames. */
+  readonly radius: number;
+  /** Frames the camera for a model this big, so two models side by side show at the same scale. */
+  frame(radius: number): void;
   zoomIn(): void;
   zoomOut(): void;
   /** Frames the whole model again, as when it first showed. */
@@ -196,7 +202,10 @@ export async function showModel(container: HTMLElement, bytes: ArrayBuffer, form
 
   const box = new Box3().setFromObject(model);
   const center = box.getCenter(new Vector3());
-  const radius = Math.max(box.getSize(new Vector3()).length() / 2, 1e-6);
+  const extent = box.getSize(new Vector3());
+  const radius = Math.max(extent.length() / 2, 1e-6);
+  // What the camera frames: this model, or a larger one it's compared with.
+  let framed = radius;
   model.position.sub(center);
   const camera = new PerspectiveCamera(FIELD_OF_VIEW, 1, radius / 100, radius * 100);
 
@@ -219,8 +228,11 @@ export async function showModel(container: HTMLElement, bytes: ArrayBuffer, form
   let moved = false;
   const direction = new Vector3(1, 0.8, 1).normalize();
   const frame = () => {
+    camera.near = framed / 100;
+    camera.far = framed * 100;
+    camera.updateProjectionMatrix();
     controls.target.set(0, 0, 0);
-    camera.position.copy(direction).multiplyScalar(fitDistance(radius, camera.aspect));
+    camera.position.copy(direction).multiplyScalar(fitDistance(framed, camera.aspect));
     controls.update();
     controls.saveState();
   };
@@ -266,6 +278,13 @@ export async function showModel(container: HTMLElement, bytes: ArrayBuffer, form
   resize();
 
   return {
+    // The model is turned Y-up, so its height is along Y and its depth along Z.
+    size: { width: extent.x, depth: extent.z, height: extent.y },
+    radius,
+    frame: (frameRadius) => {
+      framed = frameRadius;
+      reset();
+    },
     zoomIn: () => zoom(true),
     zoomOut: () => zoom(false),
     reset,
@@ -284,4 +303,11 @@ export async function showModel(container: HTMLElement, bytes: ArrayBuffer, form
       canvas.remove();
     },
   };
+}
+
+/** A model's size in words, like "40 × 40 × 12 mm". STEP, IGES, and 3MF are in millimeters; STL and OBJ carry no units. */
+export function sizeText(size: ModelView['size'], format: PreviewFormat): string {
+  const number = (value: number) => Number(value.toPrecision(3)).toLocaleString('en-US');
+  const units = format === 'step' || format === 'iges' || format === '3mf' ? 'mm' : 'units';
+  return `${number(size.width)} × ${number(size.depth)} × ${number(size.height)} ${units} (W × D × H)`;
 }

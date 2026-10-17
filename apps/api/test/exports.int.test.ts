@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { unzipSync } from 'fflate';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { unlinkUnusedBlobs } from '../src/jobs.js';
+import { resetExportDrawnThumbnails, unlinkUnusedBlobs } from '../src/jobs.js';
 import { thumbnailKey } from '../src/storage.js';
 import { inlineRenderer } from '../src/thumbnails/index.js';
 import { generateThumbnails } from '../src/thumbnails/job.js';
@@ -43,9 +43,23 @@ async function project(visibility: 'public' | 'private' = 'private') {
 }
 
 const thumbnail = async (content: string) =>
-  (await harness.sql<{ status: string; error: string | null; modelFormat: string | null }[]>`
-    select status, error, model_format from thumbnails where blob_sha256 = ${sha256(content)}
+  (await harness.sql<{ status: string; error: string | null }[]>`
+    select status, error from thumbnails where blob_sha256 = ${sha256(content)}
   `)[0];
+/** The image a project shows for a file, by the hash it was drawn from. */
+const shown = async (as: Client, projectId: string, content: string) => {
+  const links = await as.post(`/v1/projects/${projectId}/thumbnails`, { sha256s: [sha256(content)] });
+  return links.body.thumbnails[sha256(content)] as string | undefined;
+};
+/** Opens, builds, approves and releases v1 from a branch. */
+async function releaseV1(projectId: string, branchId: string) {
+  const opened = await api.post(`/v1/branches/${branchId}/release-requests`, { title: 'v1' });
+  const requestId = opened.body.releaseRequest.id;
+  const candidateManifestId = (await api.post(`/v1/release-requests/${requestId}/candidate`)).body.candidate.manifestId;
+  await api.post(`/v1/release-requests/${requestId}/approvals`, { candidateManifestId });
+  expect((await api.post(`/v1/release-requests/${requestId}/release`, { candidateManifestId })).status).toBe(201);
+}
+
 const render = () => generateThumbnails({ sql: harness.sql, storage: harness.storage, renderer: inlineRenderer }, { budgetMs: 30_000 });
 
 describe('SolidWorks exports', () => {
@@ -60,14 +74,17 @@ describe('SolidWorks exports', () => {
     const added = await api.put(`/v1/projects/${projectId}/exports`, { source: sha256(part), format: 'stl', blob: stlHash });
     expect(added.status).toBe(200);
     expect(added.body).toEqual({ format: 'stl', sha256: stlHash, size: Buffer.byteLength(stl) });
-    expect(await thumbnail(part)).toMatchObject({ status: 'pending', modelFormat: 'stl' });
+    // The export is drawn as its own file; the part's own thumbnail row is left alone.
+    expect(await thumbnail(stl)).toMatchObject({ status: 'pending' });
+    expect(await thumbnail(part)).toMatchObject({ status: 'failed' });
     // Open pages refresh on project events, so they show the new export.
     const [event] = (await asViewer.get(`/v1/projects/${projectId}/events?order=desc&limit=1`)).body;
-    expect(event).toMatchObject({ kind: 'file_export_attached', actorId: owner.id, payload: { source: sha256(part), format: 'stl', blob: stlHash } });
+    expect(event).toMatchObject({ kind: 'export_attached', actorId: owner.id, payload: { source: sha256(part), format: 'stl', blob: stlHash } });
 
     await render();
-    expect(await thumbnail(part)).toMatchObject({ status: 'ready', error: null });
-    expect(harness.storage.objects.get(thumbnailKey(sha256(part)))?.subarray(1, 4).toString()).toBe('PNG');
+    expect(await thumbnail(stl)).toMatchObject({ status: 'ready', error: null });
+    expect(harness.storage.objects.get(thumbnailKey(stlHash))?.subarray(1, 4).toString()).toBe('PNG');
+    expect(await shown(asViewer, projectId, part)).toContain(thumbnailKey(stlHash));
 
     const lookup = await asViewer.post(`/v1/projects/${projectId}/exports/lookup`, { sha256s: [sha256(part)] });
     expect(lookup.body).toEqual({ exports: { [sha256(part)]: [{ format: 'stl', sha256: stlHash, size: Buffer.byteLength(stl) }] } });
@@ -77,7 +94,9 @@ describe('SolidWorks exports', () => {
     // A STEP added later doesn't take over from the STL for the thumbnail.
     const [stepHash] = (await upload(harness, api, projectId, [`ISO-10303-21; ${randomUUID()}`])) as [string];
     expect((await api.put(`/v1/projects/${projectId}/exports`, { source: sha256(part), format: 'step', blob: stepHash })).status).toBe(200);
-    expect(await thumbnail(part)).toMatchObject({ status: 'ready', modelFormat: 'stl' });
+    // The fixture isn't a real STEP file, so mark its thumbnail ready: both exports now have one.
+    await harness.sql`update thumbnails set status = 'ready', error = null where blob_sha256 = ${stepHash}`;
+    expect(await shown(api, projectId, part)).toContain(thumbnailKey(stlHash));
     const both = await api.post(`/v1/projects/${projectId}/exports/lookup`, { sha256s: [sha256(part)] });
     expect(both.body.exports[sha256(part)].map((entry: { format: string }) => entry.format)).toEqual(['step', 'stl']);
 
@@ -85,6 +104,10 @@ describe('SolidWorks exports', () => {
     await unlinkUnusedBlobs(harness.sql, { graceHours: 0 });
     const [kept] = await harness.sql`select 1 from project_blobs where project_id = ${projectId} and sha256 = ${stlHash}`;
     expect(kept).toBeDefined();
+
+    // Without the STL, the STEP's thumbnail is shown.
+    await harness.sql`delete from file_exports where project_id = ${projectId} and source_sha256 = ${sha256(part)} and format = 'stl'`;
+    expect(await shown(api, projectId, part)).toContain(thumbnailKey(stepHash));
   });
 
   it('only attach to SolidWorks parts and assemblies in the project, from contributors', async () => {
@@ -183,13 +206,169 @@ describe('SolidWorks exports', () => {
     await api.put(`/v1/projects/${projectId}/exports`, { source: sha256(part), format: 'stl', blob: stlHash });
     const opened = await api.post(`/v1/branches/${branchId}/release-requests`, { title: 'v1' });
     const requestId = opened.body.releaseRequest.id;
-    await api.post(`/v1/release-requests/${requestId}/candidate`);
-    await api.post(`/v1/release-requests/${requestId}/approvals`);
-    expect((await api.post(`/v1/release-requests/${requestId}/release`)).status).toBe(201);
+    const candidateManifestId = (await api.post(`/v1/release-requests/${requestId}/candidate`)).body.candidate.manifestId;
+    await api.post(`/v1/release-requests/${requestId}/approvals`, { candidateManifestId });
+    expect((await api.post(`/v1/release-requests/${requestId}/release`, { candidateManifestId })).status).toBe(201);
 
     const fork = await asViewer.post(`/v1/projects/${projectId}/forks`, { slug: `fork-${randomUUID().slice(0, 8)}`, name: 'Fork' });
     expect(fork.status).toBe(201);
     const lookup = await asViewer.post(`/v1/projects/${fork.body.id}/exports/lookup`, { sha256s: [sha256(part)] });
     expect(lookup.body.exports[sha256(part)]).toEqual([expect.objectContaining({ format: 'stl', sha256: stlHash })]);
+    // The fork's v1 keeps them as its own release's exports, too.
+    const kept = await asViewer.post(`/v1/projects/${fork.body.id}/exports/lookup`, { sha256s: [sha256(part)], releaseNumber: 1 });
+    expect(kept.body.exports[sha256(part)]).toEqual([expect.objectContaining({ format: 'stl', sha256: stlHash })]);
+    const [snapshot] = await harness.sql<{ count: number }[]>`
+      select count(*)::int as count from release_exports x join releases r on r.id = x.release_id where r.project_id = ${fork.body.id} and r.number = 1
+    `;
+    expect(snapshot!.count).toBe(1);
+  });
+
+  it('come along from a release made before its exports were snapshotted', async () => {
+    const { projectId, branchId, part } = await project('public');
+    const [stlHash] = (await upload(harness, api, projectId, [tetrahedron()])) as [string];
+    await api.put(`/v1/projects/${projectId}/exports`, { source: sha256(part), format: 'stl', blob: stlHash });
+    await releaseV1(projectId, branchId);
+    // As if the release came from the API before snapshots, and the job hasn't caught up yet. (Releases are
+    // locked; only the purge setting lets these rows go.)
+    await harness.sql.begin(async (tx) => {
+      await tx`select set_config('gigacad.purge', 'on', true)`;
+      await tx`delete from release_exports where release_id in (select id from releases where project_id = ${projectId})`;
+      await tx`delete from release_export_snapshots where release_id in (select id from releases where project_id = ${projectId})`;
+    });
+
+    const fork = await asViewer.post(`/v1/projects/${projectId}/forks`, { slug: `fork-${randomUUID().slice(0, 8)}`, name: 'Fork' });
+    expect(fork.status).toBe(201);
+    const kept = await asViewer.post(`/v1/projects/${fork.body.id}/exports/lookup`, { sha256s: [sha256(part)], releaseNumber: 1 });
+    expect(kept.body.exports[sha256(part)]).toEqual([expect.objectContaining({ format: 'stl', sha256: stlHash })]);
+  });
+
+  it('refuse an approval or release that saw an older export, when the reviewer says which they saw', async () => {
+    const { projectId, branchId, part } = await project();
+    const [first, second] = (await upload(harness, api, projectId, [tetrahedron(), tetrahedron()])) as [string, string];
+    await api.put(`/v1/projects/${projectId}/exports`, { source: sha256(part), format: 'stl', blob: first });
+    const opened = await api.post(`/v1/branches/${branchId}/release-requests`, { title: 'Swap' });
+    const requestId = opened.body.releaseRequest.id as string;
+    const candidateManifestId = (await api.post(`/v1/release-requests/${requestId}/candidate`)).body.candidate.manifestId;
+    const seen = (await api.get(`/v1/release-requests/${requestId}`)).body.approvals.exportsChangedAt as string;
+    expect(seen).toEqual(expect.any(String));
+
+    // The STL is swapped after the page loaded and before Approve is pressed.
+    await api.put(`/v1/projects/${projectId}/exports`, { source: sha256(part), format: 'stl', blob: second });
+    const stale = await api.post(`/v1/release-requests/${requestId}/approvals`, { candidateManifestId, exportsChangedAt: seen });
+    expect(stale.status).toBe(409);
+    expect(stale.body.error.code).toBe('stale_candidate');
+    expect((await api.post(`/v1/release-requests/${requestId}/release`, { candidateManifestId, exportsChangedAt: seen })).body.error.code).toBe('stale_candidate');
+
+    // Reviewing again gives the new version, which approves and releases.
+    const current = (await api.get(`/v1/release-requests/${requestId}`)).body.approvals.exportsChangedAt as string;
+    expect((await api.post(`/v1/release-requests/${requestId}/approvals`, { candidateManifestId, exportsChangedAt: current })).status).toBe(200);
+    expect((await api.post(`/v1/release-requests/${requestId}/release`, { candidateManifestId, exportsChangedAt: current })).status).toBe(201);
+  });
+
+  it('make an approval wait for an export swap in progress, and then refuse it as stale', async () => {
+    const { projectId, branchId, part } = await project();
+    const [first, second] = (await upload(harness, api, projectId, [tetrahedron(), tetrahedron()])) as [string, string];
+    await api.put(`/v1/projects/${projectId}/exports`, { source: sha256(part), format: 'stl', blob: first });
+    const opened = await api.post(`/v1/branches/${branchId}/release-requests`, { title: 'Race' });
+    const requestId = opened.body.releaseRequest.id as string;
+    const candidateManifestId = (await api.post(`/v1/release-requests/${requestId}/candidate`)).body.candidate.manifestId;
+    const seen = (await api.get(`/v1/release-requests/${requestId}`)).body.approvals.exportsChangedAt as string;
+
+    // An export swap holds the project lock and has written its row, but hasn't committed.
+    let commit!: () => void;
+    let written!: () => void;
+    const until = new Promise<void>((resolve) => (commit = resolve));
+    const ready = new Promise<void>((resolve) => (written = resolve));
+    const swap = harness.sql.begin(async (tx) => {
+      await tx`select 1 from projects where id = ${projectId} for update`;
+      await tx`
+        update file_exports set blob_sha256 = ${second}, created_at = clock_timestamp()
+        where project_id = ${projectId} and source_sha256 = ${sha256(part)} and format = 'stl'
+      `;
+      written();
+      await until;
+    });
+    await ready;
+    const approving = api.post(`/v1/release-requests/${requestId}/approvals`, { candidateManifestId, exportsChangedAt: seen });
+    // The approval can't get past the lock while the swap is open.
+    const early = await Promise.race([approving.then(() => 'answered'), new Promise((resolve) => setTimeout(() => resolve('waiting'), 500))]);
+    expect(early).toBe('waiting');
+    commit();
+    await swap;
+    const approved = await approving;
+    expect(approved.status).toBe(409);
+    expect(approved.body.error.code).toBe('stale_candidate');
+  });
+
+  it('still approve for installed clients that send no exports version', async () => {
+    const { projectId, branchId, part } = await project();
+    const [stl] = (await upload(harness, api, projectId, [tetrahedron()])) as [string];
+    await api.put(`/v1/projects/${projectId}/exports`, { source: sha256(part), format: 'stl', blob: stl });
+    const opened = await api.post(`/v1/branches/${branchId}/release-requests`, { title: 'Old client' });
+    const requestId = opened.body.releaseRequest.id as string;
+    const candidateManifestId = (await api.post(`/v1/release-requests/${requestId}/candidate`)).body.candidate.manifestId;
+    expect((await api.post(`/v1/release-requests/${requestId}/approvals`, { candidateManifestId })).status).toBe(200);
+    expect((await api.post(`/v1/release-requests/${requestId}/approvals`, {})).status).toBe(200);
+  });
+
+  it('keep approvals when the same export is attached again, and count a re-approval after a change as new', async () => {
+    const { projectId, branchId, part } = await project();
+    const [first, second] = (await upload(harness, api, projectId, [tetrahedron(), tetrahedron()])) as [string, string];
+    const attach = (blob: string) => api.put(`/v1/projects/${projectId}/exports`, { source: sha256(part), format: 'stl', blob });
+    await attach(first);
+    const opened = await api.post(`/v1/branches/${branchId}/release-requests`, { title: 'Exports' });
+    const requestId = opened.body.releaseRequest.id as string;
+    const candidateManifestId = (await api.post(`/v1/release-requests/${requestId}/candidate`)).body.candidate.manifestId;
+    await api.post(`/v1/release-requests/${requestId}/approvals`, { candidateManifestId });
+    const counted = async () => (await api.get(`/v1/release-requests/${requestId}`)).body.approvals.evaluation.countedUserIds as string[];
+    const approvedEvents = async () =>
+      ((await api.get(`/v1/projects/${projectId}/events?order=desc&limit=50`)).body as { kind: string }[]).filter((event) => event.kind === 'release_request_approved').length;
+    expect(await counted()).toEqual([owner.id]);
+
+    // The same bytes again change nothing, so the approval still counts.
+    await attach(first);
+    expect(await counted()).toEqual([owner.id]);
+    // A different export voids it; approving again is recorded like a first approval.
+    await attach(second);
+    expect(await counted()).toEqual([]);
+    expect(await approvedEvents()).toBe(1);
+    await api.post(`/v1/release-requests/${requestId}/approvals`, { candidateManifestId });
+    expect(await counted()).toEqual([owner.id]);
+    expect(await approvedEvents()).toBe(2);
+  });
+
+  it('only change the thumbnail in their own project, even when another project holds the same file', async () => {
+    const { projectId, part } = await project('public');
+    const [ownStl, otherStl] = [tetrahedron(), tetrahedron()];
+    const [ownHash] = (await upload(harness, api, projectId, [ownStl])) as [string];
+    await api.put(`/v1/projects/${projectId}/exports`, { source: sha256(part), format: 'stl', blob: ownHash });
+    await render();
+    expect(await shown(api, projectId, part)).toContain(thumbnailKey(ownHash));
+
+    // An outsider puts the same part bytes in a project of their own and gives it another STL.
+    const outsider = await createUser(harness, 'copier');
+    const asOutsider = client(harness, outsider);
+    const theirs = (await asOutsider.post('/v1/projects', { slug: `copy-${randomUUID().slice(0, 8)}`, name: 'Copy' })).body.id as string;
+    const branch = await asOutsider.post(`/v1/projects/${theirs}/branches`, { name: 'work' });
+    await commitVersion(harness, asOutsider, theirs, branch.body.id, { 'Bracket.SLDPRT': part });
+    const [otherHash] = (await upload(harness, asOutsider, theirs, [otherStl])) as [string];
+    expect((await asOutsider.put(`/v1/projects/${theirs}/exports`, { source: sha256(part), format: 'stl', blob: otherHash })).status).toBe(200);
+    await render();
+
+    expect(await shown(asOutsider, theirs, part)).toContain(thumbnailKey(otherHash));
+    expect(await shown(api, projectId, part)).toContain(thumbnailKey(ownHash));
+    expect(await shown(client(harness, null), projectId, part)).toContain(thumbnailKey(ownHash));
+    const [cover] = await harness.sql<{ sha: string | null }[]>`select project_thumbnail(${projectId}) as sha`;
+    expect(cover?.sha).toBe(ownHash);
+  });
+
+  it('drawn onto a shared row by an older API are put back to the file’s own preview', async () => {
+    const { projectId, part } = await project();
+    const [stlHash] = (await upload(harness, api, projectId, [tetrahedron()])) as [string];
+    // What main's setFileExport and thumbnail job did before migration 20261016093000.
+    await harness.sql`update thumbnails set model_sha256 = ${stlHash}, model_format = 'stl', status = 'ready' where blob_sha256 = ${sha256(part)}`;
+    expect(await resetExportDrawnThumbnails(harness.sql)).toBeGreaterThan(0);
+    const [row] = await harness.sql<{ status: string; modelSha256: string | null }[]>`select status, model_sha256 from thumbnails where blob_sha256 = ${sha256(part)}`;
+    expect(row).toEqual({ status: 'pending', modelSha256: null });
   });
 });

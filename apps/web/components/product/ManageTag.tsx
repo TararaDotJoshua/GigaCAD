@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition } from 'react';
 import { deleteTag, renameTag, type ActionState } from '../../app/(product)/actions';
+import { safeAction } from '../../lib/safe-action';
 import { ActionButton, FormStatus } from './ActionButton';
 
 /** How long "Renamed." stays up. */
@@ -25,7 +26,7 @@ export function ManageTag({ projectId, tag }: { projectId: string; tag: { id: st
         onSubmit={(event) => {
           event.preventDefault();
           const form = new FormData(event.currentTarget);
-          start(async () => setState(await renameTag(projectId, tag.id, {}, form)));
+          start(async () => setState(await safeAction(() => renameTag(projectId, tag.id, {}, form))));
         }}
       >
         <label className="field">

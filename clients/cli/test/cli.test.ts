@@ -103,3 +103,43 @@ describe('API error output', () => {
     expect(result.stderr).not.toContain('    at ');
   });
 });
+
+describe('release request status', () => {
+  let server: Server;
+  let apiUrl: string;
+  const id = '0f1e2d3c-4b5a-4968-8776-655443322110';
+
+  beforeAll(async () => {
+    // A request closed before verdicts were kept: its evaluation blocks nothing and releases nothing.
+    const detail = {
+      releaseRequest: { id, number: 4, title: 'Old idea', status: 'closed', branchName: 'idea', requesterHandle: 'sam', rebuildStatus: null, rebuildManifestId: null },
+      latestRelease: { id: 'r', number: 2 },
+      preview: { rows: [], warnings: [], errors: [], ok: true },
+      candidate: null,
+      changesMain: true,
+      approvals: { given: [], evaluation: { canRelease: false, countedUserIds: [], ignored: [], blockers: [] } },
+    };
+    server = createServer((request, response) => {
+      response.setHeader('content-type', 'application/json');
+      response.end(JSON.stringify(request.url === `/v1/release-requests/${id}` ? detail : { error: { code: 'not_found', message: 'Not found' } }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    apiUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+
+  afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
+
+  it('says nothing about blockers for a finished request', async () => {
+    const cli = await testCli({ env: { GIGA_TOKEN: 'gcd_test', GIGA_API_URL: apiUrl } });
+    const shown = await cli.run(['rr', 'show', id]);
+    expect(shown.code).toBe(0);
+    expect(shown.stdout).toContain('#4 Old idea (closed)');
+    expect(shown.stdout).not.toContain('Blocked');
+  });
+
+  it('shows approving and releasing with the reviewed candidate in its help', async () => {
+    const help = await (await testCli()).run(['rr', '--help']);
+    expect(help.stdout).toContain('giga rr approve --candidate <id>');
+    expect(help.stdout).toContain('giga rr release --candidate <id>');
+  });
+});

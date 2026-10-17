@@ -31,7 +31,8 @@ export async function generateMetadata({ params }: { params: Promise<EntryParams
     .then((project) => getEntry(project.id, entryId))
     .then((detail) => detail.entry)
     .catch(() => null);
-  return { title: `${entry?.name ?? 'File'} · ${owner}/${slug}` };
+  if (!entry) return { title: 'Not found' };
+  return { title: `${entry.name} · ${owner}/${slug}` };
 }
 
 /** A file or folder at the project root: its revisions and tags, and renaming, moving, and deleting it. */
@@ -166,7 +167,10 @@ export default async function EntryPage({ params }: { params: Promise<EntryParam
               <summary>
                 <h2>Rename or move</h2>
               </summary>
-              <ActionForm action={moveEntry.bind(null, project.id, entry.id)} submitLabel="Save">
+              {/* Remounts with the saved name and folder, so the form never shows (and resends) old ones. */}
+              <ActionForm action={moveEntry.bind(null, project.id, entry.id)} submitLabel="Save" fieldsKey={`${entry.name}/${entry.parentId ?? ''}`}>
+                <input type="hidden" name="wasName" value={entry.name} />
+                <input type="hidden" name="wasParentId" value={entry.parentId ?? ''} />
                 <label className="field">
                   <span>Name</span>
                   <input name="name" required maxLength={255} defaultValue={entry.name} autoComplete="off" />

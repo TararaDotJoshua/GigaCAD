@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { downloadLink } from '../../app/(product)/actions';
+import { safeAction } from '../../lib/safe-action';
 import { DownloadIcon } from '../icons';
 
 /** Fetches a short-lived, named download link when clicked; links are never written into the page. */
@@ -34,7 +35,7 @@ export function DownloadButton({
         title={error || description}
         onClick={() =>
           start(async () => {
-            const result = await downloadLink(projectId, sha256, filename);
+            const result = await safeAction(() => downloadLink(projectId, sha256, filename));
             setError('');
             if (result.url) window.location.assign(result.url);
             else setError(result.error ?? 'Download failed. Try again.');

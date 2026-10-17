@@ -3,9 +3,10 @@
 import { formatBytes } from '@gigacad/core';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { addRootFile, findRootFile, replaceRootFile, type ActionState } from '../../app/(product)/actions';
 import { differentExtension, uploadTitle } from '../../lib/directory';
+import { safeAction } from '../../lib/safe-action';
 import { uploadContents, type UploadPhase } from '../../lib/upload';
 import { PlusIcon } from '../icons';
 import { OPEN_UPLOAD_EVENT } from './OpenUploadButton';
@@ -40,11 +41,23 @@ export interface StorageOwner {
   readonly isYou: boolean;
 }
 
+/** Asks before closing or reloading the tab while `active`, so a running upload isn't cut off. */
+function useLeaveWarning(active: boolean) {
+  useEffect(() => {
+    if (!active) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [active]);
+}
+
 /**
  * Adds files to a root folder, one after another, with progress for each. Files named
  * like one already here become that file's next revision, after asking once for the batch.
  * Files dropped while an upload runs wait their turn. A failed file doesn't stop the rest,
  * except a full storage quota, which stops them all.
+ *
+ * The upload runs outside a transition: inside one, every navigation waited for it to finish.
  */
 export function UploadFiles({
   projectId,
@@ -65,7 +78,8 @@ export function UploadFiles({
   storageFull?: boolean;
 }) {
   const input = useRef<HTMLInputElement>(null);
-  const [pending, start] = useTransition();
+  const dialog = useRef<HTMLDivElement>(null);
+  const [pending, setPending] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
   const [collisions, setCollisions] = useState<{ files: File[]; ids: number[] } | null>(null);
   const [full, setFull] = useState<ActionState['storageFull']>();
@@ -74,6 +88,12 @@ export function UploadFiles({
   const nextId = useRef(0);
   // Files already uploaded whose names turned out to be taken, with the entry they collided with.
   const resolved = useRef(new Map<File, { sha256: string; entryId: string | null }>());
+  useLeaveWarning(pending);
+
+  // The name-collision question takes focus, so keyboard users can answer it.
+  useEffect(() => {
+    if (collisions) dialog.current?.querySelector<HTMLElement>('button')?.focus();
+  }, [collisions]);
 
   useEffect(() => {
     const open = () => input.current?.click();
@@ -118,7 +138,7 @@ export function UploadFiles({
     const jobs = files.map((file, index) => ({ id: ids[index]!, file, replace }));
     queue.current.push(...jobs);
     setItems((current) => [...(keep ? current.filter((item) => !ids.includes(item.id)) : []), ...jobs.map((job) => ({ id: job.id, name: job.file.name, phase: 'waiting' as const, progress: 0 }))]);
-    if (!running.current) run();
+    if (!running.current) void run();
   }
 
   /** Answers the "already here" question for a batch: revisions for all of them, or skip the ones that are here. */
@@ -140,48 +160,59 @@ export function UploadFiles({
     );
   }
 
-  function run() {
+  async function run() {
     running.current = true;
-    start(async () => {
-      const late: { file: File; id: number }[] = [];
+    setPending(true);
+    const late: { file: File; id: number }[] = [];
+    try {
       while (queue.current.length > 0) {
         const job = queue.current.shift()!;
         const { file, id } = job;
         const known = resolved.current.get(file);
         const replacing = existing[file.name.toLowerCase()] ?? known?.entryId ?? null;
-        const uploaded = known ? { sha256: known.sha256 } : await uploadContents(projectId, file, (phase, progress) => update(id, { phase, progress }));
+        const uploaded = known ? { sha256: known.sha256 } : await safeAction(() => uploadContents(projectId, file, (phase, progress) => update(id, { phase, progress })));
         update(id, { phase: 'saving', progress: 1 });
-        const result = uploaded.sha256
+        const sha256 = uploaded.sha256;
+        const result: ActionState & { readonly taken?: boolean } = sha256
           ? replacing && (job.replace || known)
-            ? await replaceRootFile(projectId, replacing, uploaded.sha256)
+            ? await safeAction(() => replaceRootFile(projectId, replacing, sha256))
             : replacing
               ? { taken: true }
-              : await addRootFile(projectId, parentId, file.name, uploaded.sha256)
+              : await safeAction<ActionState & { readonly taken?: boolean }>(() => addRootFile(projectId, parentId, file.name, sha256))
           : uploaded;
-        if ('storageFull' in result && result.storageFull) {
+        if (result.storageFull) {
           // Every other file would be refused too.
           setFull(result.storageFull);
           const rest = queue.current.splice(0).map((other) => other.id);
           setItems((current) => current.map((item) => (item.id === id ? { ...item, phase: 'failed', error: 'Out of storage' } : rest.includes(item.id) ? { ...item, phase: 'skipped' } : item)));
           break;
         }
-        if ('taken' in result && result.taken) {
+        if (result.taken && sha256) {
           // Named like a file elsewhere in this folder, such as on another page: ask about it with the rest.
-          const entryId = replacing ?? (await findRootFile(projectId, folderPath ? `${folderPath}/${file.name}` : file.name));
-          resolved.current.set(file, { sha256: uploaded.sha256!, entryId });
+          const entryId = replacing ?? (await findRootFile(projectId, folderPath ? `${folderPath}/${file.name}` : file.name).catch(() => null));
+          resolved.current.set(file, { sha256, entryId });
           if (entryId) {
             late.push({ file, id });
             update(id, { phase: 'taken', progress: 0 });
             continue;
           }
         }
-        update(id, 'error' in result && result.error ? { phase: 'failed', error: result.error } : { phase: 'done', progress: 1 });
+        update(id, result.error ? { phase: 'failed', error: result.error } : { phase: 'done', progress: 1 });
       }
+    } finally {
       running.current = false;
-      if (late.length) {
-        setCollisions((current) => ({ files: [...(current?.files ?? []), ...late.map((entry) => entry.file)], ids: [...(current?.ids ?? []), ...late.map((entry) => entry.id)] }));
-      }
-    });
+      setPending(false);
+    }
+    if (late.length) {
+      setCollisions((current) => ({ files: [...(current?.files ?? []), ...late.map((entry) => entry.file)], ids: [...(current?.ids ?? []), ...late.map((entry) => entry.id)] }));
+    }
+  }
+
+  /** Leaves the files the question was about where they are. */
+  function cancel() {
+    if (!collisions) return;
+    setItems((current) => current.map((item) => (collisions.ids.includes(item.id) ? { ...item, phase: 'skipped' } : item)));
+    setCollisions(null);
   }
 
   const title = uploadTitle(items.map((item) => item.phase));
@@ -211,7 +242,7 @@ export function UploadFiles({
       )}
 
       {collisions && (
-        <div className="upload-toast" role="alertdialog" aria-labelledby="upload-collisions">
+        <div ref={dialog} className="upload-toast" role="alertdialog" aria-labelledby="upload-collisions" onKeyDown={(event) => event.key === 'Escape' && cancel()}>
           <CollisionQuestion files={collisions.files} existing={existing} resolved={resolved.current} />
           <div className="upload-toast-actions">
             <button type="button" className="btn btn-primary btn-small" onClick={() => answer(true)}>
@@ -220,14 +251,7 @@ export function UploadFiles({
             <button type="button" className="btn btn-secondary btn-small" onClick={() => answer(false)}>
               {collisions.files.length === 1 ? 'Skip it' : 'Skip them'}
             </button>
-            <button
-              type="button"
-              className="btn btn-secondary btn-small"
-              onClick={() => {
-                setItems((current) => current.map((item) => (collisions.ids.includes(item.id) ? { ...item, phase: 'skipped' } : item)));
-                setCollisions(null);
-              }}
-            >
+            <button type="button" className="btn btn-secondary btn-small" onClick={cancel}>
               Cancel
             </button>
           </div>
@@ -325,20 +349,25 @@ export function ReplaceFile({
   owner: StorageOwner;
 }) {
   const input = useRef<HTMLInputElement>(null);
-  const [pending, start] = useTransition();
+  const [pending, setPending] = useState(false);
+  useLeaveWarning(pending);
   const [status, setStatus] = useState<{ error?: string; message?: string; storageFull?: ActionState['storageFull'] }>({});
   // A file of another type, waiting for a yes before it replaces this one.
   const [unlike, setUnlike] = useState<File | null>(null);
 
-  const replace = (file: File) =>
-    start(async () => {
-      setStatus({ message: `Uploading ${file.name}…` });
-      const uploaded = await uploadContents(projectId, file, (phase, progress) =>
+  const replace = async (file: File) => {
+    setPending(true);
+    setStatus({ message: `Uploading ${file.name}…` });
+    const uploaded = await safeAction(() =>
+      uploadContents(projectId, file, (phase, progress) =>
         setStatus({ message: phase === 'uploading' ? `Uploading ${file.name}: ${Math.round(progress * 100)}%` : phase === 'hashing' ? `Reading ${file.name}…` : 'Saving…' }),
-      );
-      if (uploaded.storageFull) setStatus({ storageFull: uploaded.storageFull });
-      else setStatus(uploaded.sha256 ? await replaceRootFile(projectId, entryId, uploaded.sha256, revision) : { error: uploaded.error });
-    });
+      ),
+    );
+    const sha256 = uploaded.sha256;
+    if (uploaded.storageFull) setStatus({ storageFull: uploaded.storageFull });
+    else setStatus(sha256 ? await safeAction(() => replaceRootFile(projectId, entryId, sha256, revision)) : { error: uploaded.error });
+    setPending(false);
+  };
 
   return (
     <span className="action">
@@ -352,7 +381,7 @@ export function ReplaceFile({
           if (!file) return;
           setStatus({});
           if (differentExtension(name, file.name)) setUnlike(file);
-          else replace(file);
+          else void replace(file);
         }}
       />
       <button type="button" className="btn btn-secondary" disabled={pending} onClick={() => input.current?.click()} aria-label={`Replace ${name}`}>
@@ -370,7 +399,7 @@ export function ReplaceFile({
               onClick={() => {
                 const file = unlike;
                 setUnlike(null);
-                replace(file);
+                void replace(file);
               }}
             >
               Replace

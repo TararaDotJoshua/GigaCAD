@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, useTransition, type CSSProperties } from 'react';
 import { setFileTags } from '../../app/(product)/actions';
 import type { Tag } from '../../lib/api';
+import { safeAction } from '../../lib/safe-action';
+import { useDismissDetails } from '../../lib/use-dismiss';
 import { TagIcon } from '../icons';
 
 /**
@@ -16,6 +18,7 @@ export function TagPicker({ projectId, itemId, name, tags, selected }: { project
   const menu = useRef<HTMLDetailsElement>(null);
   // Placed against the viewport, so the table's scrolling and rounded corners don't clip it.
   const [place, setPlace] = useState<CSSProperties>();
+  useDismissDetails(place !== undefined, menu);
 
   // A save refreshes the page with the new tags; start from them.
   const saved = selected.map((tag) => tag.id).join();
@@ -103,8 +106,11 @@ export function TagPicker({ projectId, itemId, name, tags, selected }: { project
               className="btn btn-primary btn-small"
               disabled={pending}
               onClick={() => {
+                const before = new Set(selected.map((tag) => tag.id));
+                // Saving the same tags would only add a line to the activity.
+                if (chosen.size === before.size && [...chosen].every((id) => before.has(id))) return dismiss(true);
                 start(async () => {
-                  const result = await setFileTags(projectId, itemId, [...chosen]);
+                  const result = await safeAction(() => setFileTags(projectId, itemId, [...chosen]));
                   setError(result.error ?? '');
                   if (!result.error) dismiss(true);
                 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { InvalidPathError, isReservedRootName, validateEntryName } from './paths.js';
+import { InvalidPathError, isReservedRootName, validateEntryName, validateProjectPath } from './paths.js';
 
 describe('validateEntryName', () => {
   it('accepts ordinary file and folder names', () => {
@@ -22,3 +22,25 @@ describe('validateEntryName', () => {
     expect(isReservedRootName('Releases v2')).toBe(false);
   });
 });
+
+describe('validateProjectPath', () => {
+  it('normalizes ordinary paths', () => {
+    expect(validateProjectPath('./parts//Bracket rev B.SLDPRT')).toBe('parts/Bracket rev B.SLDPRT');
+    expect(validateProjectPath('Releases/notes.txt')).toBe('Releases/notes.txt');
+  });
+
+  it.each([
+    'parts/stream.txt:hidden.exe',
+    'parts/CON.SLDPRT',
+    'parts/trailing. ',
+    'parts/dir./a.txt',
+    'a<b>|c?.SLDPRT',
+    'parts/\u202Etxt.exe',
+    'parts/a\u2066b.txt',
+    'a\u0000b.txt',
+    `${'a/'.repeat(600)}x`,
+  ])('refuses %j, which Windows can’t store or which reads as something else', (path) => {
+    expect(() => validateProjectPath(path)).toThrow(InvalidPathError);
+  });
+});
+

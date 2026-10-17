@@ -32,7 +32,7 @@ const parentId = z.uuid().nullable();
 const entryParams = idParams.extend({ entryId: z.uuid() });
 const itemParams = idParams.extend({ itemId: z.uuid() });
 const tagParams = idParams.extend({ tagId: z.uuid() });
-const tagName = z.string().min(1).max(50);
+const tagName = z.string().min(1).max(50).regex(/^[^\u0000-\u001f\u007f]*$/, 'Tag names can’t contain control characters');
 
 export function directoryRoutes(app: FastifyInstance, { sql }: AppDeps): void {
   /** One folder: the root (no path), a root folder, `Branches[/<name>[/...]]`, or `Releases[/v<n>[/...]]`. */

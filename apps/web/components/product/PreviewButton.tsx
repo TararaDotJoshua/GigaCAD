@@ -53,6 +53,7 @@ export function PreviewButton({
   path,
   format,
   compare,
+  captions = ['Main', 'Branch'],
   size,
   source,
   fallback,
@@ -61,10 +62,11 @@ export function PreviewButton({
   sha256: string;
   path: string;
   format: PreviewFormat;
-  compare?: PreviewFile;
-  size?: number;
-  source?: PreviewSource;
-  fallback?: { readonly sha256: string; readonly format: PreviewFormat; readonly size?: number };
+  compare?: PreviewFile | undefined;
+  captions?: readonly [string, string];
+  size?: number | undefined;
+  source?: PreviewSource | undefined;
+  fallback?: { readonly sha256: string; readonly format: PreviewFormat; readonly size?: number } | undefined;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const pressedBackdrop = useRef(false);
@@ -74,8 +76,12 @@ export function PreviewButton({
   const [viewCount, setViewCount] = useState(0);
   const [shown, setShown] = useState(0);
   const [touch, setTouch] = useState(false);
+  // Compared models are framed for the larger of the two, so a change in size shows.
+  const [radii, setRadii] = useState<Record<string, number>>({});
+  const shared = compare && radii.main !== undefined && radii.branch !== undefined ? Math.max(radii.main, radii.branch) : undefined;
   const filename = basename(path);
-  const label = compare ? `Compare main and branch versions of ${filename}` : `Preview ${filename}${fromExport(source)}`;
+  const [before, after] = captions;
+  const label = compare ? `Compare ${before.toLowerCase()} and ${after.toLowerCase()} versions of ${filename}` : `Preview ${filename}${fromExport(source)}`;
 
   const primary: Candidate = { sha256, format, size, source, filename: source ? exportFilename(path, source) : filename };
   const fallbackSource = source && (fallback?.format === 'stl' || fallback?.format === 'step') ? fallback.format : source;
@@ -89,6 +95,11 @@ export function PreviewButton({
     setViewCount(views.current.size);
   }, []);
   const each = (action: (view: ModelView) => void) => views.current.forEach(action);
+  const loaded = useCallback((pane: string, radius: number) => setRadii((current) => ({ ...current, [pane]: radius })), []);
+
+  useEffect(() => {
+    if (shared !== undefined) views.current.forEach((view) => view.frame(shared));
+  }, [shared, viewCount]);
 
   useEffect(() => {
     if (open) setTouch(window.matchMedia('(pointer: coarse)').matches);
@@ -104,6 +115,7 @@ export function PreviewButton({
         onClick={() => {
           dialog.current?.showModal();
           setShown(0);
+          setRadii({});
           setOpened((count) => count + 1);
           setOpen(true);
         }}
@@ -121,7 +133,9 @@ export function PreviewButton({
         onClick={(event) => {
           if (event.target === event.currentTarget && pressedBackdrop.current) dialog.current?.close();
         }}
-        aria-label={compare ? `3D previews of ${filename}, main and branch` : `3D preview of ${filename}${fromExport(candidates[shown]?.source)}`}
+        aria-label={
+          compare ? `3D previews of ${filename}, ${before.toLowerCase()} and ${after.toLowerCase()}` : `3D preview of ${filename}${fromExport(candidates[shown]?.source)}`
+        }
       >
         <div className="model-dialog-head">
           <span className="model-title">
@@ -155,16 +169,18 @@ export function PreviewButton({
               projectId={projectId}
               candidates={[{ sha256: compare.sha256, format, size: compare.size, filename: basename(compare.path) }]}
               open={open}
-              caption="Main"
+              caption={before}
               onView={register}
+              onLoaded={loaded}
             />
-            <ModelPane key={`branch-${opened}`} name="branch" projectId={projectId} candidates={candidates} open={open} caption="Branch" onView={register} />
+            <ModelPane key={`branch-${opened}`} name="branch" projectId={projectId} candidates={candidates} open={open} caption={after} onView={register} onLoaded={loaded} />
           </div>
         ) : (
           <ModelPane key={opened} name="file" projectId={projectId} candidates={candidates} open={open} onView={register} onShown={setShown} />
         )}
         <p className={viewCount > 0 ? 'model-hint' : 'model-hint is-hidden'} aria-hidden={viewCount === 0}>
           {touch ? 'Drag to orbit, pinch to zoom, two-finger drag to pan.' : 'Drag to orbit, scroll to zoom, right-drag to pan.'}
+          {compare ? ' Both are shown at the same scale.' : ''}
         </p>
       </dialog>
     </>
@@ -193,6 +209,7 @@ function ModelPane({
   caption,
   onView,
   onShown,
+  onLoaded,
 }: {
   name: string;
   projectId: string;
@@ -201,9 +218,12 @@ function ModelPane({
   caption?: string;
   onView: (pane: string, view: ModelView | null) => void;
   onShown?: (index: number) => void;
+  /** Reports the model's radius once it shows, for framing two models alike. */
+  onLoaded?: (pane: string, radius: number) => void;
 }) {
   const stage = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<PaneState>({ phase: 'loading', status: '' });
+  const [dimensions, setDimensions] = useState('');
   const [attempt, setAttempt] = useState<Attempt>({ index: 0, confirmed: false });
   const [size, setSize] = useState<number | undefined>();
   const candidate = candidates[attempt.index] ?? candidates[0]!;
@@ -261,7 +281,7 @@ function ModelPane({
       }
       const bytes = await response.arrayBuffer();
       if (cancelled) return;
-      const { showModel } = await import('../../lib/viewer');
+      const { showModel, sizeText: describeSize } = await import('../../lib/viewer');
       if (cancelled) return;
       view = await showModel(container, bytes, format, {
         signal,
@@ -273,20 +293,23 @@ function ModelPane({
         return;
       }
       onView(name, view);
+      setDimensions(describeSize(view.size, format));
       setState({ phase: 'ready' });
+      onLoaded?.(name, view.radius);
     })().catch((error: unknown) => {
       if (!cancelled) fail(error);
     });
     return () => {
       cancelled = true;
       controller.abort();
+      setDimensions('');
       if (view) {
         onView(name, null);
         view.release();
       }
     };
     // `candidate` follows from `attempt`; its fields are listed so a new candidates array doesn't restart the load.
-  }, [open, attempt, projectId, sha256, format, source, knownSize, filename, last, name, onView, onShown]);
+  }, [open, attempt, projectId, sha256, format, source, knownSize, filename, last, name, onView, onShown, onLoaded]);
 
   const sizeText = size === undefined ? '' : `, ${formatBytes(size)}`;
   return (
@@ -315,6 +338,7 @@ function ModelPane({
           </div>
         </div>
       )}
+      {state.phase === 'ready' && dimensions && <p className="model-size">{dimensions}</p>}
       {state.phase === 'error' && (
         <div className="model-status is-error" role="alert">
           <p>{state.message}</p>

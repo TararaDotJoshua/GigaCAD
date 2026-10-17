@@ -6,6 +6,7 @@ export type EventKind =
   | 'project_updated'
   | 'project_deleted'
   | 'project_restored'
+  | 'project_forked'
   | 'member_changed'
   | 'approval_rules_changed'
   | 'branch_created'
@@ -14,6 +15,8 @@ export type EventKind =
   | 'branch_lock_force_released'
   | 'branch_archived'
   | 'commit_created'
+  | 'export_attached'
+  | 'export_replaced'
   | 'release_request_opened'
   | 'release_request_picks_changed'
   | 'release_request_candidate_generated'
@@ -30,8 +33,7 @@ export type EventKind =
   | 'tag_created'
   | 'tag_renamed'
   | 'tag_deleted'
-  | 'file_tags_changed'
-  | 'file_export_attached';
+  | 'file_tags_changed';
 
 /**
  * Every state change writes an event in the same transaction. The table is the

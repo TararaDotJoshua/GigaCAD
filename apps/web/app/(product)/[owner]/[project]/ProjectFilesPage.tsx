@@ -20,7 +20,20 @@ const RELEASE_FILES_SHOWN = 8;
  * The project page and its folders. At the root: the latest release, then the project's
  * files, with tags and recent activity beside them. In a folder: just the folder.
  */
-export async function ProjectFilesPage({ owner, slug, path, params }: { owner: string; slug: string; path: string; params: DirectoryParams }) {
+export async function ProjectFilesPage({
+  owner,
+  slug,
+  path,
+  params,
+  restored = false,
+}: {
+  owner: string;
+  slug: string;
+  path: string;
+  params: DirectoryParams;
+  /** Just brought back from Deleted projects. */
+  restored?: boolean;
+}) {
   const project = await getProject(owner, slug);
   const isRoot = path === '';
   const searching = Boolean(params.q || params.tags || params.view);
@@ -72,6 +85,11 @@ export async function ProjectFilesPage({ owner, slug, path, params }: { owner: s
           </>
         }
       />
+      {restored && (
+        <p className="notice" role="status">
+          Restored {project.name}, with its history, members, and files.
+        </p>
+      )}
       {isRoot ? (
         <div className="page-grid">
           <div className="stack">
@@ -113,7 +131,7 @@ async function LatestRelease({ project, release }: { project: Project; release: 
           </p>
         </div>
         <div className="latest-release-actions">
-          <a className="btn btn-primary btn-small" href={releaseDownloadPath(owner, slug, release.number)} download>
+          <a className="btn btn-primary btn-small" href={releaseDownloadPath(owner, slug, release.number)}>
             <DownloadIcon className="icon" />
             Download all
           </a>

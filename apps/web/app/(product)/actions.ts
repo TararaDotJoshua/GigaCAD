@@ -1,6 +1,6 @@
 'use server';
 
-import { isPlanId, type ApprovalRules, type Picks, type ProjectRole } from '@gigacad/core';
+import { formatBytes, isPlanId, type ApprovalRules, type Picks, type ProjectRole } from '@gigacad/core';
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError, apiRequest, type Project, type ReleaseRequestDetail } from '../../lib/api';
@@ -8,7 +8,7 @@ import { dashboardPath } from '../../lib/hosts';
 import { messageFor } from '../../lib/messages';
 import { projectPath, releasePath, releaseRequestPath, treePath } from '../../lib/paths';
 import { safeReturnPath } from '../../lib/return-path';
-import { requireAccessToken } from '../../lib/session';
+import { getAccessToken } from '../../lib/session';
 
 /**
  * Every write in the product goes through here. Actions run on the server with the
@@ -20,7 +20,25 @@ export interface ActionState {
   readonly message?: string;
   /** Set when an upload was refused because the project owner's storage is full. */
   readonly storageFull?: { readonly usedBytes: number; readonly quotaBytes: number };
+  /** The session ended (in another tab, or it expired), so nothing was saved. */
+  readonly signedOut?: boolean;
+  /** Where to go to fix the error, shown after it. */
+  readonly link?: { readonly href: string; readonly label: string };
 }
+
+/** A new project's address is one of yours already, maybe a deleted project's, which the error links to. */
+function addressError(error: unknown): ActionState {
+  if (error instanceof ApiError && error.code === 'address_deleted') {
+    return { error: 'You deleted a project at this address. Restore it under Account, or choose another address.', link: { href: '/settings#deleted', label: 'Deleted projects' } };
+  }
+  return { error: messageFor(error) };
+}
+
+/**
+ * What every action returns when the session is gone. Redirecting to log in from an action
+ * would throw away what was typed, so the form stays and says what happened.
+ */
+const SIGNED_OUT = { error: 'You’ve been signed out, so this wasn’t saved. Log in again, then try again.', signedOut: true } as const satisfies ActionState;
 
 /** The storage numbers from a `storage_full` refusal, so the page can offer the right next step. */
 function storageFull(error: unknown): ActionState['storageFull'] {
@@ -43,7 +61,8 @@ function id(value: string): string {
 const json = (method: string, body?: unknown): RequestInit => ({ method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
 
 async function mutate(run: (token: string) => Promise<unknown>, message?: string): Promise<ActionState> {
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   try {
     await run(token);
   } catch (error) {
@@ -76,7 +95,8 @@ export async function openBillingPortal(from?: string): Promise<ActionState> {
 const returnTo = (from?: string) => (from && safeReturnPath(from, '') ? { from: safeReturnPath(from, '') } : {});
 
 async function goToBilling(path: string, body?: unknown): Promise<ActionState> {
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   let url: string;
   try {
     ({ url } = await apiRequest<{ url: string }>(token, path, json('POST', body)));
@@ -88,8 +108,11 @@ async function goToBilling(path: string, body?: unknown): Promise<ActionState> {
 
 export async function saveProfile(_state: ActionState, form: FormData): Promise<ActionState> {
   const optional = (name: string) => (form.has(name) ? { [name]: text(form, name) || null } : {});
-  // "example.com" means the website; the API only takes full http(s) links.
-  const website = text(form, 'website');
+  // "example.com" (or "example.com:8080") means the website; the API only takes full http(s)
+  // links. Something with its own scheme, like "mailto:", goes as typed for the API to refuse.
+  const typed = text(form, 'website');
+  const website = typed && !/^[a-z][a-z0-9+.-]*:(?:\/\/|(?!\d))/i.test(typed) ? `https://${typed}` : typed;
+  if (website.length > 200) return { error: `Website can be at most 200 characters${website === typed ? '' : ', counting the https:// added to it'}.` };
   return mutate(
     (token) =>
       apiRequest(
@@ -100,7 +123,7 @@ export async function saveProfile(_state: ActionState, form: FormData): Promise<
           ...optional('displayName'),
           ...optional('bio'),
           ...optional('location'),
-          ...(form.has('website') ? { website: website && !/^[a-z][a-z0-9+.-]*:/i.test(website) ? `https://${website}` : website || null } : {}),
+          ...(form.has('website') ? { website: website || null } : {}),
         }),
       ),
     'Saved.',
@@ -129,7 +152,8 @@ export async function signOutDevice(tokenId: string): Promise<ActionState> {
 // Projects
 
 export async function createProject(_state: ActionState, form: FormData): Promise<ActionState> {
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   let project: Project;
   try {
     project = await apiRequest<Project>(
@@ -143,7 +167,7 @@ export async function createProject(_state: ActionState, form: FormData): Promis
       }),
     );
   } catch (error) {
-    return { error: messageFor(error) };
+    return addressError(error);
   }
   redirect(projectPath(project.ownerHandle, project.slug));
 }
@@ -178,11 +202,13 @@ export async function changeMemberRole(projectId: string, handle: string, role: 
 }
 
 /** People to suggest while typing a handle to add. */
-export async function findPeople(query: string): Promise<{ handle: string; displayName: string | null }[]> {
+export async function findPeople(query: string): Promise<{ handle: string; displayName: string | null }[] | { signedOut: true }> {
   const q = query.trim().replace(/^@/, '');
   if (!q) return [];
+  const token = await getAccessToken();
+  if (!token) return { signedOut: true };
   try {
-    const found = await apiRequest<{ handle: string; displayName: string | null }[]>(await requireAccessToken(), `/v1/profiles?${new URLSearchParams({ q: q.slice(0, 100) })}`);
+    const found = await apiRequest<{ handle: string; displayName: string | null }[]>(token, `/v1/profiles?${new URLSearchParams({ q: q.slice(0, 100) })}`);
     return found.map(({ handle, displayName }) => ({ handle, displayName }));
   } catch {
     return [];
@@ -206,7 +232,8 @@ export async function setApprovalRules(projectId: string, _state: ActionState, f
 
 export async function deleteProject(projectId: string, slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
   if (text(form, 'confirm') !== slug) return { error: `Type ${slug} to confirm.` };
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   try {
     await apiRequest(token, `/v1/projects/${id(projectId)}`, json('DELETE'));
   } catch (error) {
@@ -216,19 +243,29 @@ export async function deleteProject(projectId: string, slug: string, _state: Act
 }
 
 export async function restoreProject(projectId: string): Promise<ActionState> {
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   let project: Project;
   try {
     project = await apiRequest<Project>(token, `/v1/projects/${id(projectId)}/restore`, json('POST'));
   } catch (error) {
+    const full = storageFull(error);
+    if (full && error instanceof ApiError) {
+      const needed = (error.details as { neededBytes?: number } | undefined)?.neededBytes ?? 0;
+      return {
+        error: `Restoring it needs ${formatBytes(needed)}, but only ${formatBytes(Math.max(0, full.quotaBytes - full.usedBytes))} of your ${formatBytes(full.quotaBytes)} is free.`,
+        storageFull: full,
+      };
+    }
     return { error: messageFor(error) };
   }
-  redirect(projectPath(project.ownerHandle, project.slug));
+  redirect(`${projectPath(project.ownerHandle, project.slug)}?restored=1`);
 }
 
 /** A short-lived download link with the file's real name. It is never rendered into a page. */
 export async function downloadLink(projectId: string, sha256: string, filename: string): Promise<{ url?: string; error?: string }> {
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   try {
     const plan = await apiRequest<{ downloads: { sha256: string; url: string }[] }>(
       token,
@@ -251,7 +288,8 @@ export async function setStar(projectId: string, starred: boolean): Promise<Acti
 }
 
 export async function forkProject(sourceId: string, _state: ActionState, form: FormData): Promise<ActionState> {
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   const release = Number(text(form, 'releaseNumber'));
   let project: Project;
   try {
@@ -266,7 +304,7 @@ export async function forkProject(sourceId: string, _state: ActionState, form: F
       }),
     );
   } catch (error) {
-    return { error: messageFor(error) };
+    return addressError(error);
   }
   redirect(projectPath(project.ownerHandle, project.slug));
 }
@@ -274,13 +312,22 @@ export async function forkProject(sourceId: string, _state: ActionState, form: F
 export async function createBranch(projectId: string, owner: string, slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
   const name = text(form, 'name');
   const from = Number(text(form, 'fromRelease'));
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   try {
     await apiRequest(token, `/v1/projects/${id(projectId)}/branches`, json('POST', { name, ...(from > 0 ? { fromRelease: from } : {}) }));
   } catch (error) {
+    if (error instanceof ApiError && error.code === 'branch_exists_archived') {
+      return { error: `An archived branch is already called ${(error.details as { name?: string } | undefined)?.name ?? name}. Restore it or pick another name.` };
+    }
     return { error: messageFor(error) };
   }
   redirect(projectPath(owner, slug, 'branches', name));
+}
+
+/** The holder giving back their own lock, from the browser instead of the drive or CLI. */
+export async function checkInBranch(branchId: string): Promise<ActionState> {
+  return mutate((token) => apiRequest(token, `/v1/branches/${id(branchId)}/checkin`, json('POST', {})), 'Checked in.');
 }
 
 export async function forceReleaseLock(branchId: string): Promise<ActionState> {
@@ -291,8 +338,13 @@ export async function archiveBranch(branchId: string): Promise<ActionState> {
   return mutate((token) => apiRequest(token, `/v1/branches/${id(branchId)}/archive`, json('POST', {})), 'Archived.');
 }
 
+export async function unarchiveBranch(branchId: string): Promise<ActionState> {
+  return mutate((token) => apiRequest(token, `/v1/branches/${id(branchId)}/unarchive`, json('POST', {})), 'Restored. The branch is open again.');
+}
+
 export async function openReleaseRequest(branchId: string, owner: string, slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   let detail: ReleaseRequestDetail;
   try {
     detail = await apiRequest<ReleaseRequestDetail>(
@@ -315,7 +367,8 @@ export async function openReleaseRequest(branchId: string, owner: string, slug: 
 
 /** Saves the picks and rebuilds the candidate from them, so saving is the only step. */
 export async function savePicks(requestId: string, picks: Picks): Promise<ActionState> {
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   let detail: ReleaseRequestDetail;
   try {
     detail = await apiRequest<ReleaseRequestDetail>(token, `/v1/release-requests/${id(requestId)}/picks`, json('PUT', picks));
@@ -353,7 +406,8 @@ export async function closeReleaseRequest(requestId: string): Promise<ActionStat
 }
 
 export async function releaseCandidate(requestId: string, owner: string, slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   let number: number;
   try {
     // "Approve and release" for someone whose own approval is the last one needed.
@@ -384,6 +438,7 @@ const parent = (value: string | null) => (value === null || value === '' ? null 
 export interface UploadStart {
   readonly error?: string;
   readonly storageFull?: ActionState['storageFull'];
+  readonly signedOut?: boolean;
   /** Null when the project already has these contents, so nothing needs uploading. */
   readonly upload?: { readonly uploadId: string; readonly url: string; readonly headers: Record<string, string> } | null;
 }
@@ -393,7 +448,8 @@ export interface UploadStart {
  * contents straight to storage. The browser sends the bytes; the API checks their hash.
  */
 export async function startUpload(projectId: string, sha256: string, size: number): Promise<UploadStart> {
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   try {
     const plan = await apiRequest<{ uploads: { uploadId: string; sha256: string; url: string; headers: Record<string, string> }[] }>(
       token,
@@ -408,7 +464,8 @@ export async function startUpload(projectId: string, sha256: string, size: numbe
 }
 
 export async function finishUpload(projectId: string, uploadId: string): Promise<ActionState> {
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   try {
     const result = await apiRequest<{ failed: { reason: string }[] }>(
       token,
@@ -426,7 +483,8 @@ export async function finishUpload(projectId: string, uploadId: string): Promise
 
 /** Adds an uploaded file to a root folder. */
 export async function addRootFile(projectId: string, parentId: string | null, name: string, sha256: string): Promise<ActionState & { readonly taken?: boolean }> {
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   try {
     await apiRequest(token, `/v1/projects/${id(projectId)}/directory/files`, json('POST', { parentId: parent(parentId), name, blob: sha(sha256) }));
   } catch (error) {
@@ -480,7 +538,8 @@ export async function removeEntry(projectId: string, entryId: string): Promise<A
 }
 
 export async function deleteEntry(projectId: string, entryId: string, owner: string, slug: string, parentPath: string): Promise<ActionState> {
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   try {
     await apiRequest(token, `/v1/projects/${id(projectId)}/directory/entries/${id(entryId)}`, json('DELETE'));
   } catch (error) {

@@ -19,6 +19,7 @@ export function AddMemberFields({ canAddMaintainers }: { canAddMaintainers: bool
   const [handle, setHandle] = useState('');
   const [role, setRole] = useState<keyof typeof ROLE_DESCRIPTIONS>('viewer');
   const [people, setPeople] = useState<{ handle: string; displayName: string | null }[]>([]);
+  const [signedOut, setSignedOut] = useState(false);
 
   useEffect(() => {
     const query = handle.trim().replace(/^@/, '');
@@ -26,7 +27,10 @@ export function AddMemberFields({ canAddMaintainers }: { canAddMaintainers: bool
     let current = true;
     const timer = setTimeout(async () => {
       const found = await findPeople(query);
-      if (current) setPeople(found);
+      if (!current) return;
+      // Without a session there are no suggestions, which would look like nobody has that handle.
+      setSignedOut(!Array.isArray(found));
+      setPeople(Array.isArray(found) ? found : []);
     }, 200);
     return () => {
       current = false;
@@ -46,6 +50,14 @@ export function AddMemberFields({ canAddMaintainers }: { canAddMaintainers: bool
             </option>
           ))}
         </datalist>
+        {signedOut && (
+          <small className="field-hint is-error" role="alert">
+            You’ve been signed out, so people can’t be suggested.{' '}
+            <a href={`/login?next=${encodeURIComponent(typeof window === 'undefined' ? '' : window.location.pathname)}`} target="_blank" rel="noopener">
+              Log in again
+            </a>
+          </small>
+        )}
       </label>
       <label className="field">
         <span>Role</span>

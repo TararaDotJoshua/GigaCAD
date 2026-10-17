@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { projectPath } from '../../lib/paths';
 import { createClient } from '../../lib/supabase/client';
-import { BranchIcon, LockIcon, LogOutIcon, MenuIcon, SearchIcon, StarIcon } from '../icons';
+import { BranchIcon, LockIcon, LogOutIcon, MenuIcon, SearchIcon, SettingsIcon, StarIcon } from '../icons';
 import { Logo } from '../Logo';
 import { Avatar } from './Avatar';
 
@@ -17,7 +17,14 @@ export interface NavProject {
   readonly canManage?: boolean;
   readonly activeRequests?: number;
   /** Open and frozen branches. `holder` is "you", someone's handle, or null when nobody has it checked out. */
-  readonly branches?: readonly { readonly name: string; readonly holder: string | null; readonly since?: string | null; readonly age?: string | null }[];
+  readonly branches?: readonly {
+    readonly name: string;
+    /** Frozen for an open release request, so nobody can save to it. */
+    readonly frozen?: boolean;
+    readonly holder: string | null;
+    readonly since?: string | null;
+    readonly age?: string | null;
+  }[];
 }
 
 export function SidebarNav({
@@ -48,9 +55,10 @@ export function SidebarNav({
   }
 
   async function logOut() {
-    await createClient().auth.signOut();
-    router.push('/login');
-    router.refresh();
+    // Only this browser: other browsers and devices stay signed in.
+    await createClient().auth.signOut({ scope: 'local' });
+    // A full load, so Back can't bring private pages back from the router's cache.
+    window.location.assign('/login');
   }
 
   return (
@@ -98,10 +106,21 @@ export function SidebarNav({
                 <Avatar handle="?" url={me.avatarUrl} />Choose a handle
               </Link>
             ) : (
-              <Link href={`/${me.handle}`} className={pathname === `/${me.handle}` ? 'is-active' : undefined} onClick={() => setOpen(false)}>
-                <Avatar handle={me.handle} url={me.avatarUrl} />@{me.handle}
+              <Link href={`/${me.handle}`} className={pathname === `/${me.handle}` ? 'is-active' : undefined} onClick={() => setOpen(false)} title={`@${me.handle}`}>
+                <Avatar handle={me.handle} url={me.avatarUrl} />
+                <span className="shell-account-handle">@{me.handle}</span>
               </Link>
             )}
+            <Link
+              href="/settings"
+              className={`shell-account-settings${pathname.startsWith('/settings') ? ' is-active' : ''}`}
+              aria-current={pathname.startsWith('/settings') ? 'page' : undefined}
+              title="Account settings"
+              onClick={() => setOpen(false)}
+            >
+              <SettingsIcon className="icon" />
+              <span className="sr-only">Account settings</span>
+            </Link>
             <button type="button" onClick={logOut} title="Log out">
               <LogOutIcon className="icon" />
               <span className="sr-only">Log out</span>
@@ -146,7 +165,12 @@ function ProjectSections({ project, pathname, onNavigate }: { project: NavProjec
             <Link href={href} onClick={onNavigate}>
               <BranchIcon className="icon" />
               <span className="mono app-nav-branch-name">{branch.name}</span>
-              {branch.holder === 'you' ? (
+              {branch.frozen ? (
+                <span className="app-nav-holder" title="Frozen for a release request">
+                  <span aria-hidden="true">Frozen</span>
+                  <span className="sr-only">, frozen for a release request</span>
+                </span>
+              ) : branch.holder === 'you' ? (
                 <span className="dot dot-signal" title="Checked out by you" aria-label="checked out by you" />
               ) : branch.holder ? (
                 <span className="app-nav-holder" title={`Checked out by @${branch.holder}${branch.since ? ` since ${branch.since.slice(0, 16).replace('T', ' ')} UTC` : ''}`}>

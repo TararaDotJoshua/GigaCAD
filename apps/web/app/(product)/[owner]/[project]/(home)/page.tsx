@@ -14,10 +14,10 @@ export default async function ProjectFiles({
   searchParams,
 }: {
   params: Promise<ProjectParams>;
-  searchParams: Promise<DirectoryParams & { release?: string }>;
+  searchParams: Promise<DirectoryParams & { release?: string; restored?: string }>;
 }) {
-  const [{ owner, project: slug }, { release, ...query }] = await Promise.all([params, searchParams]);
+  const [{ owner, project: slug }, { release, restored, ...query }] = await Promise.all([params, searchParams]);
   // Older links chose a release on this page; releases are folders now.
   if (release && /^v?\d+$/i.test(release)) redirect(treePath(owner, slug, `Releases/v${release.replace(/^v/i, '')}`));
-  return <ProjectFilesPage owner={owner} slug={slug} path="" params={query} />;
+  return <ProjectFilesPage owner={owner} slug={slug} path="" params={query} restored={restored === '1'} />;
 }

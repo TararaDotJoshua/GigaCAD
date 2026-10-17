@@ -1,4 +1,5 @@
 import type { Sql } from '../db.js';
+import { notFound } from '../errors.js';
 import { thumbnailKey, type BlobStorage } from '../storage.js';
 import { projectAccess } from './access.js';
 
@@ -9,24 +10,47 @@ export interface ThumbnailLinks {
   readonly pending: readonly string[];
 }
 
-/** Thumbnails for files in a project, for anyone who can see the project. */
+/**
+ * Thumbnails for files in a project, for anyone who can see the project. A SolidWorks file
+ * shows this project's own STL or STEP export when it has one, so another project holding the
+ * same file can never change what this one shows. With a release number, a file shows the
+ * export that release was made with, so replacing an export later never changes a release.
+ */
 export async function projectThumbnails(
   sql: Sql,
   storage: BlobStorage,
   projectId: string,
   viewerId: string | null,
   sha256s: readonly string[],
+  releaseNumber?: number | undefined,
 ): Promise<ThumbnailLinks> {
   await projectAccess(sql, projectId, viewerId);
-  const rows = await sql<{ sha256: string; status: 'pending' | 'ready' }[]>`
-    select t.blob_sha256 as sha256, t.status from thumbnails t
-    join project_blobs pb on pb.sha256 = t.blob_sha256 and pb.project_id = ${projectId}
-    where t.blob_sha256 = any(${[...new Set(sha256s)]}::text[]) and t.status in ('pending', 'ready')
+  let releaseId: string | null = null;
+  if (releaseNumber !== undefined) {
+    const [release] = await sql<{ id: string }[]>`select id from releases where project_id = ${projectId} and number = ${releaseNumber}`;
+    if (!release) throw notFound('Release');
+    releaseId = release.id;
+  }
+  const rows = await sql<{ sha256: string; image: string | null; pending: boolean }[]>`
+    select pb.sha256,
+           ${releaseId ? sql`release_file_thumbnail(${releaseId}, pb.sha256)` : sql`file_thumbnail(${projectId}, pb.sha256)`} as image,
+           exists (
+             select 1 from thumbnails t
+             where t.status = 'pending' and (t.blob_sha256 = pb.sha256 or t.blob_sha256 in (
+               ${
+                 releaseId
+                   ? sql`select x.blob_sha256 from release_exports x where x.release_id = ${releaseId} and x.source_sha256 = pb.sha256`
+                   : sql`select x.blob_sha256 from file_exports x where x.project_id = ${projectId} and x.source_sha256 = pb.sha256`
+               }
+             ))
+           ) as pending
+    from project_blobs pb
+    where pb.project_id = ${projectId} and pb.sha256 = any(${[...new Set(sha256s)]}::text[])
   `;
   const ready = await Promise.all(
-    rows.filter((row) => row.status === 'ready').map(async (row) => [row.sha256, await storage.presignDownload(thumbnailKey(row.sha256))] as const),
+    rows.filter((row) => row.image).map(async (row) => [row.sha256, await storage.presignDownload(thumbnailKey(row.image!))] as const),
   );
-  return { thumbnails: Object.fromEntries(ready), pending: rows.filter((row) => row.status === 'pending').map((row) => row.sha256) };
+  return { thumbnails: Object.fromEntries(ready), pending: rows.filter((row) => !row.image && row.pending).map((row) => row.sha256) };
 }
 
 /** Swaps each row's `thumbnailSha` (from `project_thumbnail()`) for a short-lived image link. */

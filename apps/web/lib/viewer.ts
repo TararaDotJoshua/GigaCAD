@@ -83,11 +83,19 @@ async function geometriesFor(bytes: ArrayBuffer, format: PreviewFormat): Promise
   return geometries;
 }
 
-/**
- * Renders a model into `container` with orbit controls, redrawing only on interaction.
- * Returns a function that frees the WebGL context.
- */
-export async function showModel(container: HTMLElement, bytes: ArrayBuffer, format: PreviewFormat): Promise<() => void> {
+export interface ShownModel {
+  /** Frees the WebGL context. */
+  readonly dispose: () => void;
+  /** The model's bounding box, in the file's own units. */
+  readonly size: { readonly width: number; readonly depth: number; readonly height: number };
+  /** Half the bounding box's diagonal: what the camera frames. */
+  readonly radius: number;
+  /** Frames the camera for a model this big, so two models side by side show at the same scale. */
+  readonly frame: (radius: number) => void;
+}
+
+/** Renders a model into `container` with orbit controls, redrawing only on interaction. */
+export async function showModel(container: HTMLElement, bytes: ArrayBuffer, format: PreviewFormat): Promise<ShownModel> {
   const geometries = await geometriesFor(bytes, format);
   if (geometries.length === 0) throw new Error('This file has no geometry to show.');
 
@@ -110,12 +118,19 @@ export async function showModel(container: HTMLElement, bytes: ArrayBuffer, form
   // Frame the model from an isometric angle, like the line art.
   const box = new Box3().setFromObject(model);
   const center = box.getCenter(new Vector3());
-  const radius = Math.max(box.getSize(new Vector3()).length() / 2, 1e-6);
+  const extent = box.getSize(new Vector3());
+  const radius = Math.max(extent.length() / 2, 1e-6);
   model.position.sub(center);
   const camera = new PerspectiveCamera(35, 1, radius / 100, radius * 100);
   const direction = new Vector3(1, 0.8, 1).normalize();
-  camera.position.copy(direction.multiplyScalar(radius / Math.sin((35 * Math.PI) / 360)));
-  key.position.copy(camera.position);
+  const place = (frameRadius: number) => {
+    camera.near = frameRadius / 100;
+    camera.far = frameRadius * 100;
+    camera.position.copy(direction.clone().multiplyScalar(frameRadius / Math.sin((35 * Math.PI) / 360)));
+    camera.updateProjectionMatrix();
+    key.position.copy(camera.position);
+  };
+  place(radius);
 
   const renderer = new WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -142,17 +157,35 @@ export async function showModel(container: HTMLElement, bytes: ArrayBuffer, form
   controls.addEventListener('change', render);
   resize();
 
-  return () => {
-    observer.disconnect();
-    controls.dispose();
-    geometries.forEach((geometry) => geometry.dispose());
-    model.traverse((child) => {
-      if (child instanceof LineSegments) child.geometry.dispose();
-    });
-    surface.dispose();
-    edges.dispose();
-    renderer.dispose();
-    renderer.forceContextLoss();
-    container.replaceChildren();
+  return {
+    // The model is turned Y-up, so its height is along Y and its depth along Z.
+    size: { width: extent.x, depth: extent.z, height: extent.y },
+    radius,
+    frame: (frameRadius) => {
+      place(frameRadius);
+      controls.target.set(0, 0, 0);
+      controls.update();
+      render();
+    },
+    dispose: () => {
+      observer.disconnect();
+      controls.dispose();
+      geometries.forEach((geometry) => geometry.dispose());
+      model.traverse((child) => {
+        if (child instanceof LineSegments) child.geometry.dispose();
+      });
+      surface.dispose();
+      edges.dispose();
+      renderer.dispose();
+      renderer.forceContextLoss();
+      container.replaceChildren();
+    },
   };
+}
+
+/** A model's size in words, like "40 × 40 × 12 mm". STEP, IGES, and 3MF are in millimeters; STL and OBJ carry no units. */
+export function sizeText(size: ShownModel['size'], format: PreviewFormat): string {
+  const number = (value: number) => Number(value.toPrecision(3)).toLocaleString('en-US');
+  const units = format === 'step' || format === 'iges' || format === '3mf' ? 'mm' : 'units';
+  return `${number(size.width)} × ${number(size.depth)} × ${number(size.height)} ${units} (W × D × H)`;
 }

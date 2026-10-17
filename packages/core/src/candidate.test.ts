@@ -131,6 +131,16 @@ describe('buildCandidate', () => {
     });
   });
 
+  it('warns when a replacement drops an edit the branch made to the replaced file', () => {
+    const branchHead = [...base.filter((e) => e.itemId !== 'p1'), entry('p1', 'parts/Arm.SLDPRT', 'p1-edited'), entry('p3', 'parts/Arm2.SLDPRT', 'p3')];
+
+    const candidate = buildCandidate({ base, branchHead, latestMain: base, picks: { replacements: [{ branchItemId: 'p3', mainItemId: 'p1' }] } });
+
+    expect(candidate.ok).toBe(true);
+    expect(candidate.manifest).toContainEqual(entry('p1', 'parts/Arm2.SLDPRT', 'p3'));
+    expect(candidate.warnings).toEqual([{ kind: 'replacement_discards_branch_change', itemId: 'p1', path: 'parts/Arm.SLDPRT', toPath: 'parts/Arm2.SLDPRT' }]);
+  });
+
   it('asks for a repoint even when the replacement lands on the same path', () => {
     const main = [entry('asm', 'A.SLDASM', 'asm'), entry('old', 'Part.SLDPRT', 'old')];
     const branchHead = [entry('asm', 'A.SLDASM', 'asm'), entry('new', 'part.sldprt', 'new')];

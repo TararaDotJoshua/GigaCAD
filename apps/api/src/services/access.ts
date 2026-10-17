@@ -55,3 +55,17 @@ export async function requireProjectRole(
   if (!hasRole(access.role, minimum)) throw forbidden(`This needs ${minimum} access to the project`);
   return access;
 }
+
+/**
+ * Stand-ins for a lock's holder and computer, for people outside the project. Machine names
+ * are often a person's name, and the holder's id is for members. Installed clients read a null
+ * holder as "not checked out", so outsiders get these instead of nulls.
+ */
+export const HIDDEN_LOCK_HOLDER = '00000000-0000-0000-0000-000000000000';
+export const HIDDEN_LOCK_MACHINE = 'another computer';
+
+/** A branch lock as this viewer may see it: who holds it is public on a public project, but not which account id or computer. */
+export function lockForViewer<T extends { readonly checkedOutBy: string | null; readonly checkedOutMachine: string | null }>(lock: T, role: ProjectRole | null): T {
+  if (role !== null || lock.checkedOutBy === null) return lock;
+  return { ...lock, checkedOutBy: HIDDEN_LOCK_HOLDER, checkedOutMachine: HIDDEN_LOCK_MACHINE };
+}

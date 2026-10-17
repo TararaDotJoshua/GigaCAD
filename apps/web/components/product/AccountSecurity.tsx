@@ -71,9 +71,10 @@ export function PasswordForm({ email }: { email: string | null }) {
       setBusy(false);
       return setStatus({ error: check.error.code === 'invalid_credentials' ? 'Your current password is wrong.' : authMessage(check.error) });
     }
-    const { error } = await supabase.auth.updateUser({ password });
+    // Supabase checks the current password itself where "Require current password" is on (hosted).
+    const { error } = await supabase.auth.updateUser({ password, current_password: current });
     setBusy(false);
-    if (error) return setStatus({ error: authMessage(error) });
+    if (error) return setStatus({ error: error.code === 'reauthentication_needed' ? 'For your security, log out and log in again, then change your password.' : authMessage(error) });
     form.reset();
     setStatus({ message: 'Password changed.' });
   }

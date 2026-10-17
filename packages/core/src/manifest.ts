@@ -1,4 +1,4 @@
-import { comparePaths, InvalidPathError, validateProjectPath } from './paths.js';
+import { comparePaths, InvalidPathError, normalizePath, validateProjectPath } from './paths.js';
 
 export type Sha256 = string;
 export type ItemId = string;
@@ -29,7 +29,14 @@ export type ItemChange =
       readonly moved: boolean;
     };
 
-export function validateManifest(manifest: Manifest): ManifestIssue[] {
+/**
+ * Checks a snapshot's structure: unique items, unique paths, normalized paths. With
+ * `strictNames`, every name must also be one Windows can store (see `validateProjectPath`).
+ * Paths already stored on the server were allowed before that rule, so only clients that
+ * can't store them (Windows) and new paths in commits apply it.
+ */
+export function validateManifest(manifest: Manifest, options: { strictNames?: boolean } = {}): ManifestIssue[] {
+  const check = options.strictNames ? validateProjectPath : normalizePath;
   const issues: ManifestIssue[] = [];
   const seenItems = new Set<ItemId>();
   const byPathKey = new Map<string, ManifestEntry[]>();
@@ -40,7 +47,7 @@ export function validateManifest(manifest: Manifest): ManifestIssue[] {
 
     let normalized: string;
     try {
-      normalized = validateProjectPath(entry.path);
+      normalized = check(entry.path);
     } catch (error) {
       if (!(error instanceof InvalidPathError)) throw error;
       issues.push({ kind: 'invalid_path', itemId: entry.itemId, path: entry.path, reason: error.reason });

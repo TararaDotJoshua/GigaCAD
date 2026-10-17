@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { unlinkUnusedBlobs } from '../src/jobs.js';
+import { resetExportDrawnThumbnails, unlinkUnusedBlobs } from '../src/jobs.js';
 import { thumbnailKey } from '../src/storage.js';
 import { inlineRenderer } from '../src/thumbnails/index.js';
 import { generateThumbnails } from '../src/thumbnails/job.js';
@@ -81,7 +81,8 @@ describe('SolidWorks exports', () => {
     // A STEP added later doesn't take over from the STL for the thumbnail.
     const [stepHash] = (await upload(harness, api, projectId, [`ISO-10303-21; ${randomUUID()}`])) as [string];
     expect((await api.put(`/v1/projects/${projectId}/exports`, { source: sha256(part), format: 'step', blob: stepHash })).status).toBe(200);
-    await render();
+    // The fixture isn't a real STEP file, so mark its thumbnail ready: both exports now have one.
+    await harness.sql`update thumbnails set status = 'ready', error = null where blob_sha256 = ${stepHash}`;
     expect(await shown(api, projectId, part)).toContain(thumbnailKey(stlHash));
     const both = await api.post(`/v1/projects/${projectId}/exports/lookup`, { sha256s: [sha256(part)] });
     expect(both.body.exports[sha256(part)].map((entry: { format: string }) => entry.format)).toEqual(['step', 'stl']);
@@ -90,6 +91,10 @@ describe('SolidWorks exports', () => {
     await unlinkUnusedBlobs(harness.sql, { graceHours: 0 });
     const [kept] = await harness.sql`select 1 from project_blobs where project_id = ${projectId} and sha256 = ${stlHash}`;
     expect(kept).toBeDefined();
+
+    // Without the STL, the STEP's thumbnail is shown.
+    await harness.sql`delete from file_exports where project_id = ${projectId} and source_sha256 = ${sha256(part)} and format = 'stl'`;
+    expect(await shown(api, projectId, part)).toContain(thumbnailKey(stepHash));
   });
 
   it('only attach to SolidWorks parts and assemblies in the project, from contributors', async () => {
@@ -145,5 +150,15 @@ describe('SolidWorks exports', () => {
     expect(await shown(client(harness, null), projectId, part)).toContain(thumbnailKey(ownHash));
     const [cover] = await harness.sql<{ sha: string | null }[]>`select project_thumbnail(${projectId}) as sha`;
     expect(cover?.sha).toBe(ownHash);
+  });
+
+  it('drawn onto a shared row by an older API are put back to the file’s own preview', async () => {
+    const { projectId, part } = await project();
+    const [stlHash] = (await upload(harness, api, projectId, [tetrahedron()])) as [string];
+    // What main's setFileExport and thumbnail job did before migration 20261016093000.
+    await harness.sql`update thumbnails set model_sha256 = ${stlHash}, model_format = 'stl', status = 'ready' where blob_sha256 = ${sha256(part)}`;
+    expect(await resetExportDrawnThumbnails(harness.sql)).toBeGreaterThan(0);
+    const [row] = await harness.sql<{ status: string; modelSha256: string | null }[]>`select status, model_sha256 from thumbnails where blob_sha256 = ${sha256(part)}`;
+    expect(row).toEqual({ status: 'pending', modelSha256: null });
   });
 });

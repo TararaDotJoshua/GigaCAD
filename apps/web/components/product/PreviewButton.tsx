@@ -14,16 +14,32 @@ export interface PreviewFile {
 
 /**
  * Opens a file in a 3D viewer. The viewer code and file load only when asked for.
- * With `compare`, the dialog shows that file (main's copy) and this one (the branch's) side by side.
+ * With `compare`, the dialog shows that file (main's copy, by default) and this one (the
+ * branch's) side by side; `captions` names the two panes when they're something else.
  */
-export function PreviewButton({ projectId, sha256, path, format, compare }: { projectId: string; sha256: string; path: string; format: PreviewFormat; compare?: PreviewFile }) {
+export function PreviewButton({
+  projectId,
+  sha256,
+  path,
+  format,
+  compare,
+  captions = ['Main', 'Branch'],
+}: {
+  projectId: string;
+  sha256: string;
+  path: string;
+  format: PreviewFormat;
+  compare?: PreviewFile | undefined;
+  captions?: readonly [string, string];
+}) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [open, setOpen] = useState(false);
   // Compared models are framed for the larger of the two, so a change in size shows.
   const [radii, setRadii] = useState<{ main?: number; branch?: number }>({});
   const shared = radii.main !== undefined && radii.branch !== undefined ? Math.max(radii.main, radii.branch) : undefined;
   const filename = path.split('/').pop() ?? path;
-  const label = compare ? `Compare main and branch versions of ${filename}` : `Preview ${filename}`;
+  const [before, after] = captions;
+  const label = compare ? `Compare ${before.toLowerCase()} and ${after.toLowerCase()} versions of ${filename}` : `Preview ${filename}`;
 
   return (
     <>
@@ -40,7 +56,7 @@ export function PreviewButton({ projectId, sha256, path, format, compare }: { pr
       >
         <CubeIcon className="icon" />
       </button>
-      <dialog ref={dialog} className={compare ? 'model-dialog is-compare' : 'model-dialog'} onClose={() => setOpen(false)} aria-label={compare ? `3D previews of ${filename}, main and branch` : `3D preview of ${filename}`}>
+      <dialog ref={dialog} className={compare ? 'model-dialog is-compare' : 'model-dialog'} onClose={() => setOpen(false)} aria-label={compare ? `3D previews of ${filename}, ${before.toLowerCase()} and ${after.toLowerCase()}` : `3D preview of ${filename}`}>
         <div className="model-dialog-head">
           <span className="mono">{path}</span>
           <button type="button" className="btn btn-secondary btn-small" onClick={() => dialog.current?.close()}>
@@ -49,8 +65,8 @@ export function PreviewButton({ projectId, sha256, path, format, compare }: { pr
         </div>
         {compare ? (
           <div className="model-compare">
-            <ModelPane projectId={projectId} file={compare} format={format} open={open} caption="Main" frameRadius={shared} onLoaded={(radius) => setRadii((current) => ({ ...current, main: radius }))} />
-            <ModelPane projectId={projectId} file={{ sha256, path }} format={format} open={open} caption="Branch" frameRadius={shared} onLoaded={(radius) => setRadii((current) => ({ ...current, branch: radius }))} />
+            <ModelPane projectId={projectId} file={compare} format={format} open={open} caption={before} frameRadius={shared} onLoaded={(radius) => setRadii((current) => ({ ...current, main: radius }))} />
+            <ModelPane projectId={projectId} file={{ sha256, path }} format={format} open={open} caption={after} frameRadius={shared} onLoaded={(radius) => setRadii((current) => ({ ...current, branch: radius }))} />
           </div>
         ) : (
           <ModelPane projectId={projectId} file={{ sha256, path }} format={format} open={open} />

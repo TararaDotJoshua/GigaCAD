@@ -67,8 +67,8 @@ describe('approving and releasing what was reviewed', () => {
     expect(detail.releaseRequest.status).toBe('candidate');
     const seen = detail.candidate.manifestId as string;
 
-    // Approving names the candidate; leaving it out is refused rather than approving whatever is current.
-    expect((await asBea.post(`/v1/release-requests/${id}/approvals`, {})).status).toBe(400);
+    // A malformed candidate id is refused rather than approving whatever is current.
+    expect((await asBea.post(`/v1/release-requests/${id}/approvals`, { candidateManifestId: 'latest' })).status).toBe(400);
 
     // The requester regenerates while Bea is looking at the old one.
     const fresh = (await asCam.post(`/v1/release-requests/${id}/candidate`)).body.candidate.manifestId as string;
@@ -81,6 +81,18 @@ describe('approving and releasing what was reviewed', () => {
     const staleRelease = await asCam.post(`/v1/release-requests/${id}/release`, { candidateManifestId: seen });
     expect(staleRelease.body.error.code).toBe('stale_candidate');
     expect((await asCam.post(`/v1/release-requests/${id}/release`, { candidateManifestId: fresh })).status).toBe(201);
+  });
+
+  it('still lets clients that name no candidate approve and release the current one', async () => {
+    // Desktop apps and `giga` CLIs installed before candidate ids existed post an empty body.
+    const projectId = await team();
+    const { id, detail } = await requestOn(projectId, asCam, { 'Robot.SLDASM': 'asm', 'parts/Wheel.SLDPRT': 'wheel v2' });
+    const approved = await asBea.post(`/v1/release-requests/${id}/approvals`, {});
+    expect(approved.status).toBe(200);
+    expect(approved.body.approvals.given).toMatchObject([{ userId: bea.id, candidateManifestId: detail.candidate.manifestId }]);
+    const released = await asCam.post(`/v1/release-requests/${id}/release`, {});
+    expect(released.status).toBe(201);
+    expect(released.body.release.number).toBe(2);
   });
 
   it('lets a viewer named as an approver approve, but only the requester or a maintainer release', async () => {

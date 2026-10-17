@@ -199,6 +199,6 @@ export const SAMPLE_HISTORY: readonly Commit[] = [
 ];
 
 export const SAMPLE_REQUESTS = [
-  { id: 'r7', number: 7, title: 'Battery tray rev B', status: 'candidate', branchName: 'battery-tray-rev-b', requesterHandle: 'josh', updatedAt: minutesAgo(50) },
+  { id: 'r7', number: 7, title: 'Battery tray rev B', status: 'candidate', branchName: 'battery-tray-rev-b', requesterHandle: 'josh', updatedAt: minutesAgo(50), candidateManifestId: '00000000-0000-4000-8000-000000000007' },
   { id: 'r6', number: 6, title: 'Stiffer rocker arms', status: 'released', branchName: 'rockers', requesterHandle: 'sam', updatedAt: daysAgo(13) },
 ];

@@ -178,7 +178,7 @@ export async function forkProject(
       values (${projectId}, 1, ${manifestId}, ${`Forked from @${owner!.handle}/${source.slug} v${release.number}.`}, ${userId})
       returning id
     `;
-    if (exports.length) await snapshotReleaseExports(tx, projectId, created!.id, manifestId);
+    await snapshotReleaseExports(tx, projectId, created!.id, manifestId);
     await recordEvent(tx, { projectId, actorId: userId, kind: 'project_created', subjectId: projectId, payload: { forkedFrom: release.id } });
     await recordEvent(tx, { projectId, actorId: userId, kind: 'release_created', subjectId: created!.id, payload: { number: 1 } });
     return summarize(tx, projectId, 'owner', userId);

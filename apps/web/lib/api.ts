@@ -317,8 +317,8 @@ export interface ReleaseRequestDetail {
   approvals: {
     given: { userId: string; handle: string; candidateManifestId: string; createdAt: string }[];
     evaluation: ApprovalEvaluation | null;
-    /** Today's rules while active; the rules it finished under once released or closed. */
-    rules: ApprovalRules;
+    /** Today's rules while active; the rules it finished under once released or closed; null if those weren't recorded. */
+    rules: ApprovalRules | null;
   };
   history: {
     snapshot: { autosaves: number; authorHandle: string | null } | null;

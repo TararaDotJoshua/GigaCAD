@@ -16,7 +16,7 @@ import { REBUILD_STATUS_LABEL, blockerText, eligibleApprovers, errorText, reques
 import { sites } from '../../../../../../lib/hosts';
 import { branchPath, projectPath, releasePath, releaseRequestPath } from '../../../../../../lib/paths';
 import { previewFormat } from '../../../../../../lib/preview';
-import { getMembers, getViewer, getProject, getRelease, getReleaseRequestByNumber, parseNumber } from '../../../../../../lib/product';
+import { getMembers, getViewer, getProject, getRebuildReport, getRelease, getReleaseRequestByNumber, parseNumber } from '../../../../../../lib/product';
 import { nextStep } from '../../../../../../lib/request-next';
 import type { ProjectParams } from '../../layout';
 
@@ -36,8 +36,12 @@ export async function generateMetadata({ params }: { params: Promise<RequestPara
 const REPORT_SHOWN = 10;
 const plural = (count: number, word: string) => `${count.toLocaleString('en-US')} ${word}${count === 1 ? '' : 's'}`;
 
-export default async function RequestPage({ params }: { params: Promise<RequestParams> }) {
+/** Rules for a request finished before its rules were recorded: none shown, nothing judged. */
+const UNRECORDED_RULES = { requiredCount: 0, approverUserIds: [], approverRoles: [], allowSelfApproval: false, requireCleanRebuild: false };
+
+export default async function RequestPage({ params, searchParams }: { params: Promise<RequestParams>; searchParams: Promise<{ report?: string }> }) {
   const { owner, project: slug, number } = await params;
+  const wholeReport = (await searchParams).report === 'all';
   const project = await getProject(owner, slug);
   const detail = await getReleaseRequestByNumber(project.id, parseNumber(number));
   const { releaseRequest: request, preview, candidate, approvals, latestRelease, targetRelease, releasedRelease, history } = detail;
@@ -45,7 +49,8 @@ export default async function RequestPage({ params }: { params: Promise<RequestP
   // Finished requests read against the main they targeted; active ones against the latest.
   const mainRelease = finished ? targetRelease : latestRelease;
   const [me, members, main] = await Promise.all([getViewer(), getMembers(project.id), mainRelease ? getRelease(project.id, mainRelease.number) : Promise.resolve(null)]);
-  const rules = approvals.rules;
+  const rulesRecorded = approvals.rules !== null;
+  const rules = approvals.rules ?? UNRECORDED_RULES;
   const requester = request.requesterHandle ? `@${request.requesterHandle}` : 'the requester';
   const canManage = project.role === 'owner' || project.role === 'maintainer';
   const canWrite = canManage || project.role === 'contributor';
@@ -69,6 +74,10 @@ export default async function RequestPage({ params }: { params: Promise<RequestP
   );
   const report = request.rebuildReport;
   const reportCurrent = Boolean(candidate && request.rebuildStatus && request.rebuildManifestId === candidate.manifestId);
+  // A report on a candidate built on an older main no longer vouches for what would be released.
+  const reportOutdated = reportCurrent && candidate?.upToDate === false;
+  // The whole report, on request; the detail carries only the most severe messages.
+  const allMessages = wholeReport && report && report.total > report.messages.length ? (await getRebuildReport(request.id)).messages : report?.messages ?? [];
   const rebuild = reportCurrent && request.rebuildStatus ? { status: request.rebuildStatus, errors: report?.counts.error ?? 0, warnings: report?.counts.warning ?? 0 } : null;
   const rebuildCaution =
     rebuild?.status === 'failed' ? `The last SolidWorks rebuild failed (${plural(rebuild.errors, 'error')}).` : rebuild?.status === 'passed_with_warnings' ? `The last SolidWorks rebuild passed with ${plural(rebuild.warnings, 'warning')}.` : null;
@@ -128,18 +137,18 @@ export default async function RequestPage({ params }: { params: Promise<RequestP
   );
 
   const rebuildCard = showRebuild && (
-    <section className="rail-card" key="rebuild">
+    <section className="rail-card" key="rebuild" id="rebuild">
       <h2>Rebuild</h2>
       {request.rebuildStatus && report ? (
         <>
           <p className="rebuild-status">
-            <StatusBadge tone={!reportCurrent ? 'quiet' : request.rebuildStatus === 'failed' ? 'danger' : request.rebuildStatus === 'passed_with_warnings' ? 'caution' : 'signal'}>
+            <StatusBadge tone={!reportCurrent || reportOutdated ? 'quiet' : request.rebuildStatus === 'failed' ? 'danger' : request.rebuildStatus === 'passed_with_warnings' ? 'caution' : 'signal'}>
               {REBUILD_STATUS_LABEL[request.rebuildStatus]}
             </StatusBadge>
             <span className="muted">
               {request.rebuildReportedAt && <RelativeTime value={request.rebuildReportedAt} />}
               {request.rebuildReportedByHandle && ` by @${request.rebuildReportedByHandle}`}
-              {!reportCurrent && ' · for an older candidate'}
+              {!reportCurrent ? ' · for an older candidate' : reportOutdated ? ' · for an outdated candidate' : ''}
             </span>
           </p>
           {report.total > 0 && (
@@ -147,19 +156,20 @@ export default async function RequestPage({ params }: { params: Promise<RequestP
               {[report.counts.error && plural(report.counts.error, 'error'), report.counts.warning && plural(report.counts.warning, 'warning'), report.counts.info && plural(report.counts.info, 'note')].filter(Boolean).join(', ')}
             </p>
           )}
-          {report.messages.length > 0 && <RebuildMessages projectId={project.id} messages={report.messages.slice(0, REPORT_SHOWN)} files={candidate?.files ?? []} />}
-          {report.messages.length > REPORT_SHOWN && (
-            <details className="rebuild-more">
-              <summary>
-                {report.total > report.messages.length ? `${report.messages.length - REPORT_SHOWN} more of ${report.total.toLocaleString('en-US')} messages` : `${report.messages.length - REPORT_SHOWN} more messages`}
-              </summary>
-              <RebuildMessages projectId={project.id} messages={report.messages.slice(REPORT_SHOWN)} files={candidate?.files ?? []} />
-              {report.total > report.messages.length && (
-                <p className="muted">
-                  The rest are in <code className="mono">giga rr show {request.number}</code> and the API’s rebuild report.
-                </p>
-              )}
+          {allMessages.length > 0 && <RebuildMessages projectId={project.id} messages={allMessages.slice(0, REPORT_SHOWN)} files={candidate?.files ?? []} />}
+          {allMessages.length > REPORT_SHOWN && (
+            <details className="rebuild-more" open={wholeReport}>
+              <summary>{plural(allMessages.length - REPORT_SHOWN, 'more message')}</summary>
+              <RebuildMessages projectId={project.id} messages={allMessages.slice(REPORT_SHOWN)} files={candidate?.files ?? []} />
             </details>
+          )}
+          {report.total > allMessages.length && (
+            <p className="muted">
+              Showing the {allMessages.length} most severe of {report.total.toLocaleString('en-US')} messages.{' '}
+              <Link href={`${releaseRequestPath(owner, slug, request.number)}?report=all#rebuild`} scroll={false}>
+                Show all
+              </Link>
+            </p>
           )}
         </>
       ) : (
@@ -300,7 +310,8 @@ export default async function RequestPage({ params }: { params: Promise<RequestP
               <section className="section">
                 <h2>Changed after the candidate was built</h2>
                 <p className="muted">
-                  A SolidWorks rebuild saved these files into the candidate. {request.status === 'released' ? 'They were released like this.' : 'They will be released like this, not as picked.'}
+                  A SolidWorks rebuild saved these files into the candidate.{' '}
+                  {request.status === 'released' ? 'They were released like this.' : request.status === 'closed' ? 'They would have been released like this.' : 'They will be released like this, not as picked.'}
                 </p>
                 <ul className="file-list">
                   {candidate.rebuilt.map((file) => (
@@ -308,7 +319,7 @@ export default async function RequestPage({ params }: { params: Promise<RequestP
                       <span className="mono">{file.path}</span>
                       <span className="pick-files">
                         {previewFormat(file.path) && (
-                          <PreviewButton projectId={project.id} sha256={file.blob} path={file.path} format={previewFormat(file.path)!} compare={file.builtBlob ? { sha256: file.builtBlob, path: file.path } : undefined} />
+                          <PreviewButton projectId={project.id} sha256={file.blob} path={file.path} format={previewFormat(file.path)!} compare={file.builtBlob ? { sha256: file.builtBlob, path: file.path } : undefined} captions={['As picked', 'After rebuild']} />
                         )}
                         <DownloadButton projectId={project.id} sha256={file.blob} path={file.path} />
                       </span>
@@ -342,8 +353,8 @@ export default async function RequestPage({ params }: { params: Promise<RequestP
             {rebuildFirst && rebuildCard}
             {releaseCard}
             <section className="rail-card">
-              <h2>{rules.requiredCount === 0 ? 'Approvals · Not required' : `Approvals · ${approvals.evaluation?.countedUserIds.length ?? 0} of ${rules.requiredCount}`}</h2>
-              <p className="muted">{ruleSummary(rules, handles)}</p>
+              <h2>{!rulesRecorded ? 'Approvals' : rules.requiredCount === 0 ? 'Approvals · Not required' : `Approvals · ${approvals.evaluation?.countedUserIds.length ?? 0} of ${rules.requiredCount}`}</h2>
+              {rulesRecorded && <p className="muted">{ruleSummary(rules, handles)}</p>}
               {finished ? (
                 approvals.given.length ? (
                   <ul className="approvers">

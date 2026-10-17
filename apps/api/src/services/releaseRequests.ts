@@ -121,8 +121,11 @@ export interface ReleaseRequestDetail {
   readonly approvals: {
     readonly given: readonly { readonly userId: string; readonly handle: string; readonly candidateManifestId: string; readonly createdAt: Date }[];
     readonly evaluation: ApprovalEvaluation | null;
-    /** The rules the evaluation used: today's while the request is active, the ones it finished under after. */
-    readonly rules: ApprovalRules;
+    /**
+     * The rules the evaluation used: today's while the request is active, the ones it finished
+     * under after. Null for a request finished before those were recorded.
+     */
+    readonly rules: ApprovalRules | null;
   };
   readonly history: {
     /** Unsaved autosaves that opening the request saved as a version, and whose they were. */
@@ -179,12 +182,15 @@ async function requireActive(db: Db, request: ReleaseRequestRow): Promise<void> 
   );
 }
 
-/** The candidate a caller reviewed must still be the current one; otherwise they're acting on something they haven't seen. */
-function requireCandidate(request: ReleaseRequestRow, reviewed: string): string {
+/**
+ * The candidate a caller reviewed must still be the current one; otherwise they're acting on
+ * something they haven't seen. Older clients name none and get the current candidate.
+ */
+function requireCandidate(request: ReleaseRequestRow, reviewed: string | undefined): string {
   if (request.status !== 'candidate' || !request.candidateManifestId) {
     throw conflict('no_candidate', 'There is no candidate yet. Build one from the picks first');
   }
-  if (request.candidateManifestId !== reviewed) {
+  if (reviewed !== undefined && request.candidateManifestId !== reviewed) {
     throw conflict('stale_candidate', 'The candidate changed since you reviewed it; review it again', {
       candidateManifestId: request.candidateManifestId,
     });
@@ -294,23 +300,28 @@ async function detail(db: Db, request: ReleaseRequestRow): Promise<ReleaseReques
     select number from release_requests where branch_id = ${request.branchId} and status in ('open', 'candidate')
   `;
 
+  const { history, builtManifestId } = await requestHistory(db, request);
   let candidate: ReleaseRequestDetail['candidate'] = null;
   if (request.candidateManifestId) {
     const files = await loadManifest(db, request.candidateManifestId);
     const upToDate = request.status !== 'candidate' || request.targetReleaseId === (latest?.id ?? null);
-    // Compare with what the picks build against the main this candidate was built on.
-    const built = active && upToDate ? picked : buildCandidate(await candidateInputs(db, request, 'target')).manifest;
-    const builtByItem = new Map(built.map((entry) => [entry.itemId, entry.blob]));
-    const rebuilt = files
-      .filter((file) => builtByItem.get(file.itemId) !== file.blob)
-      .map((file) => ({ itemId: file.itemId, path: file.path, blob: file.blob, builtBlob: builtByItem.get(file.itemId) ?? null }));
+    // Compare with the candidate as it was built from the picks, before any rebuild saved files
+    // into it. That record doesn't move with the branch, which a closed request reopens.
+    let rebuilt: RebuiltFile[] = [];
+    if (builtManifestId && builtManifestId !== request.candidateManifestId) {
+      const builtByItem = new Map((await loadManifest(db, builtManifestId)).map((entry) => [entry.itemId, entry.blob]));
+      rebuilt = files
+        .filter((file) => builtByItem.get(file.itemId) !== file.blob)
+        .map((file) => ({ itemId: file.itemId, path: file.path, blob: file.blob, builtBlob: builtByItem.get(file.itemId) ?? null }));
+    }
     candidate = { manifestId: request.candidateManifestId, files, upToDate, rebuilt };
   }
 
-  // A finished request keeps the rules and verdict it finished under; older ones are judged by today's.
+  // A finished request keeps the rules and verdict it finished under. One finished before those
+  // were recorded shows the approvals its candidate got, without judging them by today's rules.
   const snapshot = active ? null : request.reviewSnapshot;
-  const rules = snapshot?.rules ?? (await loadApprovalRules(db, request.projectId));
-  const evaluation = snapshot ? snapshot.evaluation : await evaluate(db, request, rules);
+  const rules = active ? await loadApprovalRules(db, request.projectId) : (snapshot?.rules ?? null);
+  const evaluation = active ? await evaluate(db, request, rules!) : snapshot ? snapshot.evaluation : unjudged(request, given);
   const { rebuildReport, reviewSnapshot: _snapshot, ...row } = request;
 
   return {
@@ -329,12 +340,21 @@ async function detail(db: Db, request: ReleaseRequestRow): Promise<ReleaseReques
     changesMain: !leavesMainAsIs(picked, inputs.latestMain),
     candidate,
     approvals: { given, evaluation, rules },
-    history: await requestHistory(db, request),
+    history,
   };
 }
 
-/** What the event log says about a request: the snapshot made when it opened, the last change to its candidate, and who closed it. */
-async function requestHistory(db: Db, request: ReleaseRequestRow): Promise<ReleaseRequestDetail['history']> {
+/** The approvals a finished request's candidate got, for requests finished before their review was recorded. */
+function unjudged(request: ReleaseRequestRow, given: readonly { userId: string; candidateManifestId: string }[]): ApprovalEvaluation {
+  const counted = given.filter((approval) => approval.candidateManifestId === request.candidateManifestId).map((approval) => approval.userId);
+  return { canRelease: request.status === 'released', countedUserIds: counted, ignored: [], blockers: [] };
+}
+
+/**
+ * What the event log says about a request: the snapshot made when it opened, the last change
+ * to its candidate, who closed it, and the manifest its candidate was last built as.
+ */
+async function requestHistory(db: Db, request: ReleaseRequestRow): Promise<{ history: ReleaseRequestDetail['history']; builtManifestId: string | null }> {
   const events = await db<{ kind: string; payload: Record<string, unknown>; createdAt: Date; actorHandle: string | null }[]>`
     select e.kind, e.payload, e.created_at, p.handle as actor_handle
     from project_events e left join profiles p on p.id = e.actor_id
@@ -352,12 +372,16 @@ async function requestHistory(db: Db, request: ReleaseRequestRow): Promise<Relea
   }
   const change = events.find((event) => event.kind !== 'release_request_opened' && event.kind !== 'release_request_closed');
   const closed = events.find((event) => event.kind === 'release_request_closed');
+  const generated = events.find((event) => event.kind === 'release_request_candidate_generated');
   return {
-    snapshot,
-    lastCandidateChange: change
-      ? { kind: change.kind.replace('release_request_', '') as 'picks_changed' | 'candidate_generated' | 'candidate_updated', actorHandle: change.actorHandle, at: change.createdAt }
-      : null,
-    closed: closed ? { actorHandle: closed.actorHandle, at: closed.createdAt } : null,
+    history: {
+      snapshot,
+      lastCandidateChange: change
+        ? { kind: change.kind.replace('release_request_', '') as 'picks_changed' | 'candidate_generated' | 'candidate_updated', actorHandle: change.actorHandle, at: change.createdAt }
+        : null,
+      closed: closed ? { actorHandle: closed.actorHandle, at: closed.createdAt } : null,
+    },
+    builtManifestId: typeof generated?.payload.manifestId === 'string' ? generated.payload.manifestId : null,
   };
 }
 
@@ -645,7 +669,7 @@ export async function reportRebuild(
  * Approves the candidate the approver reviewed, which must still be the current one and
  * built on the latest main. The approval stops counting if the candidate changes.
  */
-export async function approve(sql: Sql, id: string, userId: string, input: { candidateManifestId: string }): Promise<ReleaseRequestDetail> {
+export async function approve(sql: Sql, id: string, userId: string, input: { candidateManifestId?: string | undefined }): Promise<ReleaseRequestDetail> {
   return sql.begin(async (tx) => {
     const request = await loadRequest(tx, id, true);
     const { role } = await projectAccess(tx, request.projectId, userId);
@@ -705,7 +729,7 @@ export async function release(
   sql: Sql,
   id: string,
   userId: string,
-  input: { candidateManifestId: string; notes?: string | undefined },
+  input: { candidateManifestId?: string | undefined; notes?: string | undefined },
 ): Promise<{ release: { id: string; number: number }; releaseRequest: ReleaseRequestDetail }> {
   return sql.begin(async (tx) => {
     const request = await loadRequest(tx, id, true);

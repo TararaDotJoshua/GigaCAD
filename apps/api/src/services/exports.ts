@@ -80,14 +80,16 @@ export async function setFileExport(
   });
 }
 
-/** Copies the current exports of a manifest's files into a new release, which keeps them for good. */
+/** Copies the current exports of a manifest's files into a new release, which keeps them for good, and marks it copied. */
 export async function snapshotReleaseExports(db: Db, projectId: string, releaseId: string, manifestId: string): Promise<void> {
   await db`
     insert into release_exports (release_id, project_id, source_sha256, format, blob_sha256)
     select distinct ${releaseId}::uuid, x.project_id, x.source_sha256, x.format, x.blob_sha256
     from manifest_entries me join file_exports x on x.project_id = ${projectId} and x.source_sha256 = me.blob_sha256
     where me.manifest_id = ${manifestId}
+    on conflict do nothing
   `;
+  await db`insert into release_export_snapshots (release_id) values (${releaseId}) on conflict do nothing`;
 }
 
 /**

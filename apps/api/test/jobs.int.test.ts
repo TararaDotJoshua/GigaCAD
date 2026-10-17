@@ -178,6 +178,6 @@ describe('stale checkout notices', () => {
 describe('runJobs', () => {
   it('runs every job once and reports what it did', async () => {
     const report = await runJobs({ sql: harness.sql, storage: harness.storage, webOrigin: 'https://app.example' });
-    expect(report).toMatchObject({ purgedProjects: expect.any(Number), unlinkedBlobs: expect.any(Number), staleNotices: 0 });
+    expect(report).toMatchObject({ purgedProjects: expect.any(Number), unlinkedBlobs: expect.any(Number), staleNotices: 0, snapshottedReleases: expect.any(Number) });
   });
 });

@@ -17,8 +17,12 @@ import {
   withdrawApproval,
 } from '../services/releaseRequests.js';
 
-/** The candidate the caller reviewed. Approving or releasing anything else is refused as stale. */
-const reviewed = { candidateManifestId: z.uuid() };
+/**
+ * The candidate the caller reviewed; approving or releasing anything else is refused as stale.
+ * Optional so desktop apps and `giga` CLIs installed before it existed keep working: they act
+ * on the current candidate. Make it required once updated clients have shipped.
+ */
+const reviewed = { candidateManifestId: z.uuid().optional() };
 
 /** Bidirectional controls would let a path or message display reversed. */
 const BIDI = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;

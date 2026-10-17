@@ -134,6 +134,10 @@ export const getReleaseRequestByNumber = cache(async (projectId: string, number:
   return getReleaseRequest(summary.id);
 });
 
+/** Every message of a request's rebuild report, most severe first. The API keeps at most 1,000. */
+export const getRebuildReport = cache((requestId: string) =>
+  get<{ total: number; messages: { level: 'info' | 'warning' | 'error'; message: string; path?: string }[] }>(`/v1/release-requests/${requestId}/rebuild-report?limit=1000`),
+);
 export const getMembers = cache((projectId: string) => get<Member[]>(`/v1/projects/${projectId}/members`));
 export const getApprovalRules = cache((projectId: string) => get<ApprovalRules>(`/v1/projects/${projectId}/approval-rules`));
 export const getEvents = cache((projectId: string, limit = 20) => get<ProjectEvent[]>(`/v1/projects/${projectId}/events?order=desc&limit=${limit}`));

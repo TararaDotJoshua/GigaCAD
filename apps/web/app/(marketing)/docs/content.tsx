@@ -502,12 +502,17 @@ giga checkin       # give the lock back`}</Command>
       </p>
 
       <h2 id="release-from-the-command-line">Release from the command line</h2>
-      <Command>{`giga rr open --title "Gripper v2"
+      <Command>{`giga rr open --title "Gripper v2"   # builds the candidate too
 giga rr diff                     # what differs from main
 giga rr picks --file picks.json  # optional
-giga rr candidate
-giga rr approve
-giga rr release --notes "Stiffer jaw, new fingertip"`}</Command>
+giga rr candidate                # regenerate after changing picks
+giga rr show                     # the candidate id to approve
+giga rr approve --candidate <id>
+giga rr release --candidate <id> --notes "Stiffer jaw, new fingertip"`}</Command>
+      <p>
+        Approving and releasing name the candidate you reviewed. If it changes in the meantime, they’re
+        refused, so nobody approves or releases files they haven’t seen.
+      </p>
       <p>
         By default each changed file takes the branch’s copy. To choose differently, write a picks file.
         Files are named by path. <code>keep_main</code> leaves main’s copy, and a replacement ships a new
@@ -576,9 +581,9 @@ giga rr release --notes "Stiffer jaw, new fingertip"`}</Command>
           ["giga rr picks --file <path>", <>Replace the picks with a JSON file, or <code>-</code> for standard input.</>],
           ["giga rr candidate", "Regenerate the release candidate from the current picks."],
           ["giga rr rebuild-report --file <path>", "Attach the result of rebuilding the candidate in your CAD program."],
-          ["giga rr approve", <>Approve the current candidate. Pass <code>--candidate</code> with the id <code>giga rr show</code> printed to refuse if it has changed since.</>],
+          ["giga rr approve --candidate <id>", <>Approve the candidate you reviewed, by the id <code>giga rr show</code> printed. Refused if it has changed since.</>],
           ["giga rr unapprove", "Withdraw your approval."],
-          ["giga rr release", <>Publish the approved candidate as the next release. Add <code>--notes</code>, and <code>--candidate</code> as for approving.</>],
+          ["giga rr release --candidate <id>", <>Publish the approved candidate as the next release. Add <code>--notes</code>.</>],
           ["giga rr close", "Close without releasing. The branch unfreezes."],
         ]}
       />

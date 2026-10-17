@@ -131,7 +131,8 @@ export default async function ProjectSettings({ params }: { params: Promise<Proj
         <section className="section card card-danger">
           <h2>Delete project</h2>
           <p className="section-intro">
-            You can restore it from Account for 30 days. After that, it’s gone for good. Type the project’s address, <span className="mono">{slug}</span>, to confirm.
+            You can restore it from Account for 30 days, and its address stays reserved until then. After that, it’s gone for good. Type the project’s address,{' '}
+            <span className="mono">{slug}</span>, to confirm.
           </p>
           <ActionForm action={deleteProject.bind(null, project.id, slug)} submitLabel="Delete project" submitClassName="btn btn-danger">
             <label className="field">

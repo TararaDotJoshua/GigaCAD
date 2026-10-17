@@ -18,6 +18,10 @@ const MESSAGES: Readonly<Record<string, string>> = {
   nothing_to_fork: 'This project has no releases to fork yet.',
   billing_unavailable: 'Paid plans aren’t available yet.',
   no_billing_account: 'Choose a paid plan first.',
+  handle_taken: 'That handle is taken. Pick another.',
+  address_taken: 'You already have a project at that address. Choose another address.',
+  branch_not_archived: 'Only archived branches can be restored.',
+  branch_frozen: 'Close its release request before archiving this branch.',
 };
 
 export function messageFor(error: unknown): string {
@@ -33,6 +37,6 @@ export function messageFor(error: unknown): string {
 /** The API's field-level validation messages, joined into one sentence. */
 function detailMessage(error: ApiError): string | undefined {
   if (!Array.isArray(error.details)) return undefined;
-  const messages = (error.details as { message?: string }[]).map((item) => item.message).filter(Boolean);
+  const messages = [...new Set((error.details as { message?: string }[]).map((item) => item.message).filter(Boolean))];
   return messages.length > 0 ? `${messages.join('. ')}.` : undefined;
 }

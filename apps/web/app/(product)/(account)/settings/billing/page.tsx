@@ -1,4 +1,4 @@
-import { formatBytes, getPlan } from '@gigacad/core';
+import { formatBytes, getPlan, isPlanId, STORAGE_WARNING_SHARE } from '@gigacad/core';
 import Link from 'next/link';
 import { openBillingPortal } from '../../../actions';
 import { ActionButton } from '../../../../../components/product/ActionButton';
@@ -6,6 +6,7 @@ import { BillingPlans } from '../../../../../components/product/BillingPlans';
 import { PageHead } from '../../../../../components/product/PageHead';
 import { RefreshSoon } from '../../../../../components/product/RefreshSoon';
 import { StatusBadge } from '../../../../../components/product/StatusBadge';
+import { dashboardPath } from '../../../../../lib/hosts';
 import { getBilling } from '../../../../../lib/product';
 import { safeReturnPath } from '../../../../../lib/return-path';
 
@@ -13,12 +14,21 @@ export const metadata = { title: 'Plan and storage' };
 
 const date = (value: string) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-export default async function BillingSettings({ searchParams }: { searchParams: Promise<{ checkout?: string; error?: string; from?: string }> }) {
+export default async function BillingSettings({
+  searchParams,
+}: {
+  searchParams: Promise<{ checkout?: string; error?: string; from?: string; plan?: string; interval?: string }>;
+}) {
   const [billing, query] = await Promise.all([getBilling(), searchParams]);
   const plan = getPlan(billing.plan);
   const paying = billing.plan !== 'free';
   const share = billing.quotaBytes > 0 ? Math.min(1, billing.usedBytes / billing.quotaBytes) : 1;
-  const tone = share >= 1 ? 'is-full' : share >= 0.9 ? 'is-near' : '';
+  // The same threshold as the warning banner, so the meter agrees with it.
+  const near = share >= STORAGE_WARNING_SHARE;
+  const tone = share >= 1 ? 'is-full' : near ? 'is-near' : '';
+  // Back from a checkout that didn't finish: the plan and interval that were chosen.
+  const chosen = isPlanId(query.plan) && query.plan !== 'free' ? query.plan : undefined;
+  const chosenInterval = query.interval === 'monthly' || query.interval === 'yearly' ? query.interval : undefined;
   const from = safeReturnPath(query.from, '') || undefined;
   const back = from && (
     <Link href={from} className="btn btn-secondary btn-small">
@@ -50,12 +60,32 @@ export default async function BillingSettings({ searchParams }: { searchParams: 
       <section className="section">
         <h2>Storage</h2>
         <p className="section-intro">Every file version in the projects you own counts once, including branch and release history. Projects shared with you count against their owner.</p>
-        <div className={`storage-meter ${tone}`} role="meter" aria-valuemin={0} aria-valuemax={billing.quotaBytes} aria-valuenow={billing.usedBytes} aria-label="Storage used">
+        <div
+          className={`storage-meter ${tone}`}
+          role="meter"
+          aria-valuemin={0}
+          aria-valuemax={billing.quotaBytes}
+          aria-valuenow={Math.min(billing.usedBytes, billing.quotaBytes)}
+          aria-valuetext={`${formatBytes(billing.usedBytes)} of ${formatBytes(billing.quotaBytes)} used${share >= 1 ? ', full' : near ? ', nearly full' : ''}`}
+          aria-label="Storage used"
+        >
           <span style={{ width: `${Math.max(share * 100, billing.usedBytes > 0 ? 1 : 0)}%` }} />
         </div>
         <p className="storage-caption">
           {formatBytes(billing.usedBytes)} of {formatBytes(billing.quotaBytes)} used
-          {share >= 1 && <> · <StatusBadge tone="danger">Full</StatusBadge> Uploads are paused until you free up space or upgrade.</>}
+          {share >= 1 ? (
+            <>
+              {' '}
+              · <StatusBadge tone="danger">Full</StatusBadge> Uploads are paused until you free up space{billing.billingEnabled ? ' or upgrade' : ''}.
+            </>
+          ) : (
+            near && (
+              <>
+                {' '}
+                · <StatusBadge tone="caution">Nearly full</StatusBadge>
+              </>
+            )
+          )}
         </p>
       </section>
 
@@ -84,9 +114,27 @@ export default async function BillingSettings({ searchParams }: { searchParams: 
       <section className="section">
         <h2>Plans</h2>
         <p className="section-intro">
-          Every plan includes every feature and unlimited collaborators. Plans differ only in storage.{paying ? ' Change or cancel your plan in Stripe.' : ' Paying happens on Stripe.'}
+          Every plan includes every feature and unlimited collaborators. Plans differ only in storage.
+          {!billing.billingEnabled ? (
+            <>
+              {' '}
+              Paid plans open soon. Until then, deleting a project frees the space its files use: <Link href={dashboardPath()}>your projects</Link>.
+            </>
+          ) : paying ? (
+            ' Change or cancel your plan in Stripe.'
+          ) : (
+            ' Paying happens on Stripe.'
+          )}
         </p>
-        <BillingPlans current={billing.plan} currentInterval={billing.interval} paying={paying} billingEnabled={billing.billingEnabled} from={from} />
+        <BillingPlans
+          current={billing.plan}
+          currentInterval={billing.interval}
+          paying={paying}
+          billingEnabled={billing.billingEnabled}
+          from={from}
+          chosen={chosen}
+          initialInterval={chosenInterval}
+        />
       </section>
     </div>
   );

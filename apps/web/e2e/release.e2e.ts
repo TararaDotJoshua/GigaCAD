@@ -352,8 +352,9 @@ test('deletes a project and restores it from Account', async ({ page }) => {
   const row = page.getByRole('row', { name: /Undo me/ });
   await expect(row.getByText('In 30 days')).toBeVisible();
   await row.getByRole('button', { name: 'Restore' }).click();
-  await page.waitForURL(`**/${world.handle}/${slug}`);
+  await page.waitForURL(`**/${world.handle}/${slug}?restored=1`);
   await expect(page.getByRole('heading', { name: 'Undo me' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'Restored Undo me' })).toBeVisible();
 });
 
 test('previews a 3D file in the browser', async ({ page }) => {

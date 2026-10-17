@@ -273,6 +273,60 @@ describe('public projects', () => {
   });
 });
 
+describe('outsiders of a public project', () => {
+  it('get no lock holder ids, machines or named approvers in event payloads', async () => {
+    const { projectId, branchId } = await project('public');
+    await asOwner.post(`/v1/branches/${branchId}/checkout`, { machine: 'JOSHS-MACBOOK' });
+    expect((await asOwner.post(`/v1/branches/${branchId}/force-release`, {})).status).toBe(200);
+    await asOwner.post(`/v1/projects/${projectId}/members`, { handle: teammate.handle, role: 'maintainer' });
+    const rules = { requiredCount: 1, approverUserIds: [teammate.id], approverRoles: ['owner'], allowSelfApproval: false, requireCleanRebuild: false };
+    expect((await asOwner.put(`/v1/projects/${projectId}/approval-rules`, rules)).status).toBe(200);
+
+    type Event = { kind: string; payload: Record<string, unknown> };
+    const payload = (events: Event[], kind: string) => events.find((event) => event.kind === kind)?.payload ?? {};
+    for (const outsider of [anonymous(), client(harness, await createUser(harness, 'watcher'))]) {
+      const events = (await outsider.get(`/v1/projects/${projectId}/events`)).body as Event[];
+      expect(Object.keys(payload(events, 'branch_lock_force_released'))).not.toEqual(expect.arrayContaining(['previousHolder']));
+      expect(payload(events, 'branch_lock_force_released')).not.toHaveProperty('machine');
+      expect(payload(events, 'approval_rules_changed')).not.toHaveProperty('approverUserIds');
+      expect(JSON.stringify(events)).not.toContain(teammate.id);
+    }
+    const inside = (await asOwner.get(`/v1/projects/${projectId}/events`)).body as Event[];
+    expect(payload(inside, 'branch_lock_force_released')).toMatchObject({ previousHolder: owner.id, machine: 'JOSHS-MACBOOK' });
+    expect(payload(inside, 'approval_rules_changed')).toMatchObject({ approverUserIds: [teammate.id] });
+  });
+
+  it('get no member ids or device names from a release request, even from withdrawing an approval', async () => {
+    const { projectId, branchId } = await project('public');
+    await asOwner.post(`/v1/projects/${projectId}/members`, { handle: teammate.handle, role: 'maintainer' });
+    const rules = { requiredCount: 1, approverUserIds: [teammate.id], approverRoles: ['maintainer'], allowSelfApproval: false, requireCleanRebuild: false };
+    await asOwner.put(`/v1/projects/${projectId}/approval-rules`, rules);
+    await commitVersion(harness, asOwner, projectId, branchId, { 'Part.SLDPRT': `part ${randomUUID()}` });
+    const opened = await asOwner.post(`/v1/branches/${branchId}/release-requests`, { title: 'Outside view' });
+    const requestId = opened.body.releaseRequest.id as string;
+    const candidateManifestId = (await asOwner.post(`/v1/release-requests/${requestId}/candidate`)).body.candidate.manifestId;
+    const device = await deviceToken(owner, 'GigaCAD add-in on SW-PC');
+    await call(harness, device.accessToken, 'POST', `/v1/release-requests/${requestId}/rebuild-report`, { candidateManifestId, status: 'passed', messages: [] });
+    expect((await asTeammate.post(`/v1/release-requests/${requestId}/approvals`, { candidateManifestId })).status).toBe(200);
+
+    const passerby = client(harness, await createUser(harness, 'passerby'));
+    const withdrawn = await passerby.delete(`/v1/release-requests/${requestId}/approvals`);
+    expect(withdrawn.status).toBe(200);
+    for (const body of [withdrawn.body, (await passerby.get(`/v1/release-requests/${requestId}`)).body, (await anonymous().get(`/v1/release-requests/${requestId}`)).body]) {
+      const text = JSON.stringify(body);
+      for (const id of [owner.id, teammate.id]) expect(text).not.toContain(id);
+      expect(text).not.toContain('SW-PC');
+      expect(body.releaseRequest).toMatchObject({ requesterId: null, rebuildReportedBy: null });
+      expect(body.approvals.rules.approverUserIds).toEqual([]);
+      // Approvers keep their handles, and the stand-in ids still say whose approval counts.
+      expect(body.approvals.given).toEqual([expect.objectContaining({ handle: teammate.handle, userId: 'approver-1' })]);
+      expect(body.approvals.evaluation.countedUserIds).toEqual(['approver-1']);
+    }
+    const inside = (await asTeammate.get(`/v1/release-requests/${requestId}`)).body;
+    expect(inside.approvals.given[0].userId).toBe(teammate.id);
+  });
+});
+
 describe('forking a private project', () => {
   it('is for maintainers, and the source hears about it', async () => {
     const { projectId, branchId } = await project('private');
@@ -293,6 +347,29 @@ describe('forking a private project', () => {
 });
 
 describe('rebuild reports', () => {
+  it('leave out blank messages from installed clients instead of refusing the report', async () => {
+    const { projectId, branchId } = await project();
+    await commitVersion(harness, asOwner, projectId, branchId, { 'Part.SLDPRT': `part ${randomUUID()}` });
+    const opened = await asOwner.post(`/v1/branches/${branchId}/release-requests`, { title: 'Blank lines' });
+    const requestId = opened.body.releaseRequest.id as string;
+    const candidateManifestId = (await asOwner.post(`/v1/release-requests/${requestId}/candidate`)).body.candidate.manifestId;
+    const reported = await asOwner.post(`/v1/release-requests/${requestId}/rebuild-report`, {
+      candidateManifestId,
+      status: 'passed_with_warnings',
+      messages: [
+        { level: 'warning', message: '  ' },
+        { level: 'warning', message: 'Mate is over-defined', path: '' },
+        { level: 'info', message: 'Rebuilt', path: 'Part.SLDPRT' },
+      ],
+    });
+    expect(reported.status).toBe(200);
+    const page = (await asOwner.get(`/v1/release-requests/${requestId}/rebuild-report`)).body;
+    expect(page.total).toBe(2);
+    expect(page.messages).toEqual(
+      expect.arrayContaining([{ level: 'warning', message: 'Mate is over-defined' }, { level: 'info', message: 'Rebuilt', path: 'Part.SLDPRT' }]),
+    );
+  });
+
   it('record who sent them, when, and from where', async () => {
     const { projectId, branchId } = await project();
     await commitVersion(harness, asOwner, projectId, branchId, { 'Part.SLDPRT': `part ${randomUUID()}` });

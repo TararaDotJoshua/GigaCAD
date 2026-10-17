@@ -7,6 +7,7 @@ import { BranchIcon, DownloadIcon, ExternalIcon, FileIcon, FolderIcon, LockIcon,
 import { branchItems, copyItem, releaseItems, showContextMenu, stopSyncing } from '../menus.js';
 import { useSavedTab } from '../navigation.js';
 import { projectUrl, releaseUrl, requestUrl } from '../urls.js';
+import { approvableCandidate, candidateChangedSinceReview, shortCandidate } from '../review.js';
 import { ActionButton } from './ActionButton.js';
 import { MoreMenu } from './Menu.js';
 import { Tabs } from './Tabs.js';
@@ -31,6 +32,49 @@ interface RequestSummary {
 }
 
 type Tab = 'branches' | 'releases' | 'requests' | 'files';
+type OnReviewed = (number: number, candidate: string) => void;
+
+/** Opens a request on the web for review, noting which candidate it showed then. */
+function review(state: AppState, project: ProjectState, request: RequestSummary, onReviewed: OnReviewed) {
+  if (request.candidateManifestId) onReviewed(request.number, request.candidateManifestId);
+  void act('openExternal', requestUrl(state, project, request.number));
+}
+
+/**
+ * Approve, for the candidate this window opened for review only (review.ts), asking first.
+ * Before a review, or after the candidate changed, it says what's needed instead.
+ */
+function ApproveReviewed({
+  request,
+  reviewed,
+  project,
+  onApproved,
+}: {
+  state: AppState;
+  project: ProjectState;
+  request: RequestSummary;
+  reviewed: ReadonlyMap<number, string>;
+  onReviewed: OnReviewed;
+  onApproved: () => void;
+}) {
+  if (candidateChangedSinceReview(request, reviewed)) return <span className="faint">Changed since you opened it. Review it again.</span>;
+  const candidate = approvableCandidate(request, reviewed);
+  if (!candidate) return request.status === 'candidate' ? <span className="faint">Review it to approve</span> : null;
+  return (
+    <ActionButton
+      small
+      label={`Approve ${shortCandidate(candidate)}`}
+      pending="Approving…"
+      done={`Approved #${request.number}`}
+      confirm={`Approve #${request.number} (candidate ${shortCandidate(candidate)})? The release goes out when the last approval is in.`}
+      run={async () => {
+        const ok = await act('approveReleaseRequest', project.id, request.number, candidate);
+        if (ok) onApproved();
+        return ok;
+      }}
+    />
+  );
+}
 
 const canEdit = (project: ProjectState) => project.role !== null && project.role !== 'viewer';
 /** Candidates wait for approvals; anyone who can edit may be an approver. */
@@ -41,6 +85,9 @@ export function ProjectView({ state, project, onOpenBranch }: Props) {
   const words = platformWords(state.app.platform);
   const [tab, setTab] = useSavedTab<Tab>('project', ['branches', 'releases', 'requests', 'files'], 'branches');
   const [creating, setCreating] = useState(false);
+  // The candidate each request showed when Review opened it on the web; Approve names that one.
+  const [reviewed, setReviewed] = useState<ReadonlyMap<number, string>>(new Map());
+  const onReviewed = (number: number, candidate: string) => setReviewed((current) => new Map(current).set(number, candidate));
   const url = projectUrl(state, project);
 
   // Release requests change when branches freeze or releases go out: reload then, and on focus.
@@ -121,6 +168,8 @@ export function ProjectView({ state, project, onOpenBranch }: Props) {
             project={project}
             onOpenBranch={onOpenBranch}
             waiting={waiting}
+            reviewed={reviewed}
+            onReviewed={onReviewed}
             onApproved={requests.reload}
             onNewBranch={() => setCreating(true)}
             onShowReleases={() => setTab('releases')}
@@ -128,7 +177,7 @@ export function ProjectView({ state, project, onOpenBranch }: Props) {
         ) : tab === 'releases' ? (
           <ReleasesTab state={state} project={project} />
         ) : tab === 'requests' ? (
-          <RequestsTab state={state} project={project} requests={requests} />
+          <RequestsTab state={state} project={project} requests={requests} reviewed={reviewed} onReviewed={onReviewed} />
         ) : (
           <RootFilesTab state={state} project={project} />
         )}
@@ -145,10 +194,19 @@ function BranchesTab({
   project,
   onOpenBranch,
   waiting,
+  reviewed,
+  onReviewed,
   onApproved,
   onNewBranch,
   onShowReleases,
-}: Props & { waiting: readonly RequestSummary[]; onApproved: () => void; onNewBranch: () => void; onShowReleases: () => void }) {
+}: Props & {
+  waiting: readonly RequestSummary[];
+  reviewed: ReadonlyMap<number, string>;
+  onReviewed: OnReviewed;
+  onApproved: () => void;
+  onNewBranch: () => void;
+  onShowReleases: () => void;
+}) {
   const words = platformWords(state.app.platform);
   const latest = project.releases[0];
   return (
@@ -167,21 +225,10 @@ function BranchesTab({
                   {request.title}
                   <span className="faint"> · {request.branchName}</span>
                 </span>
-                <button type="button" className="link" onClick={() => void act('openExternal', requestUrl(state, project, request.number))}>
+                <button type="button" className="link" onClick={() => review(state, project, request, onReviewed)}>
                   Review
                 </button>
-                <ActionButton
-                  small
-                  label="Approve"
-                  pending="Approving…"
-                  done={`Approved #${request.number}`}
-                  confirm={`Approve #${request.number}? The release goes out when the last approval is in.`}
-                  run={async () => {
-                    const ok = await act('approveReleaseRequest', project.id, request.number, request.candidateManifestId!);
-                    if (ok) onApproved();
-                    return ok;
-                  }}
-                />
+                <ApproveReviewed state={state} project={project} request={request} reviewed={reviewed} onReviewed={onReviewed} onApproved={onApproved} />
               </li>
             ))}
           </ul>
@@ -372,7 +419,19 @@ function ReleaseRow({ state, project, release }: { state: AppState; project: Pro
 
 // --- Release requests --------------------------------------------------------------------
 
-function RequestsTab({ state, project, requests }: { state: AppState; project: ProjectState; requests: ReturnType<typeof useLoad<RequestSummary[]>> }) {
+function RequestsTab({
+  state,
+  project,
+  requests,
+  reviewed,
+  onReviewed,
+}: {
+  state: AppState;
+  project: ProjectState;
+  requests: ReturnType<typeof useLoad<RequestSummary[]>>;
+  reviewed: ReadonlyMap<number, string>;
+  onReviewed: OnReviewed;
+}) {
   const openable = project.branches.filter((branch) => branch.status === 'open');
   const [branch, setBranch] = useState('');
   const [title, setTitle] = useState('');
@@ -413,23 +472,16 @@ function RequestsTab({ state, project, requests }: { state: AppState; project: P
                 <span className="grow">
                   {request.title}
                   <span className="faint"> · {request.branchName}</span>
+                  {request.status === 'candidate' && request.candidateManifestId && (
+                    <span className="faint mono" title={`Candidate ${request.candidateManifestId}`}>
+                      {' '}
+                      · candidate {shortCandidate(request.candidateManifestId)} · {ago(request.updatedAt)}
+                    </span>
+                  )}
                 </span>
                 <span className={`badge${request.status === 'candidate' ? ' badge-caution' : ''}`}>{request.status === 'candidate' ? 'awaiting approval' : request.status}</span>
-                {request.status === 'candidate' && request.candidateManifestId && canEdit(project) ? (
-                  <ActionButton
-                    small
-                    label="Approve"
-                    pending="Approving…"
-                    done={`Approved #${request.number}`}
-                    confirm={`Approve #${request.number}? The release goes out when the last approval is in.`}
-                    run={async () => {
-                      const ok = await act('approveReleaseRequest', project.id, request.number, request.candidateManifestId!);
-                      if (ok) requests.reload();
-                      return ok;
-                    }}
-                  />
-                ) : null}
-                <button type="button" className="link" onClick={() => void act('openExternal', requestUrl(state, project, request.number))}>
+                {canEdit(project) ? <ApproveReviewed state={state} project={project} request={request} reviewed={reviewed} onReviewed={onReviewed} onApproved={requests.reload} /> : null}
+                <button type="button" className="link" onClick={() => review(state, project, request, onReviewed)}>
                   Review
                 </button>
               </li>

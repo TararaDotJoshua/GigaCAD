@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { purgeDeviceCodes } from '../src/jobs.js';
 import { HIDDEN_LOCK_HOLDER, HIDDEN_LOCK_MACHINE } from '../src/services/access.js';
+import { resolveFiles } from '../src/services/manifests.js';
 import {
   call,
   client,
@@ -75,6 +76,17 @@ describe('branch commits', () => {
       expect(commit.status, path).toBe(422);
       expect(commit.body.error.code, path).toBe('invalid_path');
     }
+  });
+
+  it('keep working with names stored before the rule, while new names must be Windows-safe', async () => {
+    const { projectId, branchId } = await project();
+    const committed = await commitVersion(harness, asOwner, projectId, branchId, { 'parts/a.txt': `a ${randomUUID()}` });
+    const { itemId, blob } = committed.files[0]!;
+    // A branch an older CLI committed "parts/Aux.SLDPRT" to.
+    const previous = [{ itemId, path: 'parts/Aux.SLDPRT', blob }];
+    await expect(resolveFiles(harness.sql, projectId, [{ path: 'parts/Aux.SLDPRT', blob, itemId }], previous)).resolves.toHaveLength(1);
+    await expect(resolveFiles(harness.sql, projectId, [{ path: 'parts/aux.sldprt', blob, itemId }], previous)).resolves.toHaveLength(1);
+    await expect(resolveFiles(harness.sql, projectId, [{ path: 'parts/Con.SLDPRT', blob, itemId }], previous)).rejects.toMatchObject({ code: 'invalid_path' });
   });
 
   it('can’t claim a root file’s item, so the root file can still be deleted', async () => {

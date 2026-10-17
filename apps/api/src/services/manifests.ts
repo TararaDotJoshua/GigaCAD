@@ -1,5 +1,6 @@
 import {
   InvalidPathError,
+  normalizePath,
   validateProjectPath,
   pathKey,
   validateManifest,
@@ -75,9 +76,13 @@ export async function resolveFiles(
   files: readonly FileInput[],
   previous: Manifest,
 ): Promise<ManifestEntry[]> {
+  // New and renamed paths must be names every client can store. Paths already in the branch
+  // were allowed by older rules, so they keep working (and can be renamed away).
+  const stored = new Set(previous.map((entry) => pathKey(entry.path)));
   const normalized = files.map((file) => {
     try {
-      return { ...file, path: validateProjectPath(file.path) };
+      const path = normalizePath(file.path);
+      return { ...file, path: stored.has(path.toLowerCase()) ? path : validateProjectPath(file.path) };
     } catch (error) {
       if (error instanceof InvalidPathError) throw unprocessable('invalid_path', error.message, { path: file.path });
       throw error;

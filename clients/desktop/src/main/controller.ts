@@ -447,9 +447,10 @@ export class Controller {
       const project = this.project(projectId);
       return giga(['rr', 'open', '--project', `${project.owner}/${project.slug}`, '--branch', branch, ...(title ? ['--title', title] : []), ...(body ? ['--body', body] : [])], this.opts());
     },
-    approveReleaseRequest: async (projectId, number) => {
+    // Approves the candidate the list showed, so a candidate regenerated since is refused rather than approved unseen.
+    approveReleaseRequest: async (projectId, number, candidateManifestId) => {
       const project = this.project(projectId);
-      await giga(['rr', 'approve', String(number), '--project', `${project.owner}/${project.slug}`], this.opts());
+      await giga(['rr', 'approve', String(number), '--project', `${project.owner}/${project.slug}`, '--candidate', candidateManifestId], this.opts());
     },
 
     reveal: (path) => shell.showItemInFolder(path),

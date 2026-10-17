@@ -264,9 +264,10 @@ describe('release scenario through giga', () => {
         const picked = await ok(cli, ['rr', 'picks', '--file', picksFile], root);
         expect(picked.preview.errors).toEqual([]);
       }
-      await ok(cli, ['rr', 'candidate'], root);
-      await ok(cli, ['rr', 'approve'], root);
-      const released = await ok(cli, ['rr', 'release', `#${opened.releaseRequest.number}`, '--notes', `from ${branch}`], root);
+      const built = await ok(cli, ['rr', 'candidate'], root);
+      const reviewed = built.candidate.manifestId as string;
+      await ok(cli, ['rr', 'approve', '--candidate', reviewed], root);
+      const released = await ok(cli, ['rr', 'release', `#${opened.releaseRequest.number}`, '--candidate', reviewed, '--notes', `from ${branch}`], root);
       return { root, opened, released };
     }
 
@@ -341,19 +342,23 @@ describe('release scenario through giga', () => {
     await ok(cli, ['checkin'], root);
     await ok(cli, ['rr', 'open'], root);
     const candidate = await ok(cli, ['rr', 'candidate'], root);
-    await ok(cli, ['rr', 'approve'], root);
+    const reviewed = candidate.candidate.manifestId as string;
+    // Approving names the candidate that was reviewed; without it, the CLI says which one is current.
+    const unnamed = await fails(cli, ['rr', 'approve'], root);
+    expect(unnamed).toMatchObject({ code: 'candidate_required', details: { candidateManifestId: reviewed } });
+    await ok(cli, ['rr', 'approve', '--candidate', reviewed], root);
 
-    const blocked = await fails(cli, ['rr', 'release'], root);
+    const blocked = await fails(cli, ['rr', 'release', '--candidate', reviewed], root);
     expect(blocked).toMatchObject({ code: 'approval_required', details: { blockers: [{ kind: 'rebuild_missing' }] } });
 
     const reportFile = join(parent, 'report.json');
     await writeFile(reportFile, JSON.stringify({ status: 'passed', messages: [] }));
     expect((await fails(cli, ['rr', 'rebuild-report', '--file', reportFile], root)).code).toBe('invalid_report');
 
-    await writeFile(reportFile, JSON.stringify({ candidateManifestId: candidate.candidate.manifestId, status: 'passed', messages: [] }));
+    await writeFile(reportFile, JSON.stringify({ candidateManifestId: reviewed, status: 'passed', messages: [] }));
     const reported = await ok(cli, ['rr', 'rebuild-report', '--file', reportFile], root);
     expect(reported.releaseRequest.rebuildStatus).toBe('passed');
-    expect((await ok(cli, ['rr', 'release'], root)).release.number).toBe(1);
+    expect((await ok(cli, ['rr', 'release', '--candidate', reviewed], root)).release.number).toBe(1);
   });
 });
 

@@ -4,6 +4,7 @@ import { unreadErrors } from '../src/renderer/activity.js';
 import { bannerFor } from '../src/renderer/banner.js';
 import { groupHistory, type Commit } from '../src/renderer/history.js';
 import { FIXTURES } from '../src/renderer/preview/fixtures.js';
+import { approvableCandidate, candidateChangedSinceReview } from '../src/renderer/review.js';
 import { mainView } from '../src/renderer/view.js';
 
 const ready: UpdateState = { kind: 'ready', version: '0.3.0', notes: 'Faster sync', notesUrl: null, restarting: false, lastChecked: null };
@@ -72,5 +73,26 @@ describe('unreadErrors', () => {
     ];
     expect(unreadErrors(items, '').map((item) => item.at)).toEqual(['2026-10-14T10:05:00Z', '2026-10-14T09:00:00Z']);
     expect(unreadErrors(items, '2026-10-14T10:00:00Z').map((item) => item.text)).toEqual(['Couldn’t autosave']);
+  });
+});
+
+describe('approving from the release request list', () => {
+  const request = { number: 7, status: 'candidate', candidateManifestId: 'cand-b' };
+
+  it('approves only the candidate opened for review from here', () => {
+    expect(approvableCandidate(request, new Map())).toBeNull();
+    expect(approvableCandidate(request, new Map([[7, 'cand-b']]))).toBe('cand-b');
+  });
+
+  it('asks for another review once the candidate changed', () => {
+    const reviewed = new Map([[7, 'cand-a']]);
+    expect(approvableCandidate(request, reviewed)).toBeNull();
+    expect(candidateChangedSinceReview(request, reviewed)).toBe(true);
+    expect(approvableCandidate({ ...request, status: 'released' }, new Map([[7, 'cand-b']]))).toBeNull();
+  });
+
+  it('asks nothing of a request that was released or closed after it changed', () => {
+    const reviewed = new Map([[7, 'cand-a']]);
+    for (const status of ['released', 'closed']) expect(candidateChangedSinceReview({ ...request, status }, reviewed)).toBe(false);
   });
 });

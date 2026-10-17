@@ -2402,6 +2402,23 @@ button {
   margin-top: 18px;
 }
 
+.article-body > .article-figure {
+  margin-block: 36px;
+}
+
+.article-figure img {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+}
+
+.article-figure figcaption {
+  margin-top: 10px;
+  color: var(--paper-faint);
+  font-size: var(--t-small);
+}
+
 .prose-table {
   overflow-x: auto;
   border: 1px solid var(--line-strong);

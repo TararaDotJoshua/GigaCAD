@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useRef, useState, type RefObject } from 'react';
 import type { AppState, ProjectState, ReleasesToKeep } from '../../shared/types.js';
 import { platformWords } from '../../shared/platform.js';
-import { act, ago, call, useLoad } from '../api.js';
+import { act, ago, call, toast, useLoad } from '../api.js';
 import { BranchIcon, DownloadIcon, ExternalIcon, FolderIcon, MergeIcon, PlusIcon, TagIcon } from '../icons.js';
 import { approvableCandidate, candidateChangedSinceReview, shortCandidate } from '../review.js';
+import { projectUrl, requestUrl } from '../urls.js';
+import { ActionButton } from './ActionButton.js';
+import { MoreMenu } from './Menu.js';
 import { BranchNote } from './Sidebar.js';
 import { Toolbar } from './Toolbar.js';
 
@@ -16,22 +19,41 @@ interface Props {
 export function ProjectView({ state, project, onOpenBranch }: Props) {
   const words = platformWords(state.app.platform);
   const [tab, setTab] = useState<'branches' | 'requests'>('branches');
+  const newBranch = useRef<HTMLInputElement>(null);
+  const url = projectUrl(state, project);
   return (
     <>
-      <Toolbar state={state} eyebrow={project.owner} title={project.name}>
-        <button type="button" className="btn btn-secondary" title={words.showInFileManager} onClick={() => void act('reveal', project.dir)}>
+      <Toolbar state={state} crumbs={[{ label: project.owner }, { label: project.name }]} chip={project.role === 'viewer' ? <span className="chip">View only</span> : null}>
+        {canEdit(project) ? (
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              setTab('branches');
+              // The form is on the Branches tab; it becomes a sheet in phase 4 of the desktop UX plan.
+              requestAnimationFrame(() => {
+                newBranch.current?.scrollIntoView({ block: 'center' });
+                newBranch.current?.focus();
+              });
+            }}
+          >
+            <PlusIcon className="icon" />
+            <span className="btn-label">New Branch</span>
+          </button>
+        ) : null}
+        <button type="button" className="btn btn-secondary btn-icon" aria-label={words.showInFileManager} title={words.showInFileManager} onClick={() => void act('reveal', project.dir)}>
           <FolderIcon className="icon" />
-          <span className="btn-label">{words.showInFileManager}</span>
         </button>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          title="Open on gigacad.site"
-          onClick={() => void act('openExternal', `${state.settings.appUrl}/${project.owner}/${project.slug}`)}
-        >
+        <button type="button" className="btn btn-secondary btn-icon" aria-label="Open on gigacad.site" title="Open on gigacad.site" onClick={() => void act('openExternal', url)}>
           <ExternalIcon className="icon" />
-          <span className="btn-label">Open on gigacad.site</span>
         </button>
+        <MoreMenu
+          items={[
+            { label: 'Copy link', onSelect: () => void act('copyText', url).then((ok) => ok && toast('Link copied')) },
+            { label: `Open in ${words.terminal}`, onSelect: () => void act('openTerminal', project.dir) },
+            { label: 'Stop syncing this project', danger: true, onSelect: () => void act('setProjectHidden', project.id, true) },
+          ]}
+        />
       </Toolbar>
       <div className="tabs" role="tablist">
         <button type="button" role="tab" aria-selected={tab === 'branches'} className={`tab${tab === 'branches' ? ' is-active' : ''}`} onClick={() => setTab('branches')}>
@@ -43,7 +65,24 @@ export function ProjectView({ state, project, onOpenBranch }: Props) {
       </div>
       <div className="content">
         {project.error ? <div className="notice is-error">{project.error}</div> : null}
-        {tab === 'branches' ? <Branches state={state} project={project} onOpenBranch={onOpenBranch} /> : <ReleaseRequests state={state} project={project} />}
+        {project.conflicts.map((conflict) => (
+          <div key={conflict.path} className="notice is-caution" role="alert">
+            <div className="grow">
+              <strong>{conflict.path}</strong> changed here and on gigacad.site. The site’s version is in place; yours is kept as <strong>{conflict.copy}</strong>.
+            </div>
+            <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('reveal', `${project.dir}/${conflict.copy}`)}>
+              Show both
+            </button>
+            <button type="button" className="link" onClick={() => void act('dismissConflict', project.id, conflict.path)}>
+              Dismiss
+            </button>
+          </div>
+        ))}
+        {tab === 'branches' ? (
+          <Branches state={state} project={project} onOpenBranch={onOpenBranch} newBranch={newBranch} />
+        ) : (
+          <ReleaseRequests state={state} project={project} />
+        )}
       </div>
     </>
   );
@@ -51,7 +90,7 @@ export function ProjectView({ state, project, onOpenBranch }: Props) {
 
 const canEdit = (project: ProjectState) => project.role !== null && project.role !== 'viewer';
 
-function Branches({ state, project, onOpenBranch }: Props) {
+function Branches({ state, project, onOpenBranch, newBranch }: Props & { newBranch: RefObject<HTMLInputElement | null> }) {
   const words = platformWords(state.app.platform);
   const [name, setName] = useState('');
   const [from, setFrom] = useState('latest');
@@ -86,15 +125,25 @@ function Branches({ state, project, onOpenBranch }: Props) {
                 <BranchNote branch={branch} thisComputer={words.thisComputer} />
                 {branch.downloaded ? (
                   branch.holder === 'me' ? null : (
-                    <button type="button" className="btn btn-secondary btn-small" disabled={branch.busy} onClick={() => void act('removeBranch', project.id, branch.name)}>
-                      Remove download
-                    </button>
+                    <ActionButton
+                      small
+                      label="Remove download"
+                      pending="Removing…"
+                      done={`Removed the download of ${branch.name}`}
+                      busy={branch.busy}
+                      run={() => act('removeBranch', project.id, branch.name)}
+                    />
                   )
                 ) : (
-                  <button type="button" className="btn btn-secondary btn-small" disabled={branch.busy} onClick={() => void act('downloadBranch', project.id, branch.name)}>
-                    <DownloadIcon className="icon" />
-                    Download
-                  </button>
+                  <ActionButton
+                    small
+                    label="Download"
+                    pending="Downloading…"
+                    done={`Downloaded ${branch.name}`}
+                    icon={<DownloadIcon className="icon" />}
+                    busy={branch.busy}
+                    run={() => act('downloadBranch', project.id, branch.name)}
+                  />
                 )}
               </li>
             ))}
@@ -128,10 +177,14 @@ function Branches({ state, project, onOpenBranch }: Props) {
                     Show
                   </button>
                 ) : (
-                  <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('downloadRelease', project.id, release.number)}>
-                    <DownloadIcon className="icon" />
-                    Download
-                  </button>
+                  <ActionButton
+                    small
+                    label="Download"
+                    pending="Downloading…"
+                    done={`Downloaded v${release.number}`}
+                    icon={<DownloadIcon className="icon" />}
+                    run={() => act('downloadRelease', project.id, release.number)}
+                  />
                 )}
               </li>
             ))}
@@ -156,7 +209,7 @@ function Branches({ state, project, onOpenBranch }: Props) {
             >
               <label className="field">
                 Name
-                <input value={name} placeholder="gripper-v2" onChange={(event) => setName(event.target.value)} />
+                <input ref={newBranch} value={name} placeholder="gripper-v2" onChange={(event) => setName(event.target.value)} />
               </label>
               <label className="field">
                 Start from
@@ -175,15 +228,6 @@ function Branches({ state, project, onOpenBranch }: Props) {
             </form>
           </section>
         ) : null}
-        <section className="panel gap">
-          <div className="panel-head">On {words.thisComputer}</div>
-          <div className="panel-body">
-            <p className="field-note">Hiding a project stops syncing it. Its folder stays where it is.</p>
-            <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('setProjectHidden', project.id, true)}>
-              Stop syncing this project
-            </button>
-          </div>
-        </section>
       </div>
     </div>
   );
@@ -210,7 +254,7 @@ function ReleaseRequests({ state, project }: { state: AppState; project: Project
   const [opening, setOpening] = useState(false);
   // The candidate each request showed when Review opened it on the web; Approve names that one.
   const [reviewed, setReviewed] = useState<ReadonlyMap<number, string>>(new Map());
-  const url = (number: number) => `${state.settings.appUrl}/${project.owner}/${project.slug}/release-requests/${number}`;
+  const url = (number: number) => requestUrl(state, project, number);
   const chosen = branch || openable[0]?.name || '';
 
   const open = async () => {

@@ -41,17 +41,36 @@ export interface Toast {
 let toasts: readonly Toast[] = [];
 let nextToast = 1;
 const toastListeners = new Set<() => void>();
+/** Each toast's timer: how long it has left, and when that count started. */
+const timers = new Map<number, { left: number; since: number; handle: ReturnType<typeof setTimeout> | undefined }>();
 
 export function toast(text: string, options: { hint?: string | undefined; error?: boolean } = {}): void {
   const id = nextToast++;
   toasts = [...toasts, { id, text, hint: options.hint, error: options.error ?? false }].slice(-4);
   toastListeners.forEach((listener) => listener());
-  setTimeout(() => dismissToast(id), options.error ? 9000 : 4000);
+  timers.set(id, { left: options.error ? 9000 : 4000, since: Date.now(), handle: undefined });
+  resumeToast(id);
 }
 
 export function dismissToast(id: number): void {
+  clearTimeout(timers.get(id)?.handle);
+  timers.delete(id);
   toasts = toasts.filter((item) => item.id !== id);
   toastListeners.forEach((listener) => listener());
+}
+
+/** While the pointer or focus is on a toast it stays. */
+export function pauseToast(id: number): void {
+  const timer = timers.get(id);
+  if (!timer?.handle) return;
+  clearTimeout(timer.handle);
+  timers.set(id, { left: Math.max(1000, timer.left - (Date.now() - timer.since)), since: Date.now(), handle: undefined });
+}
+
+export function resumeToast(id: number): void {
+  const timer = timers.get(id);
+  if (!timer || timer.handle) return;
+  timers.set(id, { ...timer, since: Date.now(), handle: setTimeout(() => dismissToast(id), timer.left) });
 }
 
 export const useToasts = () =>

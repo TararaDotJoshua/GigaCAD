@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AppState, BranchState, ProjectState } from '../../shared/types.js';
 import { platformWords } from '../../shared/platform.js';
-import { act, ago, call, useLoad } from '../api.js';
+import { act, ago, call, toast, useLoad } from '../api.js';
 import { groupHistory, type Commit } from '../history.js';
-import { DownloadIcon, FolderIcon, LockIcon, SyncIcon } from '../icons.js';
+import { DownloadIcon, ExternalIcon, FolderIcon, LockIcon, SyncIcon } from '../icons.js';
+import { branchUrl, commitUrl } from '../urls.js';
+import { ActionButton } from './ActionButton.js';
+import { MoreMenu } from './Menu.js';
 import { Toolbar } from './Toolbar.js';
 
 interface Props {
@@ -11,6 +14,7 @@ interface Props {
   readonly project: ProjectState;
   readonly branch: BranchState;
   readonly focusCommit: boolean;
+  readonly onOpenProject: () => void;
 }
 
 /** `giga status --json` for a branch workspace. */
@@ -19,45 +23,63 @@ interface Status {
   readonly changes: readonly { readonly kind: 'added' | 'deleted' | 'modified' | 'moved'; readonly path: string; readonly from?: string }[];
 }
 
-export function BranchView({ state, project, branch, focusCommit }: Props) {
+export function BranchView({ state, project, branch, focusCommit, onOpenProject }: Props) {
   const words = platformWords(state.app.platform);
   const [tab, setTab] = useState<'changes' | 'history'>('changes');
   useEffect(() => {
     if (focusCommit) setTab('changes');
   }, [focusCommit]);
   const readOnly = project.role === 'viewer' || branch.status !== 'open';
+  const url = branchUrl(state, project, branch.name);
 
   return (
     <>
-      <Toolbar state={state} eyebrow={`${project.owner}/${project.slug}`} title={branch.name}>
+      <Toolbar state={state} crumbs={[{ label: project.name, onClick: onOpenProject }, { label: branch.name }]} chip={<BranchChip project={project} branch={branch} />}>
         {branch.holder === 'me' ? (
-          <button type="button" className="btn btn-secondary" disabled={branch.busy} onClick={() => void act('checkin', project.id, branch.name)}>
-            Check In
-          </button>
-        ) : branch.holder === 'other' ? (
-          <span className="badge" title={`On ${branch.holderMachine}`}>
-            <LockIcon className="icon icon-small" />
-            Held by @{branch.holderHandle}
-          </span>
-        ) : readOnly ? (
-          <span className="badge">{branch.status === 'open' ? 'View only' : branch.status}</span>
-        ) : (
-          <button type="button" className="btn btn-primary" disabled={branch.busy} onClick={() => void act('checkout', project.id, branch.name)}>
-            Check Out
-          </button>
-        )}
+          <ActionButton label="Check In" pending="Checking in…" done={`Checked in ${branch.name}`} busy={branch.busy} run={() => act('checkin', project.id, branch.name)} />
+        ) : branch.holder === null && !readOnly ? (
+          <ActionButton
+            variant="primary"
+            label="Check Out"
+            pending="Checking out…"
+            done={`Checked out ${branch.name}`}
+            busy={branch.busy}
+            run={() => act('checkout', project.id, branch.name)}
+          />
+        ) : !branch.downloaded ? (
+          <ActionButton
+            variant="primary"
+            label="Download"
+            pending="Downloading…"
+            done={`Downloaded ${branch.name}`}
+            icon={<DownloadIcon className="icon" />}
+            busy={branch.busy}
+            run={() => act('downloadBranch', project.id, branch.name)}
+          />
+        ) : null}
         {branch.downloaded ? (
           <>
-            <button type="button" className="btn btn-secondary" title="Pull" disabled={branch.busy} onClick={() => void act('pull', project.id, branch.name)}>
-              <SyncIcon className="icon" />
-              <span className="btn-label">Pull</span>
-            </button>
-            <button type="button" className="btn btn-secondary" title={words.showInFileManager} onClick={() => void act('reveal', branch.dir)}>
+            <ActionButton iconOnly label="Pull" pending="Pulling…" done={`Pulled ${branch.name}`} icon={<SyncIcon className="icon" />} busy={branch.busy} run={() => act('pull', project.id, branch.name)} />
+            <button type="button" className="btn btn-secondary btn-icon" aria-label={words.showInFileManager} title={words.showInFileManager} onClick={() => void act('reveal', branch.dir)}>
               <FolderIcon className="icon" />
-              <span className="btn-label">{words.showInFileManager}</span>
             </button>
           </>
         ) : null}
+        <button type="button" className="btn btn-secondary btn-icon" aria-label="Open on gigacad.site" title="Open on gigacad.site" onClick={() => void act('openExternal', url)}>
+          <ExternalIcon className="icon" />
+        </button>
+        <MoreMenu
+          items={[
+            { label: 'Copy link', onSelect: () => void act('copyText', url).then((ok) => ok && toast('Link copied')) },
+            branch.downloaded && { label: `Open in ${words.terminal}`, onSelect: () => void act('openTerminal', branch.dir) },
+            branch.downloaded &&
+              branch.holder !== 'me' && {
+                label: 'Remove download',
+                onSelect: () => void act('removeBranch', project.id, branch.name).then((ok) => ok && toast(`Removed the download of ${branch.name}`)),
+              },
+            { label: 'Stop syncing this project', danger: true, onSelect: () => void act('setProjectHidden', project.id, true) },
+          ]}
+        />
       </Toolbar>
       <div className="tabs" role="tablist">
         <button type="button" role="tab" aria-selected={tab === 'changes'} className={`tab${tab === 'changes' ? ' is-active' : ''}`} onClick={() => setTab('changes')}>
@@ -80,6 +102,38 @@ export function BranchView({ state, project, branch, focusCommit }: Props) {
   );
 }
 
+/** The branch's state next to its name: yours, someone else's, frozen for a release, or view only. */
+function BranchChip({ project, branch }: { project: ProjectState; branch: BranchState }) {
+  // A frozen branch belongs to a release request; find its number.
+  const requests = useLoad(
+    () => (branch.status === 'frozen' ? (call('releaseRequests', project.id) as Promise<{ number: number; branchName: string; status: string }[]>) : Promise.resolve([])),
+    [project.id, branch.status],
+  );
+  if (branch.holder === 'me') {
+    return (
+      <span className="chip" title="Checked out on this computer">
+        <span className="dot dot-signal" aria-hidden="true" />
+        <span className="chip-label">Checked out</span>
+      </span>
+    );
+  }
+  if (branch.holder === 'other') {
+    return (
+      <span className="chip" title={`Checked out by @${branch.holderHandle} on ${branch.holderMachine}`}>
+        <LockIcon className="icon icon-small" />
+        <span className="chip-label">@{branch.holderHandle}</span>
+      </span>
+    );
+  }
+  if (branch.status === 'frozen') {
+    const request = requests.data?.find((candidate) => candidate.branchName === branch.name && (candidate.status === 'open' || candidate.status === 'candidate'));
+    return <span className="chip">{request ? `Frozen · request #${request.number}` : 'Frozen'}</span>;
+  }
+  if (branch.status !== 'open') return <span className="chip">{branch.status === 'released' ? 'Released' : 'Archived'}</span>;
+  if (project.role === 'viewer') return <span className="chip">View only</span>;
+  return null;
+}
+
 function NotDownloaded({ project, branch, thisComputer }: { project: ProjectState; branch: BranchState; thisComputer: string }) {
   return (
     <div className="panel">
@@ -87,10 +141,15 @@ function NotDownloaded({ project, branch, thisComputer }: { project: ProjectStat
         <p>
           {branch.name} isn’t downloaded to {thisComputer}.
         </p>
-        <button type="button" className="btn btn-primary" disabled={branch.busy} onClick={() => void act('downloadBranch', project.id, branch.name)}>
-          <DownloadIcon className="icon" />
-          Download
-        </button>
+        <ActionButton
+          variant="primary"
+          label="Download"
+          pending="Downloading…"
+          done={`Downloaded ${branch.name}`}
+          icon={<DownloadIcon className="icon" />}
+          busy={branch.busy}
+          run={() => act('downloadBranch', project.id, branch.name)}
+        />
       </div>
     </div>
   );
@@ -194,7 +253,6 @@ function Changes({ project, branch, focusCommit, thisComputer }: { project: Proj
 function History({ state, project, branch }: { state: AppState; project: ProjectState; branch: BranchState }) {
   const history = useLoad(() => call('branchHistory', project.id, branch.name) as Promise<Commit[]>, [project.id, branch.name, branch.headCommitId]);
   const [open, setOpen] = useState<string | null>(null);
-  const commitUrl = (id: string) => `${state.settings.appUrl}/${project.owner}/${project.slug}/commits/${id}`;
   if (history.error) return <div className="panel empty">{history.error.message}</div>;
   if (!history.data) return <div className="panel empty">Loading…</div>;
   const rows = groupHistory(history.data);
@@ -210,7 +268,7 @@ function History({ state, project, branch }: { state: AppState; project: Project
                 {row.version.authorHandle ? `@${row.version.authorHandle} · ` : ''}
                 {ago(row.version.createdAt)}
               </span>
-              <button type="button" className="link" onClick={() => void act('openExternal', commitUrl(row.version!.id))}>
+              <button type="button" className="link" onClick={() => void act('openExternal', commitUrl(state, project, row.version!.id))}>
                 Open
               </button>
             </li>
@@ -225,7 +283,7 @@ function History({ state, project, branch }: { state: AppState; project: Project
                   {row.autosaves!.map((commit) => (
                     <li key={commit.id}>
                       <span className="grow faint">{new Date(commit.createdAt).toLocaleString()}</span>
-                      <button type="button" className="link" onClick={() => void act('openExternal', commitUrl(commit.id))}>
+                      <button type="button" className="link" onClick={() => void act('openExternal', commitUrl(state, project, commit.id))}>
                         Open
                       </button>
                     </li>

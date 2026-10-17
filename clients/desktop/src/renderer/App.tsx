@@ -74,7 +74,7 @@ function renderMain(state: AppState, selection: Selection, select: (selection: S
     case 'hidden':
       return (
         <>
-          <Toolbar state={state} eyebrow={view.project.owner} title={view.project.name} />
+          <Toolbar state={state} crumbs={[{ label: view.project.owner }, { label: view.project.name }]} />
           <div className="center">
             <div className="empty">
               <p>Not synced to {platformWords(state.app.platform).thisComputer}</p>
@@ -86,7 +86,16 @@ function renderMain(state: AppState, selection: Selection, select: (selection: S
         </>
       );
     case 'branch':
-      return <BranchView key={`${view.project.id}:${view.branch.name}`} state={state} project={view.project} branch={view.branch} focusCommit={view.focusCommit} />;
+      return (
+        <BranchView
+          key={`${view.project.id}:${view.branch.name}`}
+          state={state}
+          project={view.project}
+          branch={view.branch}
+          focusCommit={view.focusCommit}
+          onOpenProject={() => select({ kind: 'project', projectId: view.project.id })}
+        />
+      );
     case 'project':
       return <ProjectView key={view.project.id} state={state} project={view.project} onOpenBranch={(name) => select({ kind: 'project', projectId: view.project.id, branch: name })} />;
   }

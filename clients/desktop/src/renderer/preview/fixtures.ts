@@ -124,6 +124,8 @@ export interface Fixture {
   readonly navigate?: Navigate;
   /** A tab to open after loading, by its label. */
   readonly tab?: string;
+  /** A button to press after loading, by its accessible name: a menu or popover to check. */
+  readonly press?: string;
 }
 
 const withProjects = (change: (project: ProjectState) => ProjectState): readonly ProjectState[] =>
@@ -144,6 +146,7 @@ export const FIXTURES: readonly Fixture[] = [
   { name: 'project-empty', state: base, navigate: { projectId: 'drone' } },
   { name: 'branch-mine', state: base, navigate: { projectId: 'rover', branch: 'suspension-v3' } },
   { name: 'branch-history', state: base, navigate: { projectId: 'rover', branch: 'suspension-v3' }, tab: 'History' },
+  { name: 'branch-menu', state: base, navigate: { projectId: 'rover', branch: 'suspension-v3' }, press: 'More actions' },
   { name: 'branch-other', state: base, navigate: { projectId: 'rover', branch: 'wheel-hub' } },
   { name: 'branch-not-downloaded', state: base, navigate: { projectId: 'rover', branch: 'gripper' } },
   {
@@ -160,6 +163,7 @@ export const FIXTURES: readonly Fixture[] = [
     name: 'sync-problem',
     state: { ...base, sync: { status: 'error', active: 0, message: 'api.gigacad.site answered 503', lastSyncedAt: minutesAgo(40) } },
     navigate: { projectId: 'rover' },
+    press: 'Sync problem',
   },
   {
     name: 'update-ready',

@@ -20,8 +20,16 @@ export const metadata: Metadata = {
     template: "%s | GigaCAD",
   },
   description:
-    "Branches, locked releases, and full history for your CAD files, in a drive in File Explorer.",
+    "Branches, locked releases, and full history for your SolidWorks projects, in the browser and on the command line.",
   metadataBase: new URL("https://gigacad.site"),
+  openGraph: {
+    siteName: "GigaCAD",
+    type: "website",
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary_large_image",
+  },
 };
 
 export const viewport: Viewport = {

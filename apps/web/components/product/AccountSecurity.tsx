@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from 'react';
 import { authMessage } from '../../lib/auth-messages';
 import { createClient } from '../../lib/supabase/client';
+import { useHydrated } from '../../lib/use-hydrated';
 
 type Status = { error?: string; message?: string };
 
@@ -17,6 +18,7 @@ function Status({ status }: { status: Status }) {
  * the change happens once both have confirmed.
  */
 export function EmailForm({ current }: { current: string | null }) {
+  const hydrated = useHydrated();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status>({});
 
@@ -34,14 +36,14 @@ export function EmailForm({ current }: { current: string | null }) {
   }
 
   return (
-    <form className="form" onSubmit={submit}>
+    <form className="form" method="post" onSubmit={submit}>
       <label className="field">
         <span>Email address</span>
         <input name="email" type="email" autoComplete="email" defaultValue={current ?? ''} required />
         <small className="field-hint">You log in with it, and GigaCAD sends notices to it.</small>
       </label>
       <div className="form-actions">
-        <button type="submit" className="btn btn-secondary" disabled={busy}>
+        <button type="submit" className="btn btn-secondary" disabled={busy || !hydrated}>
           {busy ? 'Sending…' : 'Change email'}
         </button>
         <Status status={status} />
@@ -52,6 +54,7 @@ export function EmailForm({ current }: { current: string | null }) {
 
 /** Changing the password asks for the current one, so a browser left signed in isn't enough to take the account. */
 export function PasswordForm({ email }: { email: string | null }) {
+  const hydrated = useHydrated();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status>({});
 
@@ -79,8 +82,9 @@ export function PasswordForm({ email }: { email: string | null }) {
     setStatus({ message: 'Password changed.' });
   }
 
+  // Posted, and disabled until hydrated, so an early Enter never puts passwords in the address bar.
   return (
-    <form className="form" onSubmit={submit}>
+    <form className="form" method="post" onSubmit={submit}>
       <label className="field">
         <span>Current password</span>
         <input name="current" type="password" autoComplete="current-password" required />
@@ -98,7 +102,7 @@ export function PasswordForm({ email }: { email: string | null }) {
         <input name="confirm" type="password" autoComplete="new-password" minLength={8} required />
       </label>
       <div className="form-actions">
-        <button type="submit" className="btn btn-secondary" disabled={busy}>
+        <button type="submit" className="btn btn-secondary" disabled={busy || !hydrated}>
           {busy ? 'Saving…' : 'Change password'}
         </button>
         <Status status={status} />

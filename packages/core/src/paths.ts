@@ -71,6 +71,22 @@ export function validateEntryName(name: string, options: { atRoot?: boolean } = 
   return name;
 }
 
+/**
+ * Normalizes a project path and checks only what Windows can't store at all: reserved and
+ * control characters, names ending in a dot or space, and device names. Clients on Windows use
+ * it for paths already on the server, which may hold names (a leading space, text direction
+ * controls) that new commits refuse but Windows stores fine.
+ */
+export function validateWindowsPath(input: string): string {
+  const path = normalizePath(input);
+  for (const name of path.split('/')) {
+    if (/[\x00-\x1f<>:"\\|?*]/.test(name)) throw new InvalidPathError(input, 'name must not contain < > : " \\ | ? * or control characters');
+    if (/[. ]$/.test(name)) throw new InvalidPathError(input, 'name must not end with a space or dot');
+    if (WINDOWS_DEVICE_NAMES.test(name)) throw new InvalidPathError(input, 'name is reserved by Windows');
+  }
+  return path;
+}
+
 export function isReservedRootName(name: string): boolean {
   return RESERVED_ROOT_NAMES.some((reserved) => reserved.toLowerCase() === name.toLowerCase());
 }

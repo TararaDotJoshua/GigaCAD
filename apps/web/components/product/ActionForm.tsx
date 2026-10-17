@@ -1,12 +1,11 @@
 'use client';
 
-import { Fragment, startTransition, useActionState, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { Fragment, startTransition, useActionState, useEffect, useRef, useState } from 'react';
 import type { ActionState } from '../../app/(product)/actions';
 import { pendingText } from '../../lib/pending';
 import { safeAction } from '../../lib/safe-action';
+import { useHydrated } from '../../lib/use-hydrated';
 import { FormStatus } from './ActionButton';
-
-const noSubscription = () => () => {};
 
 interface Result {
   readonly state: ActionState;
@@ -66,7 +65,7 @@ export function ActionForm({
     { state: {}, cleared: 0, saved: 0 },
   );
   const dirty = edits !== saved;
-  const hydrated = useSyncExternalStore(noSubscription, () => true, () => false);
+  const hydrated = useHydrated();
 
   // After an error, focus the field it's about. After a remount, focus goes back to the field it was in.
   useEffect(() => {

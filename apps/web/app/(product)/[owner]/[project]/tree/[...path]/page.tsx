@@ -1,5 +1,5 @@
-import type { DirectoryParams } from '../../../../../../components/product/ProjectDirectory';
-import { getDirectory, getProject } from '../../../../../../lib/product';
+import { directoryPaging, type DirectoryParams } from '../../../../../../components/product/ProjectDirectory';
+import { findDirectory, getProject } from '../../../../../../lib/product';
 import type { ProjectParams } from '../../layout';
 import { ProjectFilesPage } from '../../ProjectFilesPage';
 
@@ -18,12 +18,13 @@ function folderPath(segments: string[]): string {
     .join('/');
 }
 
-export async function generateMetadata({ params }: { params: Promise<TreeParams> }) {
-  const { owner, project, path } = await params;
+export async function generateMetadata({ params, searchParams }: { params: Promise<TreeParams>; searchParams: Promise<DirectoryParams> }) {
+  const [{ owner, project, path }, query] = await Promise.all([params, searchParams]);
   // A missing folder, or a project that's missing or private to this viewer, 404s from the page;
-  // its title says only that, without repeating the path from the address.
+  // its title says only that, without repeating the path from the address. Any other failure
+  // isn't a "Not found", and the page shows its own error.
   const found = await getProject(owner, project).catch(() => null);
-  if (!found || !(await getDirectory(found.id, folderPath(path)).catch(() => null))) return { title: 'Not found' };
+  if (!found || (await findDirectory(found.id, folderPath(path), directoryPaging(query)).catch(() => undefined)) === null) return { title: 'Not found' };
   return { title: `${folderPath(path)} · ${owner}/${project}` };
 }
 

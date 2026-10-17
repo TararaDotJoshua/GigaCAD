@@ -137,10 +137,20 @@ export const getReleaseRequestByNumber = cache(async (projectId: string, number:
   return getReleaseRequest(summary.id);
 });
 
-/** Every message of a request's rebuild report, most severe first. The API keeps at most 1,000. */
-export const getRebuildReport = cache((requestId: string) =>
-  get<{ total: number; messages: { level: 'info' | 'warning' | 'error'; message: string; path?: string }[] }>(`/v1/release-requests/${requestId}/rebuild-report?limit=1000`),
-);
+type RebuildMessage = { level: 'info' | 'warning' | 'error'; message: string; path?: string };
+
+/** Every message of a request's rebuild report, most severe first, read a page (of up to 1,000) at a time. */
+export const getRebuildReport = cache(async (requestId: string) => {
+  const messages: RebuildMessage[] = [];
+  let total = 0;
+  do {
+    const page = await get<{ total: number; messages: RebuildMessage[] }>(`/v1/release-requests/${requestId}/rebuild-report?offset=${messages.length}&limit=1000`);
+    total = page.total;
+    if (page.messages.length === 0) break;
+    messages.push(...page.messages);
+  } while (messages.length < total);
+  return { total, messages };
+});
 export const getDeletedProjects = cache(() => get<DeletedProject[]>('/v1/me/deleted-projects'));
 /** Members with ids and roles, for the project's own members. Outsiders get `PublicMember`s; see `getVisibleMembers`. */
 export const getMembers = cache((projectId: string) => get<Member[]>(`/v1/projects/${projectId}/members`));
@@ -163,10 +173,18 @@ export interface FileQuery {
 const fileQuery = (query: object) =>
   new URLSearchParams(Object.entries(query).flatMap(([key, value]) => (value === undefined || value === '' || value === false ? [] : [[key, String(value)]])));
 
+/** Cached by the query string, so a page and its title asking for the same folder share one request. */
+const fetchDirectory = cache((projectId: string, query: string) => get<DirectoryListing>(`/v1/projects/${projectId}/directory?${query}`));
+
 /** One folder of the project directory, by its path from the root. A folder that doesn't exist is the not-found page. */
-export const getDirectory = cache((projectId: string, path: string, query: FileQuery = {}) =>
-  orNotFound(get<DirectoryListing>(`/v1/projects/${projectId}/directory?${fileQuery({ path, ...query })}`)),
-);
+export const getDirectory = (projectId: string, path: string, query: FileQuery = {}) => orNotFound(fetchDirectory(projectId, fileQuery({ path, ...query }).toString()));
+
+/** The same folder, or null when it doesn't exist. Other failures (a server error, say) still throw. */
+export const findDirectory = (projectId: string, path: string, query: FileQuery = {}) =>
+  fetchDirectory(projectId, fileQuery({ path, ...query }).toString()).catch((error: unknown) => {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  });
 export const searchFiles = cache(
   (projectId: string, query: FileQuery & { q?: string; tags?: string; favorites?: boolean; area?: 'root' | 'branch' | 'release'; under?: string }) =>
     get<FilePage<DirectoryFile>>(`/v1/projects/${projectId}/files?${fileQuery(query)}`),

@@ -2,6 +2,8 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { ActionState } from '../../app/(product)/actions';
+import { candidateChanged, reconcile, settleOwnChange, type Review } from '../../lib/request-review';
+import { safeAction } from '../../lib/safe-action';
 import { ActionButton } from './ActionButton';
 
 /**
@@ -12,7 +14,8 @@ import { ActionButton } from './ActionButton';
  * Live updates bring a regenerated or rebuilt candidate onto the page as soon as it exists.
  * Approving and releasing stay on the candidate the viewer was reviewing (`reviewedId`), so
  * the API refuses them as stale, and are held until the viewer says they've looked at the
- * new one. A change the viewer made here, like saving picks, needs no second look.
+ * new one. The candidate the viewer's own action built, like saving picks, needs no second
+ * look; anything else, including what arrives after their action failed, does (see request-review).
  */
 interface RequestDraft {
   readonly dirty: boolean;
@@ -23,8 +26,10 @@ interface RequestDraft {
   /** The candidate on the page isn't the one the viewer was reviewing. */
   readonly changed: boolean;
   readonly acknowledge: () => void;
-  /** The next candidate change is this viewer's own. */
+  /** An action of this viewer's that changes the candidate is starting. */
   readonly expectOwnChange: () => void;
+  /** It finished: the candidate it left (if it says) is the viewer's own. */
+  readonly ownChangeDone: (result: ActionState) => void;
 }
 
 const Context = createContext<RequestDraft>({
@@ -36,6 +41,7 @@ const Context = createContext<RequestDraft>({
   changed: false,
   acknowledge: () => undefined,
   expectOwnChange: () => undefined,
+  ownChangeDone: () => undefined,
 });
 
 export const useRequestDraft = () => useContext(Context);
@@ -45,14 +51,12 @@ const LEAVE = 'You have unsaved picks. Leave this page and lose them?';
 export function RequestDraftProvider({ candidateId, children }: { candidateId: string | null; children: React.ReactNode }) {
   const [dirty, setDirty] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [reviewedId, setReviewedId] = useState(candidateId);
-  const [expecting, setExpecting] = useState(false);
-  // Saving picks clears the candidate before it's rebuilt, so an own change ends with the new one.
-  if (candidateId !== reviewedId && expecting) {
-    setReviewedId(candidateId);
-    if (candidateId) setExpecting(false);
-  }
-  const changed = candidateId !== reviewedId;
+  const [review, setReview] = useState<Review>({ reviewedId: candidateId, own: null });
+  // The candidate the viewer's own action built becomes the one under review once it's on the page.
+  const reconciled = reconcile(review, candidateId);
+  if (reconciled !== review) setReview(reconciled);
+  const { reviewedId } = review;
+  const changed = candidateChanged(review, candidateId);
   useEffect(() => {
     if (!dirty) return;
     const beforeUnload = (event: BeforeUnloadEvent) => {
@@ -87,10 +91,11 @@ export function RequestDraftProvider({ candidateId, children }: { candidateId: s
       reviewedId,
       changed,
       acknowledge: () => {
-        setReviewedId(candidateId);
+        setReview({ reviewedId: candidateId, own: null });
         setNotice(null);
       },
-      expectOwnChange: () => setExpecting(true),
+      expectOwnChange: () => setReview((current) => ({ ...current, own: 'running' })),
+      ownChangeDone: (result: ActionState) => setReview((current) => ({ ...current, own: settleOwnChange(result) })),
     }),
     [dirty, notice, reviewedId, changed, candidateId],
   );
@@ -157,7 +162,7 @@ export function RequestActionButton({
   disabled?: boolean;
   changesCandidate?: boolean;
 }) {
-  const { dirty, setNotice, expectOwnChange } = useRequestDraft();
+  const { dirty, setNotice, expectOwnChange, ownChangeDone } = useRequestDraft();
   return (
     <>
       <ActionButton
@@ -167,7 +172,8 @@ export function RequestActionButton({
         disabled={disabled || dirty}
         action={async () => {
           if (changesCandidate) expectOwnChange();
-          const result = await action();
+          const result = await safeAction(action);
+          if (changesCandidate) ownChangeDone(result);
           if (result.error) return result;
           setNotice(result.message ?? null);
           return {};

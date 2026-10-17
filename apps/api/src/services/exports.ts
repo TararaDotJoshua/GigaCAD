@@ -30,7 +30,9 @@ export async function setFileExport(
   input: { source: string; format: ExportFormat; blob: string },
 ): Promise<FileExport> {
   return sql.begin(async (tx) => {
-    await requireProjectRole(tx, projectId, userId, 'contributor');
+    // The project lock queues this behind a release in progress, so an export can't change between
+    // the release's approval check and the snapshot of the exports it keeps.
+    await requireProjectRole(tx, projectId, userId, 'contributor', { lock: true });
     const [source] = await tx<{ path: string }[]>`
       select me.path from manifest_entries me join manifests m on m.id = me.manifest_id
       where m.project_id = ${projectId} and me.blob_sha256 = ${input.source} and me.path ~* ${EXPORTABLE.source}
@@ -57,6 +59,8 @@ export async function setFileExport(
       values (${projectId}, ${input.source}, ${input.format}, ${input.blob}, ${userId})
       on conflict (project_id, source_sha256, format)
       do update set blob_sha256 = excluded.blob_sha256, created_by = excluded.created_by, created_at = now()
+      -- Attaching the same export again changes nothing, so it mustn't look newer than the approvals it would void.
+      where file_exports.blob_sha256 is distinct from excluded.blob_sha256
     `;
     // The export is drawn as its own file, by its own content. The source file's thumbnail row is
     // shared by every project holding the same bytes, so it is never changed from here; this

@@ -322,21 +322,35 @@ export async function getReleaseRequest(sql: Sql, id: string, userId: string | n
 
 /**
  * What people outside the project see of a request: no member ids for the people the rules
- * name (as on /approval-rules) or who filed the rebuild report, and no device names, which
- * carry the reporter's computer name.
+ * name (as on /approval-rules), who asked, approved or filed the rebuild report, and no device
+ * names, which carry the reporter's computer name. Approvers keep their handles, and their ids
+ * become stand-ins that are the same throughout one response, so the page can still tell
+ * whose approval counts.
  */
 function forOutsiders(result: ReleaseRequestDetail): ReleaseRequestDetail {
-  const { rules } = result.approvals;
+  const { rules, given, evaluation } = result.approvals;
   const report = result.releaseRequest.rebuildReport;
   const { deviceName: _device, reportedBy, ...rest } = report ?? {};
+  const standIns = new Map<string, string>();
+  const standIn = (userId: string) => standIns.get(userId) ?? standIns.set(userId, `approver-${standIns.size + 1}`).get(userId)!;
   return {
     ...result,
     releaseRequest: {
       ...result.releaseRequest,
+      requesterId: null,
       rebuildReportedBy: null,
       rebuildReport: report ? ({ ...rest, ...(reportedBy ? { reportedBy: { handle: reportedBy.handle } } : {}) } as RebuildReportSummary) : null,
     },
-    approvals: { ...result.approvals, rules: rules ? { ...rules, approverUserIds: [] } : null },
+    approvals: {
+      ...result.approvals,
+      given: given.map((approval) => ({ ...approval, userId: standIn(approval.userId) })),
+      evaluation: evaluation && {
+        ...evaluation,
+        countedUserIds: evaluation.countedUserIds.map(standIn),
+        ignored: evaluation.ignored.map((ignored) => ({ ...ignored, userId: standIn(ignored.userId) })),
+      },
+      rules: rules ? { ...rules, approverUserIds: [] } : null,
+    },
   };
 }
 
@@ -766,17 +780,22 @@ export async function approve(sql: Sql, id: string, userId: string, input: { can
     const reason = approverIneligibility(rules, userId, role ?? undefined, request.requesterId ?? '');
     if (reason) throw forbidden("You can't approve this release request", { reason });
 
-    const [already] = await tx<{ candidateManifestId: string }[]>`
-      select candidate_manifest_id from approvals where release_request_id = ${id} and user_id = ${userId}
-    `;
+    const [[already], changedAt] = await Promise.all([
+      tx<{ candidateManifestId: string; createdAt: Date }[]>`
+        select candidate_manifest_id, created_at from approvals where release_request_id = ${id} and user_id = ${userId}
+      `,
+      exportsChangedAt(tx, request),
+    ]);
     await tx`
       insert into approvals (release_request_id, user_id, candidate_manifest_id)
       values (${id}, ${userId}, ${manifestId})
       on conflict (release_request_id, user_id)
       do update set candidate_manifest_id = excluded.candidate_manifest_id, created_at = now()
     `;
-    // Approving the same candidate twice changes nothing, so it isn't news twice.
-    if (already?.candidateManifestId !== manifestId) {
+    // Approving the same candidate twice changes nothing, so it isn't news twice. An approval
+    // from before an export changed stopped counting, so giving it again is.
+    const repeat = already?.candidateManifestId === manifestId && !(changedAt && already.createdAt < changedAt);
+    if (!repeat) {
       await recordEvent(tx, {
         projectId: request.projectId,
         actorId: userId,
@@ -792,13 +811,15 @@ export async function approve(sql: Sql, id: string, userId: string, input: { can
 export async function withdrawApproval(sql: Sql, id: string, userId: string): Promise<ReleaseRequestDetail> {
   return sql.begin(async (tx) => {
     const request = await loadRequest(tx, id, true);
-    await projectAccess(tx, request.projectId, userId);
+    const { role } = await projectAccess(tx, request.projectId, userId);
     await requireActive(tx, request);
     const removed = await tx`delete from approvals where release_request_id = ${id} and user_id = ${userId}`;
     if (removed.count > 0) {
       await recordEvent(tx, { projectId: request.projectId, actorId: userId, kind: 'release_request_approval_withdrawn', subjectId: id, payload: { number: request.number } });
     }
-    return detail(tx, await loadRequest(tx, id));
+    // Anyone signed in can call this on a public project; outsiders get what getReleaseRequest gives them.
+    const result = await detail(tx, await loadRequest(tx, id));
+    return role === null ? forOutsiders(result) : result;
   });
 }
 

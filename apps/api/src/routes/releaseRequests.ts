@@ -91,7 +91,8 @@ export function releaseRequestRoutes(app: FastifyInstance, { sql, mailer, webOri
         status: z.enum(['passed', 'passed_with_warnings', 'failed']),
         messages: z
           .array(z.object({ level: z.enum(['info', 'warning', 'error']), message: reportText(2000), path: reportText(1024).optional() }))
-          .max(1000),
+          // Installed 0.1.0 CLIs and add-ins send up to 5,000; the web pages through them all.
+          .max(5000),
       }),
       request.body,
     );

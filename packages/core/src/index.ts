@@ -1,5 +1,6 @@
 export * from './approvals.js';
 export * from './autosave.js';
+export * from './branches.js';
 export * from './candidate.js';
 export * from './contributions.js';
 export * from './handles.js';

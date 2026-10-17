@@ -206,6 +206,38 @@ describe('the project root', () => {
   });
 });
 
+describe('branch folders', () => {
+  it("credit a file to whoever changed it on the branch, not to the branch's creator", async () => {
+    const projectId = await project();
+    const first = await api.post(`/v1/projects/${projectId}/branches`, { name: 'first' });
+    const content = `base ${randomUUID()}`;
+    await commitVersion(harness, api, projectId, first.body.id, { 'Base.SLDPRT': content, 'Other.SLDPRT': `other ${randomUUID()}` });
+    await release(projectId, first.body.id);
+    const [{ createdAt: releasedAt }] = (await api.get(`/v1/projects/${projectId}/releases`)).body;
+
+    // The helper branches from v1 and changes one file.
+    const next = await asHelper.post(`/v1/projects/${projectId}/branches`, { name: 'next' });
+    const inherited = await list(api, projectId, 'Branches/next');
+    // Unchanged files date from v1, not from when the branch was made.
+    for (const file of inherited.body.entries) expect(file).toMatchObject({ modifiedByHandle: null, modifiedAt: releasedAt });
+    const otherItem = inherited.body.entries.find((file: { name: string }) => file.name === 'Other.SLDPRT').itemId;
+    await commitVersion(harness, asHelper, projectId, next.body.id, { 'Base.SLDPRT': content, 'Other.SLDPRT': `edited ${randomUUID()}` }, {
+      itemIds: { 'Base.SLDPRT': inherited.body.entries.find((file: { name: string }) => file.name === 'Base.SLDPRT').itemId, 'Other.SLDPRT': otherItem },
+      checkIn: false,
+    });
+
+    const listed = await list(api, projectId, 'Branches/next');
+    const byName = Object.fromEntries(listed.body.entries.map((file: { name: string; modifiedByHandle: string | null }) => [file.name, file.modifiedByHandle]));
+    expect(byName).toEqual({ 'Base.SLDPRT': null, 'Other.SLDPRT': helper.handle });
+    expect(listed.body.location.branch).toMatchObject({ headKind: 'version', checkedOutByHandle: helper.handle });
+
+    // Search agrees.
+    const found = await api.get(`/v1/projects/${projectId}/files?q=Base&area=branch`);
+    const onNext = found.body.entries.find((file: { location: { branchName: string } }) => file.location.branchName === 'next');
+    expect(onNext.modifiedByHandle).toBeNull();
+  });
+});
+
 describe('tags, favorites, recent files, and search', () => {
   it('find root, branch, and release appearances of a file, each with its location', async () => {
     const projectId = await project();

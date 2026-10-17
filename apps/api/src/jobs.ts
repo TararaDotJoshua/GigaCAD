@@ -146,9 +146,21 @@ export async function clearAbandonedUploads(sql: Sql, storage: BlobStorage, opti
  */
 export async function notifyStaleCheckouts(sql: Sql, mailer: Mailer, webOrigin: string, options: JobOptions = {}): Promise<number> {
   const { staleCheckoutDays, batch } = { ...DEFAULTS, ...options };
-  const stale = await sql<{ branchId: string; branchName: string; ownerHandle: string; slug: string; projectName: string; email: string | null; days: number }[]>`
+  const stale = await sql<{
+    branchId: string;
+    branchName: string;
+    ownerHandle: string;
+    slug: string;
+    projectName: string;
+    email: string | null;
+    machine: string | null;
+    days: number;
+    savedDays: number | null;
+  }[]>`
     select b.id as branch_id, b.name as branch_name, o.handle as owner_handle, p.slug, p.name as project_name,
-      u.email, floor(extract(epoch from now() - b.checked_out_at) / 86400)::int as days
+      u.email, b.checked_out_machine as machine, floor(extract(epoch from now() - b.checked_out_at) / 86400)::int as days,
+      (select floor(extract(epoch from now() - max(c.created_at)) / 86400)::int from commits c
+        where c.branch_id = b.id and c.created_at >= b.checked_out_at) as saved_days
     from branches b
     join projects p on p.id = b.project_id and p.deleted_at is null
     join profiles o on o.id = p.owner_id
@@ -170,13 +182,16 @@ export async function notifyStaleCheckouts(sql: Sql, mailer: Mailer, webOrigin: 
     `;
     if (!claimed || !branch.email) continue;
     const url = `${webOrigin}/${branch.ownerHandle}/${branch.slug}/branches/${encodeURIComponent(branch.branchName)}`;
+    const ago = (days: number) => (days === 1 ? '1 day ago' : `${days} days ago`);
     await mailer.send({
       to: branch.email,
       subject: `${branch.branchName} in ${branch.projectName} is still checked out`,
       text: [
-        `You checked out ${branch.branchName} in ${branch.projectName} ${branch.days} days ago, and nothing has been committed to it since.`,
+        `You checked out ${branch.branchName} in ${branch.projectName}${branch.machine ? ` on ${branch.machine}` : ''} ${ago(branch.days)}, ${
+          branch.savedDays === null ? 'and nothing has been saved to it since.' : `and it was last saved ${ago(branch.savedDays)}.`
+        }`,
         '',
-        'While you hold the checkout, nobody else can change the branch. If you are done, check it in. If you are still working, commit a version so your changes are safe.',
+        'While you hold the checkout, nobody else can change the branch. If you are still working, commit a version so your changes are safe. If you are done, check it in: from the GigaCAD app, with `giga checkin`, or with Check in on the branch page.',
         '',
         url,
       ].join('\n'),

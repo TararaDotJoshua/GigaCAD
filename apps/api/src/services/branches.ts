@@ -2,6 +2,7 @@ import { diffManifests, planAutosavePrune, type BranchCommit, type CommitKind, t
 import type { Db, Sql, Tx } from '../db.js';
 import { conflict, forbidden, notFound } from '../errors.js';
 import { projectAccess, requireProjectRole } from './access.js';
+import type { Mailer } from '../mail.js';
 import { recordEvent } from './events.js';
 import { deleteUnreferencedManifests, insertManifest, loadManifest, resolveFiles, type FileInput } from './manifests.js';
 
@@ -19,6 +20,9 @@ export interface BranchView {
   readonly checkedOutByHandle: string | null;
   readonly checkedOutMachine: string | null;
   readonly checkedOutAt: Date | null;
+  /** Who archived it and when, while it's archived. */
+  readonly archivedByHandle: string | null;
+  readonly archivedAt: Date | null;
   readonly createdAt: Date;
 }
 
@@ -59,10 +63,16 @@ export async function branchView(db: Db, branchId: string): Promise<BranchView> 
   const [branch] = await db<BranchView[]>`
     select b.id, b.project_id, b.name, b.status, b.base_release_id, r.number as base_release_number,
            b.head_commit_id, b.checked_out_by, h.handle as checked_out_by_handle,
-           b.checked_out_machine, b.checked_out_at, b.created_at
+           b.checked_out_machine, b.checked_out_at, ah.handle as archived_by_handle, ae.created_at as archived_at, b.created_at
     from branches b
     left join releases r on r.id = b.base_release_id
     left join profiles h on h.id = b.checked_out_by
+    left join lateral (
+      select e.actor_id, e.created_at from project_events e
+      where b.status = 'archived' and e.project_id = b.project_id and e.subject_id = b.id and e.kind = 'branch_archived'
+      order by e.id desc limit 1
+    ) ae on true
+    left join profiles ah on ah.id = ae.actor_id
     where b.id = ${branchId}
   `;
   if (!branch) throw notFound('Branch');
@@ -104,8 +114,13 @@ export async function createBranch(
           `;
     if (input.fromRelease !== undefined && !release) throw notFound(`Release v${input.fromRelease}`);
 
-    const [existing] = await tx`select 1 from branches where project_id = ${projectId} and lower(name) = lower(${input.name})`;
-    if (existing) throw conflict('branch_exists', `A branch named "${input.name}" already exists`);
+    const [existing] = await tx<{ name: string; status: BranchStatus }[]>`
+      select name, status from branches where project_id = ${projectId} and lower(name) = lower(${input.name})
+    `;
+    if (existing?.status === 'archived') {
+      throw conflict('branch_exists_archived', `An archived branch is already called ${existing.name}`, { name: existing.name });
+    }
+    if (existing) throw conflict('branch_exists', `A branch named "${existing.name}" already exists`, { name: existing.name, status: existing.status });
 
     const manifestId = release?.manifestId ?? (await insertManifest(tx, projectId, []));
     const [branch] = await tx<{ id: string }[]>`
@@ -136,10 +151,16 @@ export async function listBranches(sql: Sql, projectId: string, userId: string |
   return sql<BranchView[]>`
     select b.id, b.project_id, b.name, b.status, b.base_release_id, r.number as base_release_number,
            b.head_commit_id, b.checked_out_by, h.handle as checked_out_by_handle,
-           b.checked_out_machine, b.checked_out_at, b.created_at
+           b.checked_out_machine, b.checked_out_at, ah.handle as archived_by_handle, ae.created_at as archived_at, b.created_at
     from branches b
     left join releases r on r.id = b.base_release_id
     left join profiles h on h.id = b.checked_out_by
+    left join lateral (
+      select e.actor_id, e.created_at from project_events e
+      where b.status = 'archived' and e.project_id = b.project_id and e.subject_id = b.id and e.kind = 'branch_archived'
+      order by e.id desc limit 1
+    ) ae on true
+    left join profiles ah on ah.id = ae.actor_id
     where b.project_id = ${projectId}
     order by b.created_at desc
   `;
@@ -196,36 +217,144 @@ export async function checkIn(sql: Sql, branchId: string, userId: string): Promi
   });
 }
 
-/** Maintainers can break a stale lock. The previous holder is recorded so they can be notified. */
-export async function forceRelease(sql: Sql, branchId: string, userId: string): Promise<BranchView> {
+/** Why someone's lock was taken from them, which their notice explains. */
+export type LockReleaseReason = 'force_released' | 'archived' | 'member_removed';
+
+/** Someone whose lock was released by someone else, with what's needed to tell them. */
+export interface LockReleaseNotice {
+  readonly email: string | null;
+  readonly reason: LockReleaseReason;
+  readonly releasedBy: string;
+  readonly branchName: string;
+  readonly machine: string | null;
+  readonly projectName: string;
+  readonly ownerHandle: string;
+  readonly slug: string;
+  /** Unsaved autosaves left on the branch since its last version. */
+  readonly autosaves: number;
+}
+
+/**
+ * Takes a lock from its holder on someone else's say-so: clears it, logs who held it, and
+ * returns what's needed to tell them. Their autosaves stay on the branch.
+ */
+async function releaseLockOf(tx: Tx, branch: BranchRow, actorId: string, reason: LockReleaseReason): Promise<LockReleaseNotice | null> {
+  if (branch.checkedOutBy === null) return null;
+  await clearCheckout(tx, branch.id);
+  await recordEvent(tx, {
+    projectId: branch.projectId,
+    actorId,
+    kind: 'branch_lock_force_released',
+    subjectId: branch.id,
+    payload: { previousHolder: branch.checkedOutBy, machine: branch.checkedOutMachine, reason },
+  });
+  // Taking back your own lock needs no notice.
+  if (branch.checkedOutBy === actorId) return null;
+  const [notice] = await tx<Omit<LockReleaseNotice, 'reason' | 'branchName' | 'machine'>[]>`
+    select u.email, actor.handle as released_by, p.name as project_name, o.handle as owner_handle, p.slug,
+      (select count(*)::int from commits c where c.branch_id = ${branch.id} and c.kind = 'autosave') as autosaves
+    from projects p
+    join profiles o on o.id = p.owner_id
+    join profiles actor on actor.id = ${actorId}
+    left join auth.users u on u.id = ${branch.checkedOutBy}
+    where p.id = ${branch.projectId}
+  `;
+  if (!notice) return null;
+  return { ...notice, reason, branchName: branch.name, machine: branch.checkedOutMachine };
+}
+
+/** Emails someone that their lock was released. A mail failure doesn't undo the change. */
+export async function notifyLockReleased(mailer: Mailer, webOrigin: string, notice: LockReleaseNotice): Promise<void> {
+  if (!notice.email) return;
+  const where = `${notice.branchName} in ${notice.projectName}`;
+  const what =
+    notice.reason === 'archived'
+      ? `@${notice.releasedBy} archived ${where}, which released your checkout${notice.machine ? ` on ${notice.machine}` : ''}. The branch is read-only now.`
+      : notice.reason === 'member_removed'
+        ? `@${notice.releasedBy} changed your access to ${notice.projectName}, which released your checkout of ${notice.branchName}${notice.machine ? ` on ${notice.machine}` : ''}.`
+        : `@${notice.releasedBy} force-released your checkout of ${where}${notice.machine ? ` on ${notice.machine}` : ''}.`;
+  const next =
+    notice.reason === 'member_removed'
+      ? 'You can no longer save to it. Anything you saved before stays with the project.'
+      : notice.reason === 'archived'
+        ? 'Anything you saved stays in its history. Ask a maintainer to restore the branch if you still need to work on it.'
+        : 'Your saved work stays on the branch, but you can no longer save to it from that machine. Check it out again to keep working, once nobody else has it.';
+  const autosaves = notice.autosaves > 0 ? `It still has ${notice.autosaves === 1 ? '1 autosave' : `${notice.autosaves} autosaves`} since its last version.` : '';
+  await mailer.send({
+    to: notice.email,
+    subject: `Your checkout of ${notice.branchName} in ${notice.projectName} was released`,
+    text: [
+      what,
+      '',
+      [next, autosaves].filter(Boolean).join(' '),
+      ...(notice.reason === 'member_removed' ? [] : ['', `${webOrigin}/${notice.ownerHandle}/${notice.slug}/branches/${encodeURIComponent(notice.branchName)}`]),
+    ].join('\n'),
+  });
+}
+
+/** Maintainers can break a stale lock. The previous holder is recorded and told. */
+export async function forceRelease(sql: Sql, branchId: string, userId: string): Promise<{ branch: BranchView; notice: LockReleaseNotice | null }> {
   return sql.begin(async (tx) => {
     const branch = await lockBranch(tx, branchId);
     await requireProjectRole(tx, branch.projectId, userId, 'maintainer');
-    if (branch.checkedOutBy === null) return branchView(tx, branchId);
-    await clearCheckout(tx, branchId);
+    const notice = await releaseLockOf(tx, branch, userId, 'force_released');
+    return { branch: await branchView(tx, branchId), notice };
+  });
+}
+
+/**
+ * Makes an open branch read-only. A lock on it is released, logged, and its holder told;
+ * their autosaves stay, so restoring the branch gets them back.
+ */
+export async function archiveBranch(sql: Sql, branchId: string, userId: string): Promise<{ branch: BranchView; notice: LockReleaseNotice | null }> {
+  return sql.begin(async (tx) => {
+    const branch = await lockBranch(tx, branchId);
+    await requireProjectRole(tx, branch.projectId, userId, 'maintainer');
+    if (branch.status === 'archived') return { branch: await branchView(tx, branchId), notice: null };
+    if (branch.status === 'frozen') throw conflict('branch_frozen', 'Close its release request before archiving this branch');
+    if (branch.status !== 'open') throw conflict('branch_not_open', `This branch is ${branch.status} and can't be archived`);
+    const notice = await releaseLockOf(tx, branch, userId, 'archived');
+    await tx`update branches set status = 'archived' where id = ${branchId}`;
     await recordEvent(tx, {
       projectId: branch.projectId,
       actorId: userId,
-      kind: 'branch_lock_force_released',
+      kind: 'branch_archived',
       subjectId: branchId,
-      payload: { previousHolder: branch.checkedOutBy, machine: branch.checkedOutMachine },
+      payload: { name: branch.name, previousHolder: branch.checkedOutBy },
     });
+    return { branch: await branchView(tx, branchId), notice };
+  });
+}
+
+/** Brings an archived branch back as an open one, with its history and autosaves. */
+export async function unarchiveBranch(sql: Sql, branchId: string, userId: string): Promise<BranchView> {
+  return sql.begin(async (tx) => {
+    const branch = await lockBranch(tx, branchId);
+    await requireProjectRole(tx, branch.projectId, userId, 'maintainer');
+    if (branch.status === 'open') return branchView(tx, branchId);
+    if (branch.status !== 'archived') throw conflict('branch_not_archived', `This branch is ${branch.status}, not archived`);
+    await tx`update branches set status = 'open' where id = ${branchId}`;
+    await recordEvent(tx, { projectId: branch.projectId, actorId: userId, kind: 'branch_unarchived', subjectId: branchId, payload: { name: branch.name } });
     return branchView(tx, branchId);
   });
 }
 
-export async function archiveBranch(sql: Sql, branchId: string, userId: string): Promise<BranchView> {
-  return sql.begin(async (tx) => {
-    const branch = await lockBranch(tx, branchId);
-    await requireProjectRole(tx, branch.projectId, userId, 'maintainer');
-    if (branch.status === 'frozen') throw conflict('branch_frozen', 'Close its release request before archiving this branch');
-    await tx`
-      update branches set status = 'archived', checked_out_by = null, checked_out_machine = null, checked_out_at = null
-      where id = ${branchId}
-    `;
-    await recordEvent(tx, { projectId: branch.projectId, actorId: userId, kind: 'branch_archived', subjectId: branchId });
-    return branchView(tx, branchId);
-  });
+/**
+ * Releases a person's locks in a project when they can no longer save to it (removed, or
+ * made a viewer). Runs in the caller's transaction, so the change and the release are one.
+ */
+export async function releaseLocksOf(tx: Tx, projectId: string, holderId: string, actorId: string): Promise<LockReleaseNotice[]> {
+  const held = await tx<BranchRow[]>`
+    select id, project_id, name, status, base_release_id, head_commit_id, checked_out_by, checked_out_machine
+    from branches where project_id = ${projectId} and checked_out_by = ${holderId}
+    order by name for update
+  `;
+  const notices: LockReleaseNotice[] = [];
+  for (const branch of held) {
+    const notice = await releaseLockOf(tx, branch, actorId, 'member_removed');
+    if (notice) notices.push(notice);
+  }
+  return notices;
 }
 
 export async function clearCheckout(tx: Tx, branchId: string): Promise<void> {

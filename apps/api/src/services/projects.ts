@@ -1,8 +1,10 @@
 import type { ApprovalRules, ProjectRole } from '@gigacad/core';
 import type { Db, Sql } from '../db.js';
-import { badRequest, forbidden, notFound, unprocessable } from '../errors.js';
+import { badRequest, conflict, forbidden, notFound, unprocessable } from '../errors.js';
 import type { Mailer } from '../mail.js';
 import { projectAccess, requireProjectRole, type ProjectRow } from './access.js';
+import { requireStorageFor } from './billing.js';
+import { releaseLocksOf, type LockReleaseNotice } from './branches.js';
 import { recordEvent } from './events.js';
 
 export interface ProjectSummary extends ProjectRow {
@@ -45,12 +47,25 @@ export async function summarize(db: Db, projectId: string, role: ProjectRole | n
   };
 }
 
+/**
+ * Refuses an address one of the owner's projects already has. A deleted project keeps its
+ * address while it can be restored, which is said so, since nothing visible uses it.
+ */
+export async function requireFreeAddress(db: Db, ownerId: string, slug: string): Promise<void> {
+  const [existing] = await db<{ id: string; deleted: boolean }[]>`
+    select id, deleted_at is not null as deleted from projects where owner_id = ${ownerId} and slug = ${slug}
+  `;
+  if (existing?.deleted) throw conflict('address_deleted', 'You deleted a project at this address. Restore it, or choose another address', { projectId: existing.id });
+  if (existing) throw conflict('address_taken', 'You already have a project at that address');
+}
+
 export async function createProject(
   sql: Sql,
   userId: string,
   input: { slug: string; name: string; description?: string | undefined; visibility?: 'public' | 'private' | undefined },
 ): Promise<ProjectSummary> {
   return sql.begin(async (tx) => {
+    await requireFreeAddress(tx, userId, input.slug);
     const [project] = await tx<{ id: string }[]>`
       insert into projects (owner_id, slug, name, description, visibility)
       values (${userId}, ${input.slug}, ${input.name}, ${input.description ?? ''}, ${input.visibility ?? 'private'})
@@ -156,6 +171,12 @@ export async function restoreProject(sql: Sql, projectId: string, userId: string
     `;
     // Anyone but the owner sees no deleted project at all.
     if (!project || project.ownerId !== userId || !project.restorable) throw notFound('Deleted project');
+    // A deleted project's files stop counting, so the freed space may have been used since.
+    const blobs = await tx<{ sha256: string; size: number }[]>`
+      select b.sha256, b.size::float8 as size from project_blobs pb join blobs b on b.sha256 = pb.sha256
+      where pb.project_id = ${projectId}
+    `;
+    await requireStorageFor(tx, project.ownerId, blobs);
     await tx`update projects set deleted_at = null where id = ${projectId}`;
     await recordEvent(tx, { projectId, actorId: userId, kind: 'project_restored', subjectId: projectId });
     return summarize(tx, projectId, 'owner', userId);
@@ -192,9 +213,16 @@ export interface NewMember {
 
 /**
  * Owners manage everyone; maintainers manage contributors and viewers. The owner's own role
- * is fixed. Returns the person when they weren't a member before, so they can be told.
+ * is fixed. Returns the person when they weren't a member before, so they can be told, and
+ * any locks they lost because they can no longer save (removed, or made a viewer).
  */
-export async function setMember(sql: Sql, projectId: string, userId: string, handle: string, role: ProjectRole | null): Promise<NewMember | null> {
+export async function setMember(
+  sql: Sql,
+  projectId: string,
+  userId: string,
+  handle: string,
+  role: ProjectRole | null,
+): Promise<{ added: NewMember | null; releasedLocks: LockReleaseNotice[] }> {
   return sql.begin(async (tx) => {
     const { project, role: callerRole } = await requireProjectRole(tx, projectId, userId, 'maintainer', { lock: true });
     const [target] = await tx<{ id: string }[]>`select id from profiles where handle = ${handle}`;
@@ -217,7 +245,9 @@ export async function setMember(sql: Sql, projectId: string, userId: string, han
       `;
     }
     await recordEvent(tx, { projectId, actorId: userId, kind: 'member_changed', subjectId: target.id, payload: { handle, role } });
-    if (role === null || current) return null;
+    // Nobody else could check those branches out while someone who can't save holds them.
+    const releasedLocks = role === null || role === 'viewer' ? await releaseLocksOf(tx, projectId, target.id, userId) : [];
+    if (role === null || current) return { added: null, releasedLocks };
     const [added] = await tx<Omit<NewMember, 'role'>[]>`
       select u.email, actor.handle as added_by, p.name as project_name, o.handle as owner_handle, p.slug
       from projects p
@@ -226,7 +256,7 @@ export async function setMember(sql: Sql, projectId: string, userId: string, han
       left join auth.users u on u.id = ${target.id}
       where p.id = ${projectId}
     `;
-    return added ? { ...added, role } : null;
+    return { added: added ? { ...added, role } : null, releasedLocks };
   });
 }
 

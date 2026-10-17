@@ -13,6 +13,7 @@ export type EventKind =
   | 'branch_checked_in'
   | 'branch_lock_force_released'
   | 'branch_archived'
+  | 'branch_unarchived'
   | 'commit_created'
   | 'release_request_opened'
   | 'release_request_picks_changed'

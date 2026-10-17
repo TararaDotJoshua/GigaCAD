@@ -1,3 +1,4 @@
+import { branchNameProblem } from '@gigacad/core';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
@@ -13,14 +14,18 @@ import {
   getCommit,
   listBranches,
   listCommits,
+  notifyLockReleased,
+  unarchiveBranch,
 } from '../services/branches.js';
 
-const branchName = z
-  .string()
-  .regex(/^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$/, 'Use letters, digits, dots, dashes, or underscores');
+// One message per problem, the same ones the web form shows as you type.
+const branchName = z.string().superRefine((name, context) => {
+  const problem = branchNameProblem(name);
+  if (problem) context.addIssue({ code: 'custom', message: problem });
+});
 const machine = z.string().min(1).max(200);
 
-export function branchRoutes(app: FastifyInstance, { sql }: AppDeps): void {
+export function branchRoutes(app: FastifyInstance, { sql, mailer, webOrigin }: AppDeps): void {
   app.post('/v1/projects/:id/branches', async (request, reply) => {
     const { id } = parse(idParams, request.params);
     const input = parse(z.object({ name: branchName, fromRelease: z.number().int().positive().optional() }), request.body);
@@ -51,12 +56,21 @@ export function branchRoutes(app: FastifyInstance, { sql }: AppDeps): void {
 
   app.post('/v1/branches/:id/force-release', async (request) => {
     const { id } = parse(idParams, request.params);
-    return forceRelease(sql, id, requireCaller(request).userId);
+    const { branch, notice } = await forceRelease(sql, id, requireCaller(request).userId);
+    if (notice && mailer) await notifyLockReleased(mailer, webOrigin, notice).catch((error: unknown) => request.log.warn(error, 'lock notice not sent'));
+    return branch;
   });
 
   app.post('/v1/branches/:id/archive', async (request) => {
     const { id } = parse(idParams, request.params);
-    return archiveBranch(sql, id, requireCaller(request).userId);
+    const { branch, notice } = await archiveBranch(sql, id, requireCaller(request).userId);
+    if (notice && mailer) await notifyLockReleased(mailer, webOrigin, notice).catch((error: unknown) => request.log.warn(error, 'lock notice not sent'));
+    return branch;
+  });
+
+  app.post('/v1/branches/:id/unarchive', async (request) => {
+    const { id } = parse(idParams, request.params);
+    return unarchiveBranch(sql, id, requireCaller(request).userId);
   });
 
   app.get('/v1/branches/:id/commits', async (request) => {

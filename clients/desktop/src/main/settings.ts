@@ -13,11 +13,15 @@ export const DEFAULT_SETTINGS: Settings = {
   appUrl: 'https://app.gigacad.site',
   startAtLogin: true,
   paused: false,
+  pausedUntil: null,
+  notify: { conflicts: true, approvals: true, checkouts: true, problems: true },
   releases: {},
   branches: {},
   hiddenProjects: [],
   setupDone: false,
   dismissedUpdate: null,
+  zoom: 0,
+  window: null,
 };
 
 export async function loadSettings(): Promise<Settings> {

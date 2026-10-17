@@ -9,6 +9,10 @@ export interface Settings {
   readonly appUrl: string;
   readonly startAtLogin: boolean;
   readonly paused: boolean;
+  /** When a timed pause ends (ISO); null pauses until resumed. */
+  readonly pausedUntil: string | null;
+  /** Which system notifications to show while the window is hidden. */
+  readonly notify: NotifyKinds;
   /** Per project id; 'latest' when unset. */
   readonly releases: Readonly<Record<string, ReleasesToKeep>>;
   /** Branch names downloaded per project id (branches you check out are downloaded too). */
@@ -18,6 +22,27 @@ export interface Settings {
   readonly setupDone: boolean;
   /** An update version whose banner was closed with ×. */
   readonly dismissedUpdate: string | null;
+  /** The window's zoom level (0 is actual size). */
+  readonly zoom: number;
+  /** Where the window was, to open it there again. */
+  readonly window: { readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly maximized: boolean } | null;
+}
+
+export interface NotifyKinds {
+  readonly conflicts: boolean;
+  readonly approvals: boolean;
+  /** Someone else checking out a branch you have downloaded. */
+  readonly checkouts: boolean;
+  /** A sync problem lasting more than 5 minutes. */
+  readonly problems: boolean;
+}
+
+/** A release request waiting for this person's approval. */
+export interface Approval {
+  readonly projectId: string;
+  readonly number: number;
+  readonly title: string;
+  readonly branchName: string;
 }
 
 export type Holder = 'me' | 'other' | null;
@@ -37,10 +62,20 @@ export interface BranchState {
 
 export interface ReleaseState {
   readonly number: number;
+  /** The release request's title, which names the release (as on the web). */
+  readonly title: string | null;
   readonly downloaded: boolean;
   readonly dir: string;
   readonly createdAt: string;
   readonly notes: string;
+}
+
+/** A root file changed here and on gigacad.site at once. The site's version won; yours was kept as `copy`. */
+export interface ConflictState {
+  /** Paths inside the project folder. */
+  readonly path: string;
+  readonly copy: string;
+  readonly at: string;
 }
 
 export interface ProjectState {
@@ -54,6 +89,8 @@ export interface ProjectState {
   readonly branches: readonly BranchState[];
   readonly releases: readonly ReleaseState[];
   readonly error: string | null;
+  /** Shown until dismissed. */
+  readonly conflicts: readonly ConflictState[];
 }
 
 export type SyncStatus = 'idle' | 'syncing' | 'paused' | 'offline' | 'error' | 'signed-out';
@@ -62,6 +99,9 @@ export interface ActivityItem {
   readonly at: string;
   readonly text: string;
   readonly kind: 'info' | 'error';
+  /** What it's about, so the window can link to it. */
+  readonly projectId?: string | undefined;
+  readonly branch?: string | undefined;
 }
 
 export type SetupStepId = 'applications' | 'signin' | 'folder' | 'quickActions' | 'urlScheme' | 'cli' | 'login';
@@ -118,6 +158,8 @@ export interface AppState {
   readonly sync: { readonly status: SyncStatus; readonly active: number; readonly message: string | null; readonly lastSyncedAt: string | null };
   readonly projects: readonly ProjectState[];
   readonly activity: readonly ActivityItem[];
+  /** Release requests waiting for your approval, across projects. */
+  readonly approvals: readonly Approval[];
   readonly setup: readonly SetupStep[];
   readonly updates: UpdateState;
   readonly rolledBackFrom: string | null;
@@ -139,6 +181,14 @@ export interface GigaErrorInfo {
   readonly hint?: string | undefined;
 }
 
+export interface ContextMenuItem {
+  readonly id: string;
+  readonly label: string;
+  readonly enabled?: boolean;
+  /** A line above this item. */
+  readonly separatorBefore?: boolean;
+}
+
 /** What the window asks the main process to do. Each maps to one IPC channel. */
 export interface Commands {
   getState(): AppState;
@@ -146,12 +196,15 @@ export interface Commands {
   cancelSignIn(): void;
   signOut(): void;
   syncNow(): void;
-  setPaused(paused: boolean): void;
+  /** Pauses for an hour, until tomorrow morning, or until resumed (null). */
+  setPaused(paused: boolean, duration?: 'hour' | 'tomorrow' | null): void;
+  setNotify(kind: keyof NotifyKinds, on: boolean): void;
   updateSettings(change: Partial<Pick<Settings, 'startAtLogin' | 'folder'>>): void;
   /** Asks for a new GigaCAD folder; the next sync fills it. */
   chooseFolder(): void;
   setReleasesToKeep(projectId: string, keep: ReleasesToKeep): void;
   setProjectHidden(projectId: string, hidden: boolean): void;
+  dismissConflict(projectId: string, path: string): void;
 
   checkout(projectId: string, branch: string): void;
   checkin(projectId: string, branch: string): void;
@@ -167,10 +220,18 @@ export interface Commands {
   releaseRequests(projectId: string): unknown;
   openReleaseRequest(projectId: string, branch: string, title: string, body: string): unknown;
   approveReleaseRequest(projectId: string, number: number, candidateManifestId: string): void;
+  /** Recently changed root files, newest first: GET /v1/projects/:id/files?area=root&sort=modified. */
+  rootFiles(projectId: string): unknown;
 
   reveal(path: string): void;
+  /** Opens a file with its app (SolidWorks for a part). */
+  openPath(path: string): void;
   openExternal(url: string): void;
   openTerminal(path: string): void;
+  copyText(text: string): void;
+  /** A native right-click menu at the pointer; resolves the chosen item's id, or null. */
+  contextMenu(items: readonly ContextMenuItem[]): Promise<string | null>;
+  zoom(direction: 'in' | 'out' | 'reset'): void;
   webUrl(projectId: string, path: string): string;
 
   runSetup(): void;
@@ -188,10 +249,10 @@ export interface Commands {
 export type CommandName = keyof Commands;
 
 export const COMMAND_NAMES: readonly CommandName[] = [
-  'getState', 'signIn', 'cancelSignIn', 'signOut', 'syncNow', 'setPaused', 'updateSettings', 'chooseFolder', 'setReleasesToKeep', 'setProjectHidden',
+  'getState', 'signIn', 'cancelSignIn', 'signOut', 'syncNow', 'setPaused', 'setNotify', 'updateSettings', 'chooseFolder', 'setReleasesToKeep', 'setProjectHidden', 'dismissConflict',
   'checkout', 'checkin', 'commitVersion', 'pull', 'downloadBranch', 'removeBranch', 'downloadRelease', 'createBranch',
-  'branchStatus', 'branchHistory', 'releaseRequests', 'openReleaseRequest', 'approveReleaseRequest',
-  'reveal', 'openExternal', 'openTerminal', 'webUrl',
+  'branchStatus', 'branchHistory', 'releaseRequests', 'openReleaseRequest', 'approveReleaseRequest', 'rootFiles',
+  'reveal', 'openPath', 'openExternal', 'openTerminal', 'copyText', 'contextMenu', 'zoom', 'webUrl',
   'runSetup', 'finishSetup', 'moveToApplications', 'installCli',
   'checkForUpdates', 'restartToUpdate', 'dismissUpdate', 'dismissRollback',
 ];

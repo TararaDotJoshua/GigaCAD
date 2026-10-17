@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { InvalidPathError, isReservedRootName, validateEntryName, validateProjectPath } from './paths.js';
+import { branchNameProblem, InvalidPathError, isReservedRootName, validateEntryName, validateProjectPath } from './paths.js';
 
 describe('validateEntryName', () => {
   it('accepts ordinary file and folder names', () => {
@@ -20,6 +20,19 @@ describe('validateEntryName', () => {
     expect(() => validateEntryName('RELEASES', { atRoot: true })).toThrow(/reserved/);
     expect(isReservedRootName('Releases')).toBe(true);
     expect(isReservedRootName('Releases v2')).toBe(false);
+  });
+});
+
+describe('branchNameProblem', () => {
+  it('accepts the names the API accepts', () => {
+    for (const name of ['gripper-v2', 'v3', 'battery_tray.rev-b', 'a']) expect(branchNameProblem(name)).toBeNull();
+  });
+
+  it('says what to change', () => {
+    expect(branchNameProblem('')).toBe('Give the branch a name.');
+    expect(branchNameProblem('wheel hub')).toBe('Use letters, digits, dots, dashes, or underscores.');
+    expect(branchNameProblem('-draft')).toBe('Start and end with a letter or digit.');
+    expect(branchNameProblem('x'.repeat(101))).toBe('Use 100 characters or fewer.');
   });
 });
 

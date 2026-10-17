@@ -789,6 +789,9 @@ export async function approve(
   return sql.begin(async (tx) => {
     const request = await loadRequest(tx, id, true);
     const { role } = await projectAccess(tx, request.projectId, userId);
+    // Shares the project lock an export change holds (setFileExport), so this waits for a swap that
+    // hasn't committed yet, and the exports check below sees it.
+    await tx`select 1 from projects where id = ${request.projectId} for share`;
     await requireActive(tx, request);
     const manifestId = requireCandidate(request, input.candidateManifestId);
     await requireExportsSeen(tx, request, input.exportsChangedAt);

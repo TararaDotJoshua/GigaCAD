@@ -54,8 +54,9 @@ export async function setFileExport(
       where project_id = ${projectId} and source_sha256 = ${input.source} and format = ${input.format}
       for update
     `;
-    // Stamped when it commits, not when the transaction began: it may have waited on the project
-    // lock behind an approval, and must not look older than that approval.
+    // Stamped when this statement runs (clock_timestamp()), not when the transaction began: it may have
+    // waited on the project lock, which approve() shares and release() takes, and must not look older
+    // than an approval given meanwhile.
     await tx`
       insert into file_exports (project_id, source_sha256, format, blob_sha256, created_by, created_at)
       values (${projectId}, ${input.source}, ${input.format}, ${input.blob}, ${userId}, clock_timestamp())

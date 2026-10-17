@@ -26,6 +26,7 @@ export interface JobReport {
   clearedUploads: number;
   staleNotices: number;
   purgedDeviceCodes: number;
+  resetThumbnails: number;
 }
 
 /**
@@ -198,6 +199,20 @@ export async function purgeDeviceCodes(sql: Sql, options: JobOptions = {}): Prom
   return purged.count;
 }
 
+/**
+ * Puts back thumbnails that an older API drew from one project's export onto the shared row
+ * (thumbnails.model_sha256), which every project holding the file would show. Migration
+ * 20261016093000 resets them, but an API from before it could write more until it's replaced.
+ * Remove this along with the model_* columns.
+ */
+export async function resetExportDrawnThumbnails(sql: Sql): Promise<number> {
+  const reset = await sql`
+    update thumbnails set model_sha256 = null, model_format = null, status = 'pending', attempts = 0, error = null, updated_at = now()
+    where model_sha256 is not null
+  `;
+  return reset.count;
+}
+
 /** One pass of every job. Holds an advisory lock so two API instances never run at once. */
 export async function runJobs(deps: { sql: Sql; storage: BlobStorage; mailer?: Mailer; webOrigin: string }, options: JobOptions = {}): Promise<JobReport | null> {
   const { sql } = deps;
@@ -206,13 +221,15 @@ export async function runJobs(deps: { sql: Sql; storage: BlobStorage; mailer?: M
     const [lock] = await reserved<{ locked: boolean }[]>`select pg_try_advisory_lock(hashtext('gigacad.jobs')) as locked`;
     if (!lock?.locked) return null;
     try {
+      // First, so a failure in the storage jobs below can't hold it up.
+      const resetThumbnails = await resetExportDrawnThumbnails(sql);
       const purgedProjects = await purgeDeletedProjects(sql, options);
       const unlinkedBlobs = await unlinkUnusedBlobs(sql, options);
       const deletedBlobs = await deleteOrphanBlobs(sql, deps.storage, options);
       const clearedUploads = await clearAbandonedUploads(sql, deps.storage, options);
       const staleNotices = deps.mailer ? await notifyStaleCheckouts(sql, deps.mailer, deps.webOrigin, options) : 0;
       const purgedDeviceCodes = await purgeDeviceCodes(sql, options);
-      return { purgedProjects, unlinkedBlobs, deletedBlobs, clearedUploads, staleNotices, purgedDeviceCodes };
+      return { purgedProjects, unlinkedBlobs, deletedBlobs, clearedUploads, staleNotices, purgedDeviceCodes, resetThumbnails };
     } finally {
       await reserved`select pg_advisory_unlock(hashtext('gigacad.jobs'))`;
     }

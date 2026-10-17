@@ -161,7 +161,9 @@ site_url = "http://localhost:3000"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
 additional_redirect_urls = ["http://localhost:3000/auth/callback**", "http://localhost:3000/app", "http://localhost:3000/device**", "http://localhost:3000/reset-password", "http://localhost:3000/settings**"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
-jwt_expiry = 3600
+# 10 minutes bounds how long Realtime keeps serving a session that was signed out elsewhere
+# (the API checks auth.sessions itself). Set the hosted project to match.
+jwt_expiry = 600
 # JWT issuer URL. If not set, defaults to auth.external_url.
 # jwt_issuer = ""
 # Path to JWT signing key. DO NOT commit your signing keys file to git.
@@ -224,7 +226,9 @@ double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
 enable_confirmations = true
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
-secure_password_change = false
+# On, so a browser left signed in for a day can't change the password without an emailed code.
+# Hosted also has "Require current password when updating" (no config.toml key); see docs/operations/deployment.md.
+secure_password_change = true
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
 max_frequency = "1s"
 # Number of characters used in the email OTP.
@@ -259,11 +263,16 @@ content_path = "./supabase/templates/recovery.html"
 subject = "Confirm your new GigaCAD email"
 content_path = "./supabase/templates/email_change.html"
 
-# Uncomment to customize notification email template
-# [auth.email.notification.password_changed]
-# enabled = true
-# subject = "Your password has been changed"
-# content_path = "./supabase/templates/password_changed_notification.html"
+# Security notices. The hosted project is configured separately, in Authentication > Emails.
+[auth.email.notification.password_changed]
+enabled = true
+subject = "Your GigaCAD password was changed"
+content_path = "./supabase/templates/password_changed_notification.html"
+
+[auth.email.notification.email_changed]
+enabled = true
+subject = "Your GigaCAD email was changed"
+content_path = "./supabase/templates/email_changed_notification.html"
 
 [auth.sms]
 # Allow/disallow new user signups via SMS to your project.

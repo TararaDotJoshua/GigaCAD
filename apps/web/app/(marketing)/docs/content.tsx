@@ -268,9 +268,10 @@ giga commit -m "First upload" --label "rev A"`}</Command>
       <p>
         In the project’s <strong>Settings</strong>, add people by their handle and pick a role. Viewers can
         see and download files. Contributors can also make branches, commit, and open release requests.
-        Maintainers can also change settings and approval rules, add and remove viewers and contributors,
-        and release someone else’s checkout lock. The owner can do everything, including adding maintainers
-        and deleting the project.
+        Maintainers can also edit the project’s details, add and remove viewers and contributors, and
+        release someone else’s checkout lock. The owner can do everything, including adding maintainers,
+        changing who can see the project, setting the approval rules, and deleting the project. Anyone but
+        the owner can leave a project from their dashboard.
       </p>
     </>
   );
@@ -339,7 +340,7 @@ function PublicProjects() {
 
       <h2 id="make-a-project-public">Make a project public</h2>
       <p>
-        Owners and maintainers can change who sees a project under <strong>Settings</strong> on the project.
+        The owner can change who sees a project under <strong>Settings</strong> on the project.
         Making it private again hides it from everyone who isn’t a member, including from Explore.
       </p>
 
@@ -502,12 +503,17 @@ giga checkin       # give the lock back`}</Command>
       </p>
 
       <h2 id="release-from-the-command-line">Release from the command line</h2>
-      <Command>{`giga rr open --title "Gripper v2"
+      <Command>{`giga rr open --title "Gripper v2"   # builds the candidate too
 giga rr diff                     # what differs from main
 giga rr picks --file picks.json  # optional
-giga rr candidate
-giga rr approve
-giga rr release --notes "Stiffer jaw, new fingertip"`}</Command>
+giga rr candidate                # regenerate after changing picks
+giga rr show                     # the candidate id to approve
+giga rr approve --candidate <id>
+giga rr release --candidate <id> --notes "Stiffer jaw, new fingertip"`}</Command>
+      <p>
+        Approving and releasing name the candidate you reviewed. If it changes in the meantime, they’re
+        refused, so nobody approves or releases files they haven’t seen.
+      </p>
       <p>
         By default each changed file takes the branch’s copy. To choose differently, write a picks file.
         Files are named by path. <code>keep_main</code> leaves main’s copy, and a replacement ships a new
@@ -569,16 +575,16 @@ giga rr release --notes "Stiffer jaw, new fingertip"`}</Command>
       </p>
       <CommandList
         commands={[
-          ["giga rr open", <>Open a release request. Set <code>--title</code> and <code>--body</code>. The branch freezes until it’s released or closed.</>],
+          ["giga rr open", <>Open a release request and build its candidate from the default picks. Set <code>--title</code> and <code>--body</code>. The branch freezes until it’s released or closed.</>],
           ["giga rr list", <>Active release requests. <code>--all</code> includes released and closed ones.</>],
           ["giga rr show", "Status, candidate, approvals, and what blocks the release."],
           ["giga rr diff", "Every file changed on the branch or on main since the branch started."],
           ["giga rr picks --file <path>", <>Replace the picks with a JSON file, or <code>-</code> for standard input.</>],
-          ["giga rr candidate", "Build the release candidate from the current picks."],
+          ["giga rr candidate", "Regenerate the release candidate from the current picks."],
           ["giga rr rebuild-report --file <path>", "Attach the result of rebuilding the candidate in your CAD program."],
-          ["giga rr approve", "Approve the current candidate."],
+          ["giga rr approve --candidate <id>", <>Approve the candidate you reviewed, by the id <code>giga rr show</code> printed. Refused if it has changed since.</>],
           ["giga rr unapprove", "Withdraw your approval."],
-          ["giga rr release", <>Publish the approved candidate as the next release. Add <code>--notes</code>.</>],
+          ["giga rr release --candidate <id>", <>Publish the approved candidate as the next release. Add <code>--notes</code>.</>],
           ["giga rr close", "Close without releasing. The branch unfreezes."],
         ]}
       />

@@ -27,6 +27,8 @@ Only a SHA-256 hash of each token is stored (`device_tokens`). People can list a
 
 - A `gcd_` token is looked up by hash and must not be revoked.
 - Anything else must be a Supabase session JWT, verified against the project's JWKS with issuer `<supabase>/auth/v1` and audience `authenticated`. `SUPABASE_JWT_SECRET` is only for local stacks that still sign with HS256. Leave it unset in production.
+- The session the JWT names (`session_id`) must still exist in `auth.sessions`, checked at most every 30 seconds, so Log out everywhere and password changes end API access without waiting for the token to expire.
+- Device tokens can't change the profile or handle, and can only revoke themselves.
 
 The result is a caller (`userId`, and `via: 'session' | 'device'`), or none for signed-out reads of public projects.
 
@@ -38,8 +40,10 @@ Each project member has one role, from lowest to highest: **viewer**, **contribu
 |---|---|
 | viewer | Read the project |
 | contributor | Branch, check out, commit, open release requests, edit root files and tags |
-| maintainer | Change project settings, force-release locks, archive branches, and manage members and approval rules |
-| owner | Everything, including deleting the project. The owner's storage plan pays for the project |
+| maintainer | Edit project details, force-release locks, archive branches, and add or remove contributors and viewers |
+| owner | Everything, including visibility, approval rules, maintainers, and deleting the project. The owner's storage plan pays for the project |
+
+Visibility and approval rules are owner-only so a maintainer can't publish someone else's private work or loosen review to release their own request. Anyone but the owner can leave a project (`DELETE /v1/projects/:id/members/<own handle>`). Forking a private project needs maintainer access.
 
 `projectAccess` loads a project and the caller's role in one query. Private projects return 404 to outsiders, so they look like they don't exist. `requireProjectRole` returns 403 when the role is too low. Who may approve a release request is set separately in `approval_rules`.
 

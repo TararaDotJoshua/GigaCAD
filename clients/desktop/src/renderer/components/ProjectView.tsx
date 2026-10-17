@@ -196,6 +196,8 @@ interface RequestSummary {
   readonly branchName: string;
   readonly requesterHandle: string | null;
   readonly updatedAt: string;
+  /** The candidate this list shows; approving names it, so a newer one isn't approved unseen. */
+  readonly candidateManifestId?: string | null;
 }
 
 function ReleaseRequests({ state, project }: { state: AppState; project: ProjectState }) {
@@ -245,11 +247,11 @@ function ReleaseRequests({ state, project }: { state: AppState; project: Project
                   <span className="faint"> · {request.branchName}</span>
                 </span>
                 <span className={`badge${request.status === 'candidate' ? ' badge-caution' : ''}`}>{request.status === 'candidate' ? 'awaiting approval' : request.status}</span>
-                {request.status === 'candidate' && canEdit(project) ? (
+                {request.status === 'candidate' && request.candidateManifestId && canEdit(project) ? (
                   <button
                     type="button"
                     className="btn btn-secondary btn-small"
-                    onClick={() => void act('approveReleaseRequest', project.id, request.number).then((done) => done && requests.reload())}
+                    onClick={() => void act('approveReleaseRequest', project.id, request.number, request.candidateManifestId!).then((done) => done && requests.reload())}
                   >
                     Approve
                   </button>

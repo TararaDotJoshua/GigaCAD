@@ -182,6 +182,8 @@ describe('activity feed', () => {
     expect(describeEvent(event('release_request_closed', 'alex', 'rr'), names)).toContainEqual({ text: '#2 Stiffer arms', href: '/rr/2' });
     expect(say('release_created', { number: 4 })).toBe('@alex released v4: Stiffer arms');
     expect(say('branch_lock_force_released', { previousHolder: 'gone', previousHolderHandle: 'bea' }, 'b1')).toBe('@alex force-released @bea’s lock on longer-arms');
+    expect(say('branch_lock_force_released', { previousHolder: 'gone', previousHolderHandle: 'bea', reason: 'archived' }, 'b1')).toBe('@alex released @bea’s lock on longer-arms by archiving it');
+    expect(say('branch_unarchived', {}, 'b1')).toBe('@alex restored longer-arms from the archive');
     expect(lineText(describeEvent({ ...event('release_request_opened', 'gone', 'rr', { number: 2 }), actorHandle: 'bea' }, names))).toBe('@bea opened release request #2 Stiffer arms');
   });
 

@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buffer } from 'node:stream/consumers';
 import { unzipSync } from 'fflate';
-import { describe, expect, it } from 'vitest';
-import { zipStream, type ZipEntry } from './zip.js';
+import { describe, expect, it, vi } from 'vitest';
+import { zipParts, zipSize, zipStream, type ZipEntry } from './zip.js';
 
 const entry = (path: string, content: string): ZipEntry => {
   const bytes = Buffer.from(content);
@@ -18,6 +18,50 @@ describe('release zip', () => {
     const files = unzipSync(new Uint8Array(zip));
     expect(Object.keys(files)).toEqual(['robot-v2/Robot.SLDASM', 'robot-v2/parts/Ärm.SLDPRT']);
     expect(Buffer.from(files['robot-v2/parts/Ärm.SLDPRT']!).toString()).toBe('part with a longer body');
+  });
+
+  it('knows its exact length before writing it, with or without ZIP64 records', async () => {
+    const entries = [entry('robot-v2/Robot.SLDASM', 'assembly'), entry('robot-v2/parts/Ärm.SLDPRT', 'part with a longer body'), entry('robot-v2/Empty.txt', '')];
+    expect(zipSize(entries)).toBe((await buffer(zipStream(entries))).length);
+    expect(zipSize(entries, { zip64Threshold: 8 })).toBe((await buffer(zipStream(entries, { zip64Threshold: 8 }))).length);
+    expect(zipSize([])).toBe((await buffer(zipStream([]))).length);
+  });
+
+  it('opens the next few files while writing one, and closes them if the download stops', async () => {
+    const opened: number[] = [];
+    const closed: number[] = [];
+    let release!: () => void;
+    const first = new Promise<void>((resolve) => (release = resolve));
+    const entries: ZipEntry[] = Array.from({ length: 10 }, (_, index) => ({
+      path: `f${index}`,
+      size: 1,
+      open: async () => {
+        opened.push(index);
+        if (index === 0) await first;
+        return Object.assign([Buffer.from('x')], { destroy: () => closed.push(index) });
+      },
+    }));
+    const stream = zipStream(entries);
+    stream.resume();
+    await vi.waitFor(() => expect(opened).toEqual([0, 1, 2, 3]));
+    stream.destroy();
+    release();
+    // The file being written and the ones opened ahead.
+    await vi.waitFor(() => expect([...closed].sort()).toEqual([0, 1, 2, 3]));
+    expect(opened).toEqual([0, 1, 2, 3]);
+  });
+
+  it('closes the file it was writing when the download stops at its header', async () => {
+    const closed: number[] = [];
+    const entries: ZipEntry[] = Array.from({ length: 2 }, (_, index) => ({
+      path: `f${index}`,
+      size: 1,
+      open: async () => Object.assign([Buffer.from('x')], { destroy: () => closed.push(index) }),
+    }));
+    const parts = zipParts(entries);
+    expect((await parts.next()).value?.readUInt32LE(0)).toBe(0x04034b50); // f0's header
+    await parts.return(undefined);
+    await vi.waitFor(() => expect([...closed].sort()).toEqual([0, 1]));
   });
 
   it('refuses a file whose bytes don’t match its recorded size', async () => {

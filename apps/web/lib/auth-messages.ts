@@ -20,17 +20,30 @@ const BY_CODE: Readonly<Record<string, string>> = {
   email_address_invalid: 'Check the email address and try again.',
 };
 
-export function authMessage(error: unknown, fallback = 'Something went wrong. Try again.'): string {
+/**
+ * `overrides` words a code for the page it's shown on, checked first. `session_missing`
+ * covers a session that is gone, which on a link page means the link expired.
+ */
+export function authMessage(error: unknown, fallback = 'Something went wrong. Try again.', overrides: Readonly<Record<string, string>> = {}): string {
   if (!(error instanceof Error)) return fallback;
   const code = (error as { code?: unknown }).code;
-  if (typeof code === 'string' && BY_CODE[code]) return BY_CODE[code];
+  const words = { ...BY_CODE, ...overrides };
+  if (isSessionMissing(error) && overrides.session_missing) return overrides.session_missing;
+  if (typeof code === 'string' && words[code]) return words[code];
   if (/auth session missing/i.test(error.message)) return BY_CODE.session_not_found!;
   return error.message || fallback;
+}
+
+/** The session behind a request is gone: signed out elsewhere, expired, or revoked. */
+export function isSessionMissing(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code = (error as { code?: unknown }).code;
+  return code === 'session_not_found' || code === 'session_expired' || /auth session missing/i.test(error.message);
 }
 
 /** Messages for `?error=` on the log-in page, set by the email-link and OAuth handlers. */
 export const LOGIN_ERRORS: Readonly<Record<string, string>> = {
   confirmation: 'That confirmation link has expired or was already used. Log in, or sign up again to get a new link.',
   callback: 'Sign-in with that provider didn’t finish. Try again.',
-  recovery: 'That reset link has expired or was already used. Ask for a new one below.',
+  recovery: 'That reset link has expired, was already used, or was replaced by a newer email. Use the link in the newest email, or ask for a new one below.',
 };

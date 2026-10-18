@@ -80,6 +80,8 @@ export interface Billing {
   quotaBytes: number;
   billingEnabled: boolean;
   canManage: boolean;
+  /** The projects the account owns, largest first. A file in two projects counts in each, but once in usedBytes. */
+  projects?: { id: string; ownerHandle: string; slug: string; name: string; usedBytes: number }[];
 }
 
 export interface Project {
@@ -202,6 +204,9 @@ export interface Branch {
   checkedOutByHandle: string | null;
   checkedOutMachine: string | null;
   checkedOutAt: string | null;
+  /** Who archived it and when, while it's archived. */
+  archivedByHandle: string | null;
+  archivedAt: string | null;
   createdAt: string;
 }
 
@@ -401,6 +406,8 @@ export interface DirectoryFile {
   location: FileLocation;
   tags: Tag[];
   favorite: boolean;
+  /** Search results only: how many other places (branches, releases) the same file appears in. */
+  alsoIn?: number;
 }
 
 export interface BranchFolder {
@@ -437,7 +444,7 @@ export interface DirectoryListing extends FilePage<DirectoryItem> {
     path: string;
     crumbs: { name: string; path: string }[];
     folderId: string | null;
-    branch: (BranchFolder & { name: string }) | null;
+    branch: (BranchFolder & { name: string; headKind: 'autosave' | 'version'; headSavedAt: string }) | null;
     release: { number: number; createdAt: string; createdByHandle: string | null } | null;
     writable: boolean;
   };
@@ -460,4 +467,6 @@ export interface EntryDetail {
   tags: Tag[];
   favorite: boolean;
   writable: boolean;
+  /** What deleting the entry removes: the files and folders inside a folder (a file counts itself), and all their revisions. */
+  contents?: { files: number; folders: number; revisions: number };
 }

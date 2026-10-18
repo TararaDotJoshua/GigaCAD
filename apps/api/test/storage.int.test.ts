@@ -50,4 +50,16 @@ describe('S3 blob storage', () => {
     );
     await storage.remove(blob);
   });
+
+  it('gives small unchanging objects a link that stays the same all day and can be cached', async () => {
+    const key = `avatars/test/${randomUUID()}`;
+    await storage.write(key, new TextEncoder().encode('avatar'), 'image/png', 'public, max-age=31536000, immutable');
+    const first = await storage.presignDownload(key, undefined, undefined, { stable: true });
+    expect(await storage.presignDownload(key, undefined, undefined, { stable: true })).toBe(first);
+    expect(new URL(first).searchParams.get('X-Amz-Expires')).toBe(String(7 * 24 * 60 * 60));
+    const response = await fetch(first);
+    expect(await response.text()).toBe('avatar');
+    expect(response.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+    await storage.remove(key);
+  });
 });

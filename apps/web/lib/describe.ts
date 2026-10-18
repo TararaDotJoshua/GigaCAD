@@ -261,10 +261,16 @@ export function describeEvent(event: ProjectEvent, names: EventNames): Line | un
       return [`${who} checked in `, branch(branchName)];
     case 'branch_lock_force_released': {
       const holder = typeof payload.previousHolder === 'string' ? names.handle(payload.previousHolder, typeof payload.previousHolderHandle === 'string' ? payload.previousHolderHandle : null) : null;
-      return [`${who} force-released ${holder ? `${holder}’s lock` : 'the lock'} on `, branch(branchName)];
+      const lock = holder ? `${holder}’s lock` : 'the lock';
+      // Archiving a branch, or removing someone from the project, releases their lock too.
+      if (payload.reason === 'archived') return [`${who} released ${lock} on `, branch(branchName), ' by archiving it'];
+      if (payload.reason === 'member_removed') return [`${who} released ${lock} on `, branch(branchName), ', since they can no longer save to it'];
+      return [`${who} force-released ${lock} on `, branch(branchName)];
     }
     case 'branch_archived':
       return [`${who} archived `, branch(branchName)];
+    case 'branch_unarchived':
+      return [`${who} restored `, branch(branchName), ' from the archive'];
     case 'commit_created': {
       if (payload.kind !== 'version') return undefined;
       const label = payload.versionLabel ? `version ${String(payload.versionLabel)}` : 'a version';

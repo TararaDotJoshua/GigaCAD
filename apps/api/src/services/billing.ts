@@ -120,7 +120,8 @@ export async function startCheckout(
     userId,
     priceLookupKey: priceLookupKey(plan, interval),
     successUrl: billingReturnUrl(webOrigin, { checkout: 'done' }, from),
-    cancelUrl: billingReturnUrl(webOrigin, { checkout: 'cancelled' }, from),
+    // Back from Stripe without paying, the plans table still shows the plan and interval chosen.
+    cancelUrl: billingReturnUrl(webOrigin, { checkout: 'cancelled', plan, interval }, from),
   });
   return { url };
 }

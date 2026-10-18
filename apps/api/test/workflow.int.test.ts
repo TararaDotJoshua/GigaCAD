@@ -603,4 +603,17 @@ describe('desktop sign-in', () => {
     expect((await asDevice.delete(`/v1/me/tokens/${tokenId}`)).status).toBe(204);
     expect((await asDevice.get('/v1/me')).status).toBe(401);
   });
+
+  it('lets the person turn down a code, which stops the waiting client', async () => {
+    const anonymous = client(harness, null);
+    const started = await anonymous.post('/v1/auth/device/code', { clientName: 'Unknown laptop' });
+    expect((await anonymous.post('/v1/auth/device/deny', { userCode: started.body.userCode })).status).toBe(401);
+    expect((await asAlex.post('/v1/auth/device/deny', { userCode: started.body.userCode })).status).toBe(204);
+
+    const denied = await anonymous.post('/v1/auth/device/token', { deviceCode: started.body.deviceCode });
+    expect(denied.body.error.code).toBe('access_denied');
+    expect((await asAlex.get(`/v1/auth/device/pending/${started.body.userCode}`)).status).toBe(404);
+    expect((await asAlex.post('/v1/auth/device/approve', { userCode: started.body.userCode })).status).toBe(404);
+    expect((await asAlex.post('/v1/auth/device/deny', { userCode: started.body.userCode })).status).toBe(404);
+  });
 });

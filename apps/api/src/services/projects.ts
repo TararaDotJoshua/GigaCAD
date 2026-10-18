@@ -3,6 +3,8 @@ import type { Db, Sql } from '../db.js';
 import { badRequest, conflict, forbidden, notFound, unprocessable } from '../errors.js';
 import type { Mailer } from '../mail.js';
 import { projectAccess, requireProjectRole, type ProjectRow } from './access.js';
+import { requireStorageFor } from './billing.js';
+import { releaseLocksOf, type LockReleaseNotice } from './branches.js';
 import { recordEvent } from './events.js';
 
 export interface ProjectSummary extends ProjectRow {
@@ -46,6 +48,18 @@ export async function summarize(db: Db, projectId: string, role: ProjectRole | n
 }
 
 /**
+ * Refuses an address one of the owner's projects already has. A deleted project keeps its
+ * address while it can be restored, which is said so, since nothing visible uses it.
+ */
+export async function requireFreeAddress(db: Db, ownerId: string, slug: string): Promise<void> {
+  const [existing] = await db<{ id: string; deleted: boolean }[]>`
+    select id, deleted_at is not null as deleted from projects where owner_id = ${ownerId} and slug = ${slug}
+  `;
+  if (existing?.deleted) throw conflict('address_deleted', 'You deleted a project at this address. Restore it, or choose another address', { projectId: existing.id });
+  if (existing) throw conflict('address_taken', 'You already have a project at that address');
+}
+
+/**
  * Project addresses start with the owner's handle, so a placeholder one (user-<hex>) would
  * make an address that breaks when they choose theirs.
  */
@@ -61,6 +75,7 @@ export async function createProject(
 ): Promise<ProjectSummary> {
   return sql.begin(async (tx) => {
     await requireChosenHandle(tx, userId);
+    await requireFreeAddress(tx, userId, input.slug);
     const [project] = await tx<{ id: string }[]>`
       insert into projects (owner_id, slug, name, description, visibility)
       values (${userId}, ${input.slug}, ${input.name}, ${input.description ?? ''}, ${input.visibility ?? 'private'})
@@ -174,6 +189,12 @@ export async function restoreProject(sql: Sql, projectId: string, userId: string
     `;
     // Anyone but the owner sees no deleted project at all.
     if (!project || project.ownerId !== userId || !project.restorable) throw notFound('Deleted project');
+    // A deleted project's files stop counting, so the freed space may have been used since.
+    const blobs = await tx<{ sha256: string; size: number }[]>`
+      select b.sha256, b.size::float8 as size from project_blobs pb join blobs b on b.sha256 = pb.sha256
+      where pb.project_id = ${projectId}
+    `;
+    await requireStorageFor(tx, project.ownerId, blobs);
     await tx`update projects set deleted_at = null where id = ${projectId}`;
     await recordEvent(tx, { projectId, actorId: userId, kind: 'project_restored', subjectId: projectId });
     return summarize(tx, projectId, 'owner', userId);
@@ -218,12 +239,15 @@ export interface MemberChange {
   readonly added: NewMember | null;
   /** The caller removed themselves. */
   readonly left: boolean;
+  /** Locks the person lost because they can no longer save, so other holders' notices can go out. */
+  readonly releasedLocks: readonly LockReleaseNotice[];
 }
 
 /**
  * Owners manage everyone; maintainers manage contributors and viewers. The owner's own role
  * is fixed, and anyone else may leave. With `onlyNew`, an existing member is a 409 rather
- * than a silent role change, so "Add member" never demotes someone.
+ * than a silent role change, so "Add member" never demotes someone. Someone who can no
+ * longer save (removed, leaving, or made a viewer) loses their locks in the same change.
  */
 export async function setMember(
   sql: Sql,
@@ -248,7 +272,7 @@ export async function setMember(
     if (role === null && !current) throw notFound('Member');
     const touchesMaintainer = role === 'maintainer' || current?.role === 'maintainer';
     if (!leaving && touchesMaintainer && callerRole !== 'owner') throw forbidden('Only the owner can add or remove maintainers');
-    if (current?.role === role) return { added: null, left: false };
+    if (current?.role === role) return { added: null, left: false, releasedLocks: [] };
 
     if (role === null) {
       await tx`delete from project_members where project_id = ${projectId} and user_id = ${target.id}`;
@@ -267,7 +291,9 @@ export async function setMember(
       subjectId: target.id,
       payload: { handle, role, ...(current ? { previousRole: current.role } : {}), ...(leaving ? { left: true } : {}) },
     });
-    if (role === null || current) return { added: null, left: leaving };
+    // Nobody else could check those branches out while someone who can't save holds them.
+    const releasedLocks = role === null || role === 'viewer' ? await releaseLocksOf(tx, projectId, target.id, userId) : [];
+    if (role === null || current) return { added: null, left: leaving, releasedLocks };
     const [added] = await tx<Omit<NewMember, 'role'>[]>`
       select u.email, actor.handle as added_by, p.name as project_name, o.handle as owner_handle, p.slug
       from projects p
@@ -276,7 +302,7 @@ export async function setMember(
       left join auth.users u on u.id = ${target.id}
       where p.id = ${projectId}
     `;
-    return { added: added ? { ...added, role } : null, left: false };
+    return { added: added ? { ...added, role } : null, left: false, releasedLocks };
   });
 }
 
@@ -344,8 +370,11 @@ export async function setApprovalRules(sql: Sql, projectId: string, userId: stri
 
 /** Who joined, left, or changed role is for members; everyone else sees the work. */
 const MEMBERS_ONLY_EVENTS = ['member_changed'];
-/** Payload fields that name a computer or a user id, which outsiders don't get (see lockForViewer). */
-const MEMBERS_ONLY_FIELDS = ['machine', 'previousHolder', 'approverUserIds'];
+/**
+ * Payload fields that name a computer or a user id, which outsiders don't get (see lockForViewer),
+ * and why a lock was released, which can say that someone lost access.
+ */
+const MEMBERS_ONLY_FIELDS = ['machine', 'previousHolder', 'approverUserIds', 'reason'];
 
 /**
  * A page of the project's events, after `after` and, for paging back through a feed, before

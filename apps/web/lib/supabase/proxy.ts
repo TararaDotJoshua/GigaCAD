@@ -42,7 +42,10 @@ export async function updateSession(request: NextRequest) {
     },
   });
   const { data } = await supabase.auth.getClaims();
-  if (!data?.claims && !isPublicAuthPath(effectivePath) && !isPublicBrowsePath(effectivePath)) {
+  // A server action posted from a page whose session has since ended answers for itself, so
+  // the form keeps what was typed. Redirected, the browser would get a login page it can't read.
+  const isAction = request.method === 'POST' && request.headers.has('next-action');
+  if (!data?.claims && !isAction && !isPublicAuthPath(effectivePath) && !isPublicBrowsePath(effectivePath)) {
     const login = request.nextUrl.clone();
     login.pathname = '/login';
     login.search = '';

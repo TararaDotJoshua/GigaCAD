@@ -385,8 +385,11 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
                   <ul className="approvers">
                     {approvals.given.map((approval) => (
                       <li key={approval.userId}>
-                        <span>@{approval.handle}</span>
-                        <span className={counted.has(approval.userId) ? 'badge badge-signal' : 'muted'}>{counted.has(approval.userId) ? 'Approved' : 'Older candidate'}</span>
+                        <span className="approver-name" title={`@${approval.handle}`}>
+                          @{approval.handle}
+                          {me && approval.userId === me.id && <span className="muted"> (you)</span>}
+                        </span>
+                        <span className={counted.has(approval.userId) ? 'badge badge-signal approver-state' : 'muted approver-state'}>{counted.has(approval.userId) ? 'Approved' : 'Older candidate'}</span>
                       </li>
                     ))}
                   </ul>
@@ -400,8 +403,11 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
                     const isCurrent = approval?.candidateManifestId === request.candidateManifestId && !exportChanged(approval);
                     return (
                       <li key={member.userId}>
-                        <span>@{member.handle}</span>
-                        <span className={isCurrent ? 'badge badge-signal' : 'muted'}>{approval ? (isCurrent ? 'Approved' : exportChanged(approval) ? 'Export changed' : 'Older candidate') : 'Waiting'}</span>
+                        <span className="approver-name" title={`@${member.handle}`}>
+                          @{member.handle}
+                          {me && member.userId === me.id && <span className="muted"> (you)</span>}
+                        </span>
+                        <span className={isCurrent ? 'badge badge-signal approver-state' : 'muted approver-state'}>{approval ? (isCurrent ? 'Approved' : exportChanged(approval) ? 'Export changed' : 'Older candidate') : 'Waiting'}</span>
                       </li>
                     );
                   })}

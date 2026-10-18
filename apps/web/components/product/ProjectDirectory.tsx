@@ -313,7 +313,15 @@ async function FolderBar({ project, listing, owner: storageOwner }: { project: P
           {location.branch.checkedOutByHandle
             ? `Checked out by @${location.branch.checkedOutByHandle}${location.branch.checkedOutMachine ? ` on ${location.branch.checkedOutMachine}` : ''}. `
             : 'No one has this branch checked out. '}
-          These are the files at the branch head. Change them by checking out the branch with{' '}
+          {location.branch.headKind === 'autosave' ? (
+            <>
+              These include unsaved work: an autosave from <RelativeTime value={location.branch.headSavedAt} />
+              {location.branch.checkedOutMachine ? ` on ${location.branch.checkedOutMachine}` : ''}, not yet committed as a version.{' '}
+            </>
+          ) : (
+            'These are the files at the branch’s latest version. '
+          )}
+          Change them by checking out the branch with{' '}
           <code className="mono">giga checkout</code>. <Link href={branchPath(owner, slug, location.branch.name)}>Branch history</Link>
         </p>
       )}

@@ -62,7 +62,9 @@ The web app decides which site to serve from the request's host (`apps/web/lib/h
    - Site URL: `https://app.gigacad.site`.
    - Redirect URLs, all on `https://app.gigacad.site`: `/**`, `/auth/callback**`, `/device**`, `/reset-password`.
    - Turn on email confirmation.
-   - Set up custom SMTP, then copy `supabase/templates/confirmation.html` and `recovery.html` into the matching email templates. Local templates in `supabase/config.toml` are not applied to hosted projects.
+   - Set up custom SMTP, then copy `supabase/templates/confirmation.html`, `recovery.html`, and `email_change.html` into the matching email templates, with the subjects in `supabase/config.toml`. Local templates in `supabase/config.toml` are not applied to hosted projects.
+   - Turn on the "Email address changed" security notification with `email_changed_notification.html`, so the old address hears when a change goes through.
+   - Passwords: minimum length 8, as in `supabase/config.toml`. Turn on leaked-password protection when the project is on Pro.
    - Create GitHub and Google OAuth apps using the callback URL each provider's Supabase settings page shows. Keep the client secrets only in Supabase.
    - Password changes: turn on **Secure password change** and **Require current password when updating**, so a signed-in browser alone can't change the password. Account settings sends the current password with every change. Recovery sessions from a reset link still set a new one; check that once after turning the setting on.
    - Security notices: turn on the *password changed* and *email changed* notifications and paste in `supabase/templates/password_changed_notification.html` and `email_changed_notification.html`.

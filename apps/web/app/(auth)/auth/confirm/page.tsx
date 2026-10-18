@@ -11,7 +11,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
   return (
     <div className="auth-shell">
       <div className="auth-card">
-        <h1>{recovery ? 'Reset your password.' : change ? 'Confirm your new email.' : 'Confirm your email.'}</h1>
+        <h1>{recovery ? 'Reset your password.' : change ? 'Confirm the email change.' : 'Confirm your email.'}</h1>
         <p className="auth-intro">
           {!valid
             ? 'This link is incomplete. Request a new email and try again.'

@@ -31,13 +31,20 @@ export function LiveRefresh({ projectId }: { projectId: string }) {
     let cancelled = false;
     let missed = false;
     let hiddenAt = document.hidden ? Date.now() : 0;
+    let startedSignedIn = false;
 
+    // Refreshed after its session ended, a page would turn into the login page and lose what
+    // was typed on it; the shell says the session ended instead (SessionWatch). A visitor who
+    // was never signed in, on a public project, keeps getting updates.
+    const refreshIfSignedIn = async () => {
+      if (!startedSignedIn || (await supabase.auth.getSession()).data.session) router.refresh();
+    };
     const refresh = () => {
       if (document.hidden) {
         missed = true;
         return;
       }
-      router.refresh();
+      void refreshIfSignedIn();
     };
     const visibility = () => {
       if (document.hidden) {
@@ -46,7 +53,7 @@ export function LiveRefresh({ projectId }: { projectId: string }) {
       }
       if (missed || (hiddenAt && Date.now() - hiddenAt > STALE_MS)) {
         missed = false;
-        router.refresh();
+        void refreshIfSignedIn();
       }
       hiddenAt = 0;
     };
@@ -57,6 +64,7 @@ export function LiveRefresh({ projectId }: { projectId: string }) {
       // channel joins as anonymous and row-level security hides private projects' events.
       // The client keeps the token current on refresh from then on.
       const { data } = await supabase.auth.getSession();
+      startedSignedIn = Boolean(data.session);
       await supabase.realtime.setAuth(data.session?.access_token ?? null);
       if (cancelled) return;
       channel = supabase
@@ -70,7 +78,9 @@ export function LiveRefresh({ projectId }: { projectId: string }) {
     })();
     // Signing out (here or in another tab) drops the subscription at once, rather than when the token expires.
     const { data: auth } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_OUT') void supabase.removeAllChannels();
+      if (event !== 'SIGNED_OUT') return;
+      clearTimeout(timer);
+      void supabase.removeAllChannels();
     });
     return () => {
       cancelled = true;

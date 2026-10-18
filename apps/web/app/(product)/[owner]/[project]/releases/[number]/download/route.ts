@@ -22,6 +22,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ owne
     if (error instanceof ApiError) return error;
     throw error;
   });
+  // A private project looks missing when signed out. Say so as a page with a way to log in,
+  // rather than a redirect chain the browser might treat as the download.
+  if (project instanceof ApiError && project.status === 404 && !token) return signedOut(releasePage);
   if (project instanceof ApiError) redirect(project.status >= 400 && project.status < 500 ? releasePage : failed);
   const exports = new URL(request.url).searchParams.get('exports') === '1';
   const release = encodeURIComponent(number.replace(/^v/i, ''));
@@ -41,4 +44,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ owne
       'cache-control': 'private, no-store',
     },
   });
+}
+
+function signedOut(page: string): NextResponse {
+  const login = `/login?next=${encodeURIComponent(page)}`;
+  return new NextResponse(
+    `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Log in to download</title></head>` +
+      `<body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem; line-height: 1.5">` +
+      `<h1>Log in to download this release</h1><p>You’re signed out, so the release can’t be downloaded.</p>` +
+      `<p><a href="${login}">Log in</a> and you’ll come back to the release.</p></body></html>`,
+    { status: 401, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'private, no-store' } },
+  );
 }

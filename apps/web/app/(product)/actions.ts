@@ -1,6 +1,6 @@
 'use server';
 
-import { HANDLE_PATTERN, isPlanId, type ApprovalRules, type Picks, type ProjectRole } from '@gigacad/core';
+import { formatBytes, HANDLE_PATTERN, isPlanId, type ApprovalRules, type Picks, type ProjectRole } from '@gigacad/core';
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError, apiRequest, type Project, type ReleaseRequestDetail } from '../../lib/api';
@@ -9,7 +9,7 @@ import { dashboardPath } from '../../lib/hosts';
 import { fieldFor, messageFor } from '../../lib/messages';
 import { projectPath, releasePath, releaseRequestPath, treePath } from '../../lib/paths';
 import { safeReturnPath } from '../../lib/return-path';
-import { getAccessToken, requireAccessToken } from '../../lib/session';
+import { getAccessToken } from '../../lib/session';
 
 /**
  * Every write in the product goes through here. Actions run on the server with the
@@ -25,7 +25,17 @@ export interface ActionState {
   readonly candidateManifestId?: string | null;
   /** Set when an upload was refused because the project owner's storage is full. */
   readonly storageFull?: { readonly usedBytes: number; readonly quotaBytes: number };
+  /** The session ended (in another tab, or it expired), so nothing was saved. */
+  readonly signedOut?: boolean;
+  /** Where to go to fix the error, shown after it. */
+  readonly link?: { readonly href: string; readonly label: string };
 }
+
+/**
+ * What every action returns when the session is gone. Redirecting to log in from an action
+ * would throw away what was typed, so the form stays and says what happened.
+ */
+const SIGNED_OUT = { error: 'You’ve been signed out, so this wasn’t saved. Log in again, then try again.', signedOut: true } as const satisfies ActionState;
 
 /** The storage numbers from a `storage_full` refusal, so the page can offer the right next step. */
 function storageFull(error: unknown): ActionState['storageFull'] {
@@ -48,7 +58,20 @@ function id(value: string): string {
 const json = (method: string, body?: unknown): RequestInit => ({ method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
 
 /** Errors about what was typed, which send focus back to the field. */
-const FIELD_ERRORS = new Set(['invalid_request', 'already_exists', 'branch_exists', 'name_taken', 'invalid_name', 'reserved_name', 'tag_exists', 'invalid_tag', 'not_found']);
+const FIELD_ERRORS = new Set([
+  'invalid_request',
+  'already_exists',
+  'branch_exists',
+  'branch_exists_archived',
+  'handle_taken',
+  'handle_unavailable',
+  'name_taken',
+  'invalid_name',
+  'reserved_name',
+  'tag_exists',
+  'invalid_tag',
+  'not_found',
+]);
 
 /** An API error as form state. `field` is the input it's about, if it's about what was typed. */
 function failure(error: unknown, field?: string): ActionState {
@@ -57,7 +80,8 @@ function failure(error: unknown, field?: string): ActionState {
 }
 
 async function mutate(run: (token: string) => Promise<unknown>, message?: string, field?: string): Promise<ActionState> {
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   try {
     await run(token);
   } catch (error) {
@@ -67,9 +91,18 @@ async function mutate(run: (token: string) => Promise<unknown>, message?: string
   return message ? { message } : {};
 }
 
-/** Creating or forking a project into an address its owner already uses. */
+/** Creating or forking a project into an address its owner already uses, maybe a deleted project's, which the error links to. */
 function projectFailure(error: unknown): ActionState {
-  if (error instanceof ApiError && error.code === 'already_exists') return { error: 'You already have a project at that address. Choose another.', field: 'slug' };
+  if (error instanceof ApiError && error.code === 'address_deleted') {
+    return {
+      error: 'You deleted a project at this address. Restore it under Account, or choose another address.',
+      field: 'slug',
+      link: { href: '/settings#deleted', label: 'Deleted projects' },
+    };
+  }
+  if (error instanceof ApiError && (error.code === 'already_exists' || error.code === 'address_taken')) {
+    return { error: 'You already have a project at that address. Choose another.', field: 'slug' };
+  }
   return failure(error, 'slug');
 }
 
@@ -99,7 +132,8 @@ export async function openBillingPortal(from?: string): Promise<ActionState> {
 const returnTo = (from?: string) => (from && safeReturnPath(from, '') ? { from: safeReturnPath(from, '') } : {});
 
 async function goToBilling(path: string, body?: unknown): Promise<ActionState> {
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   let url: string;
   try {
     ({ url } = await apiRequest<{ url: string }>(token, path, json('POST', body)));
@@ -111,8 +145,11 @@ async function goToBilling(path: string, body?: unknown): Promise<ActionState> {
 
 export async function saveProfile(_state: ActionState, form: FormData): Promise<ActionState> {
   const optional = (name: string) => (form.has(name) ? { [name]: text(form, name) || null } : {});
-  // "example.com" means the website; the API only takes full http(s) links.
-  const website = text(form, 'website');
+  // "example.com" (or "example.com:8080") means the website; the API only takes full http(s)
+  // links. Something with its own scheme, like "mailto:", goes as typed for the API to refuse.
+  const typed = text(form, 'website');
+  const website = typed && !/^[a-z][a-z0-9+.-]*:(?:\/\/|(?!\d))/i.test(typed) ? `https://${typed}` : typed;
+  if (website.length > 200) return { error: `Website can be at most 200 characters${website === typed ? '' : ', counting the https:// added to it'}.`, field: 'website' };
   return mutate(
     (token) =>
       apiRequest(
@@ -123,7 +160,7 @@ export async function saveProfile(_state: ActionState, form: FormData): Promise<
           ...optional('displayName'),
           ...optional('bio'),
           ...optional('location'),
-          ...(form.has('website') ? { website: website && !/^[a-z][a-z0-9+.-]*:/i.test(website) ? `https://${website}` : website || null } : {}),
+          ...(form.has('website') ? { website: website || null } : {}),
         }),
       ),
     'Saved.',
@@ -154,7 +191,8 @@ export async function signOutDevice(tokenId: string): Promise<ActionState> {
 
 export async function createProject(_state: ActionState, form: FormData): Promise<ActionState> {
   if (!text(form, 'name')) return blank('name', 'Enter a name.');
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   let project: Project;
   try {
     project = await apiRequest<Project>(
@@ -203,7 +241,8 @@ export async function setMember(projectId: string, _state: ActionState, form: Fo
   if (handle.includes('@')) return { error: 'Add people by their handle, not their email. They need a GigaCAD account with a handle first.', field: 'handle' };
   const nobody = { error: `No one has the handle @${handle}. They need a GigaCAD account with a handle first.`, field: 'handle' };
   if (!HANDLE_PATTERN.test(handle)) return nobody;
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   try {
     await apiRequest(token, `/v1/projects/${id(projectId)}/members`, json('POST', { handle, role }));
   } catch (error) {
@@ -219,7 +258,8 @@ export async function setMember(projectId: string, _state: ActionState, form: Fo
 
 /** Removes the caller from a project shared with them. */
 export async function leaveProject(projectId: string, handle: string): Promise<ActionState> {
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   try {
     await apiRequest(token, `/v1/projects/${id(projectId)}/members/${encodeURIComponent(handle)}`, json('DELETE'));
   } catch (error) {
@@ -237,11 +277,13 @@ export async function changeMemberRole(projectId: string, handle: string, role: 
 }
 
 /** People to suggest while typing a handle to add. */
-export async function findPeople(query: string): Promise<{ handle: string; displayName: string | null }[]> {
+export async function findPeople(query: string): Promise<{ handle: string; displayName: string | null }[] | { signedOut: true }> {
   const q = query.trim().replace(/^@/, '');
   if (!q) return [];
+  const token = await getAccessToken();
+  if (!token) return { signedOut: true };
   try {
-    const found = await apiRequest<{ handle: string; displayName: string | null }[]>(await requireAccessToken(), `/v1/profiles?${new URLSearchParams({ q: q.slice(0, 100) })}`);
+    const found = await apiRequest<{ handle: string; displayName: string | null }[]>(token, `/v1/profiles?${new URLSearchParams({ q: q.slice(0, 100) })}`);
     return found.map(({ handle, displayName }) => ({ handle, displayName }));
   } catch {
     return [];
@@ -267,7 +309,8 @@ export async function setApprovalRules(projectId: string, _state: ActionState, f
 
 export async function deleteProject(projectId: string, slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
   if (text(form, 'confirm') !== slug) return { error: `Type ${slug} to confirm.`, field: 'confirm' };
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   try {
     await apiRequest(token, `/v1/projects/${id(projectId)}`, json('DELETE'));
   } catch (error) {
@@ -279,15 +322,24 @@ export async function deleteProject(projectId: string, slug: string, _state: Act
 }
 
 export async function restoreProject(projectId: string): Promise<ActionState> {
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   let project: Project;
   try {
     project = await apiRequest<Project>(token, `/v1/projects/${id(projectId)}/restore`, json('POST'));
   } catch (error) {
+    const full = storageFull(error);
+    if (full && error instanceof ApiError) {
+      const needed = (error.details as { neededBytes?: number } | undefined)?.neededBytes ?? 0;
+      return {
+        error: `Restoring it needs ${formatBytes(needed)}, but only ${formatBytes(Math.max(0, full.quotaBytes - full.usedBytes))} of your ${formatBytes(full.quotaBytes)} is free.`,
+        storageFull: full,
+      };
+    }
     return { error: messageFor(error) };
   }
   refresh();
-  redirect(projectPath(project.ownerHandle, project.slug));
+  redirect(`${projectPath(project.ownerHandle, project.slug)}?restored=1`);
 }
 
 /**
@@ -319,7 +371,8 @@ export async function setStar(projectId: string, starred: boolean): Promise<Acti
 
 export async function forkProject(sourceId: string, _state: ActionState, form: FormData): Promise<ActionState> {
   if (!text(form, 'name')) return blank('name', 'Enter a name.');
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   const release = Number(text(form, 'releaseNumber'));
   let project: Project;
   try {
@@ -344,15 +397,25 @@ export async function createBranch(projectId: string, owner: string, slug: strin
   const name = text(form, 'name');
   if (!name) return blank('name', 'Enter a name.');
   const from = Number(text(form, 'fromRelease'));
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   try {
     await apiRequest(token, `/v1/projects/${id(projectId)}/branches`, json('POST', { name, ...(from > 0 ? { fromRelease: from } : {}) }));
   } catch (error) {
+    if (error instanceof ApiError && error.code === 'branch_exists_archived') {
+      const existing = (error.details as { name?: string } | undefined)?.name ?? name;
+      return { error: `An archived branch is already called ${existing}. Restore it or pick another name.`, field: 'name' };
+    }
     return failure(error, 'name');
   }
   // The sidebar lists open branches; redirecting alone leaves it without the new one.
   refresh();
   redirect(projectPath(owner, slug, 'branches', name));
+}
+
+/** The holder giving back their own lock, from the browser instead of the drive or CLI. */
+export async function checkInBranch(branchId: string): Promise<ActionState> {
+  return mutate((token) => apiRequest(token, `/v1/branches/${id(branchId)}/checkin`, json('POST', {})), 'Checked in.');
 }
 
 export async function forceReleaseLock(branchId: string): Promise<ActionState> {
@@ -363,9 +426,14 @@ export async function archiveBranch(branchId: string): Promise<ActionState> {
   return mutate((token) => apiRequest(token, `/v1/branches/${id(branchId)}/archive`, json('POST', {})), 'Archived.');
 }
 
+export async function unarchiveBranch(branchId: string): Promise<ActionState> {
+  return mutate((token) => apiRequest(token, `/v1/branches/${id(branchId)}/unarchive`, json('POST', {})), 'Restored. The branch is open again.');
+}
+
 export async function openReleaseRequest(branchId: string, owner: string, slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
   if (!text(form, 'title')) return blank('title', 'Give the request a title.');
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   let detail: ReleaseRequestDetail;
   try {
     detail = await apiRequest<ReleaseRequestDetail>(
@@ -385,7 +453,8 @@ export async function openReleaseRequest(branchId: string, owner: string, slug: 
 
 /** Saves the picks and regenerates the candidate from them, so saving is the only step. */
 export async function savePicks(requestId: string, picks: Picks): Promise<ActionState> {
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   let detail: ReleaseRequestDetail;
   try {
     detail = await apiRequest<ReleaseRequestDetail>(token, `/v1/release-requests/${id(requestId)}/picks`, json('PUT', picks));
@@ -409,7 +478,8 @@ export async function savePicks(requestId: string, picks: Picks): Promise<Action
 }
 
 export async function generateCandidate(requestId: string): Promise<ActionState> {
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   let built: ReleaseRequestDetail;
   try {
     built = await apiRequest<ReleaseRequestDetail>(token, `/v1/release-requests/${id(requestId)}/candidate`, json('POST', {}));
@@ -436,7 +506,8 @@ const reviewedBody = (candidateManifestId: string, exportsChangedAt: string | nu
 });
 
 export async function approveCandidate(requestId: string, releaser: string | null, candidateManifestId: string, exportsChangedAt: string | null): Promise<ActionState> {
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   try {
     await apiRequest(token, `/v1/release-requests/${id(requestId)}/approvals`, json('POST', reviewedBody(candidateManifestId, exportsChangedAt)));
   } catch (error) {
@@ -466,7 +537,8 @@ export async function releaseCandidate(
   slug: string,
   input: { candidateManifestId: string; exportsChangedAt: string | null; approve: boolean; notes: string },
 ): Promise<ActionState> {
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   const reviewed = reviewedBody(input.candidateManifestId, input.exportsChangedAt);
   let approved = false;
   let number: number;
@@ -504,6 +576,7 @@ const parent = (value: string | null) => (value === null || value === '' ? null 
 export interface UploadStart {
   readonly error?: string;
   readonly storageFull?: ActionState['storageFull'];
+  readonly signedOut?: boolean;
   /** Null when the project already has these contents, so nothing needs uploading. */
   readonly upload?: { readonly uploadId: string; readonly url: string; readonly headers: Record<string, string> } | null;
 }
@@ -513,7 +586,8 @@ export interface UploadStart {
  * contents straight to storage. The browser sends the bytes; the API checks their hash.
  */
 export async function startUpload(projectId: string, sha256: string, size: number): Promise<UploadStart> {
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   try {
     const plan = await apiRequest<{ uploads: { uploadId: string; sha256: string; url: string; headers: Record<string, string> }[] }>(
       token,
@@ -528,7 +602,8 @@ export async function startUpload(projectId: string, sha256: string, size: numbe
 }
 
 export async function finishUpload(projectId: string, uploadId: string): Promise<ActionState> {
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   try {
     const result = await apiRequest<{ failed: { reason: string }[] }>(
       token,
@@ -546,7 +621,8 @@ export async function finishUpload(projectId: string, uploadId: string): Promise
 
 /** Adds an uploaded file to a root folder. */
 export async function addRootFile(projectId: string, parentId: string | null, name: string, sha256: string): Promise<ActionState & { readonly taken?: boolean }> {
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   try {
     await apiRequest(token, `/v1/projects/${id(projectId)}/directory/files`, json('POST', { parentId: parent(parentId), name, blob: sha(sha256) }));
   } catch (error) {
@@ -562,7 +638,8 @@ export async function addRootFile(projectId: string, parentId: string | null, na
  * it says whether one was made: identical contents leave the file as it was.
  */
 export async function replaceRootFile(projectId: string, entryId: string, sha256: string, before: number | null = null): Promise<ActionState> {
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   let revision: number | null;
   try {
     ({ revision } = await apiRequest<{ revision: number | null }>(token, `/v1/projects/${id(projectId)}/directory/entries/${id(entryId)}/revisions`, json('POST', { blob: sha(sha256) })));
@@ -578,9 +655,12 @@ export async function replaceRootFile(projectId: string, entryId: string, sha256
 export async function findRootFile(projectId: string, path: string): Promise<string | null> {
   const name = path.slice(path.lastIndexOf('/') + 1);
   const under = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+  // Signed out, there's nothing to find; the upload that asked then fails as signed out.
+  const token = await getAccessToken();
+  if (!token) return null;
   try {
     const found = await apiRequest<{ entries: { entryId: string | null; location: { path: string } }[] }>(
-      await requireAccessToken(),
+      token,
       `/v1/projects/${id(projectId)}/files?${new URLSearchParams({ q: name, area: 'root', limit: '100', ...(under ? { under } : {}) })}`,
     );
     return found.entries.find((file) => file.location.path.toLowerCase() === path.toLowerCase())?.entryId ?? null;
@@ -626,8 +706,10 @@ export async function moveEntryTo(projectId: string, entryId: string, parentId: 
 
 /** What deleting a root file or folder would take with it, for the delete confirmation. Null if it can't be told. */
 export async function entryContents(projectId: string, entryId: string): Promise<EntryContents | null> {
+  const token = await getAccessToken();
+  if (!token) return null;
   try {
-    const detail = await apiRequest<{ contents?: EntryContents }>(await requireAccessToken(), `/v1/projects/${id(projectId)}/directory/entries/${id(entryId)}`);
+    const detail = await apiRequest<{ contents?: EntryContents }>(token, `/v1/projects/${id(projectId)}/directory/entries/${id(entryId)}`);
     return detail.contents ?? null;
   } catch {
     return null;
@@ -639,7 +721,8 @@ export async function removeEntry(projectId: string, entryId: string): Promise<A
 }
 
 export async function deleteEntry(projectId: string, entryId: string, owner: string, slug: string, parentPath: string): Promise<ActionState> {
-  const token = await requireAccessToken();
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
   try {
     await apiRequest(token, `/v1/projects/${id(projectId)}/directory/entries/${id(entryId)}`, json('DELETE'));
   } catch (error) {

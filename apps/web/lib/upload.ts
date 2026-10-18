@@ -32,12 +32,12 @@ export async function uploadContents(
   projectId: string,
   file: File,
   onProgress: (phase: UploadPhase, fraction: number) => void = () => {},
-): Promise<{ sha256?: string; error?: string; storageFull?: ActionState['storageFull'] }> {
+): Promise<{ sha256?: string; error?: string; storageFull?: ActionState['storageFull']; signedOut?: boolean }> {
   if (file.size > MAX_BROWSER_UPLOAD_BYTES) return { error: 'Over 2 GB, the most the browser can upload. Use the GigaCAD app or the CLI.' };
   onProgress('hashing', 0);
   const sha256 = await sha256Hex(file);
   const started = await startUpload(projectId, sha256, file.size);
-  if (started.error) return { error: started.error, storageFull: started.storageFull };
+  if (started.error) return { error: started.error, storageFull: started.storageFull, signedOut: started.signedOut };
   if (started.upload) {
     onProgress('uploading', 0);
     if (!(await put(started.upload.url, started.upload.headers, file, (fraction) => onProgress('uploading', fraction)))) {
@@ -45,7 +45,7 @@ export async function uploadContents(
     }
     onProgress('saving', 1);
     const finished = await finishUpload(projectId, started.upload.uploadId);
-    if (finished.error) return { error: finished.error, storageFull: finished.storageFull };
+    if (finished.error) return { error: finished.error, storageFull: finished.storageFull, signedOut: finished.signedOut };
   }
   onProgress('saving', 1);
   return { sha256 };

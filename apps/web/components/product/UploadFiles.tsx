@@ -9,6 +9,7 @@ import { differentExtension, uploadTitle } from '../../lib/directory';
 import { safeAction } from '../../lib/safe-action';
 import { uploadContents, type UploadPhase } from '../../lib/upload';
 import { PlusIcon } from '../icons';
+import { LogInAgain } from './ActionButton';
 import { OPEN_UPLOAD_EVENT } from './OpenUploadButton';
 
 /** Files dropped anywhere on the folder's drop zone arrive as this event. */
@@ -83,6 +84,8 @@ export function UploadFiles({
   const [items, setItems] = useState<Item[]>([]);
   const [collisions, setCollisions] = useState<{ files: File[]; ids: number[] } | null>(null);
   const [full, setFull] = useState<ActionState['storageFull']>();
+  /** Files that weren't saved because the session ended, kept so they can be retried after logging in. */
+  const [unsaved, setUnsaved] = useState<File[] | null>(null);
   const queue = useRef<Job[]>([]);
   const running = useRef(false);
   const nextId = useRef(0);
@@ -133,6 +136,7 @@ export function UploadFiles({
   /** Adds files to the queue as Waiting, and starts working through it if nothing is running. */
   function enqueue(files: File[], replace: boolean, keep = true, ids = files.map(() => nextId.current++)) {
     setFull(undefined);
+    setUnsaved(null);
     const jobs = files.map((file, index) => ({ id: ids[index]!, file, replace }));
     queue.current.push(...jobs);
     setItems((current) => [...(keep ? current.filter((item) => !ids.includes(item.id)) : []), ...jobs.map((job) => ({ id: job.id, name: job.file.name, phase: 'waiting' as const, progress: 0 }))]);
@@ -178,6 +182,16 @@ export function UploadFiles({
               ? { taken: true }
               : await safeAction<ActionState & { readonly taken?: boolean }>(() => addRootFile(projectId, parentId, file.name, sha256))
           : uploaded;
+        if (result.signedOut) {
+          // The rest would fail the same way; keep them all for a retry after logging in.
+          const rest = queue.current.splice(0);
+          const restIds = rest.map((other) => other.id);
+          setUnsaved([file, ...rest.map((other) => other.file)]);
+          setItems((current) =>
+            current.map((item) => (item.id === id ? { ...item, phase: 'failed', error: 'Not saved: you were signed out' } : restIds.includes(item.id) ? { ...item, phase: 'skipped' } : item)),
+          );
+          break;
+        }
         if (result.storageFull) {
           // Every other file would be refused too.
           setFull(result.storageFull);
@@ -288,6 +302,15 @@ export function UploadFiles({
           {full && (
             <p className="upload-full" role="alert">
               <StorageFull owner={owner} full={full} />
+            </p>
+          )}
+          {unsaved && !pending && (
+            <p className="upload-full" role="alert">
+              You were signed out, so {unsaved.length === 1 ? 'this file wasn’t' : `${unsaved.length} files weren’t`} saved. <LogInAgain />, then{' '}
+              <button type="button" className="link-button" onClick={() => enqueue(unsaved, true, false)}>
+                try again
+              </button>
+              .
             </p>
           )}
           {!pending && (

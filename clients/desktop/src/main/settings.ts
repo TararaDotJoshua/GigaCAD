@@ -18,6 +18,8 @@ export const DEFAULT_SETTINGS: Settings = {
   hiddenProjects: [],
   setupDone: false,
   dismissedUpdate: null,
+  zoom: 0,
+  window: null,
 };
 
 export async function loadSettings(): Promise<Settings> {

@@ -1,8 +1,9 @@
-import { app, BrowserWindow, clipboard, dialog, Menu, nativeImage, Notification, shell, Tray, type MenuItemConstructorOptions } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, Menu, nativeImage, Notification, screen, shell, Tray, type MenuItemConstructorOptions } from 'electron';
 import { execFile, spawn } from 'node:child_process';
 import { stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, normalize } from 'node:path';
 import { platformWords } from '../shared/platform.js';
+import { SHORTCUTS, type ShortcutAction } from '../shared/shortcuts.js';
 import type { BundleRuntime } from '../shared/runtime.js';
 import { supportDir } from '../shared/runtime.js';
 import type { AppState, Commands, PluginState, Settings, UpdateState } from '../shared/types.js';
@@ -18,6 +19,7 @@ import { METHODS } from './plugins/protocol.js';
 import { parseActionUrl, type QuickAction } from './quickActions.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { Setup } from './setup.js';
+import { restorableBounds } from './windowState.js';
 import { describe, SyncEngine } from './sync.js';
 import { defaultManifestUrl, Updater } from './updates.js';
 
@@ -216,9 +218,11 @@ export class Controller {
 
   showWindow(focus?: { projectId?: string; branch?: string; commit?: boolean }): void {
     if (!this.window) {
+      const bounds = restorableBounds(this.settings.window, screen.getAllDisplays().map((display) => display.workArea));
       this.window = new BrowserWindow({
         width: 1120,
         height: 740,
+        ...bounds,
         minWidth: 860,
         minHeight: 560,
         title: 'GigaCAD',
@@ -237,7 +241,23 @@ export class Controller {
       const devUrl = process.env.GIGACAD_RENDERER_URL;
       if (devUrl && !app.isPackaged) void this.window.loadURL(devUrl);
       else void this.window.loadFile(join(this.runtime.dir, 'renderer', 'index.html'));
-      this.window.once('ready-to-show', () => this.window?.show());
+      this.window.once('ready-to-show', () => {
+        if (bounds && this.settings.window?.maximized) this.window?.maximize();
+        this.window?.show();
+      });
+      this.window.webContents.on('did-finish-load', () => this.window?.webContents.setZoomLevel(this.settings.zoom));
+      // Remember where the window is, a moment after it stops moving.
+      let saveTimer: NodeJS.Timeout | undefined;
+      const saveBounds = () => {
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+          const window = this.window;
+          if (!window || window.isMinimized() || window.isFullScreen()) return;
+          const { x, y, width, height } = window.getNormalBounds();
+          void this.updateSettings((settings) => ({ ...settings, window: { x, y, width, height, maximized: window.isMaximized() } }));
+        }, 500);
+      };
+      for (const event of ['resize', 'move', 'maximize', 'unmaximize'] as const) this.window.on(event as 'resize', saveBounds);
       // In development, the window's console goes to the terminal running `pnpm dev`.
       if (!app.isPackaged) {
         this.window.webContents.on('console-message', ({ level, message, sourceId, lineNumber }) => {
@@ -353,9 +373,23 @@ export class Controller {
           ],
         },
         { role: 'editMenu' },
+        { label: 'View', submenu: this.shortcutItems('view') },
+        { label: 'Go', submenu: this.shortcutItems('go') },
         { role: 'windowMenu' },
       ]),
     );
+  }
+
+  /** Menu items for the shortcuts in one menu; choosing one sends its action to the window. */
+  private shortcutItems(menu: 'view' | 'go'): MenuItemConstructorOptions[] {
+    const send = (action: ShortcutAction) => {
+      this.showWindow();
+      this.window?.webContents.send('gigacad:shortcut', action);
+    };
+    return SHORTCUTS.filter((shortcut) => shortcut.menu === menu).flatMap((shortcut): MenuItemConstructorOptions[] => [
+      ...(shortcut.action === 'zoomIn' || shortcut.action === 'back' || shortcut.action === 'project1' ? [{ type: 'separator' as const }] : []),
+      { label: shortcut.label, accelerator: shortcut.accelerator, click: () => send(shortcut.action) },
+    ]);
   }
 
   // --- Commands from the window ------------------------------------------------------------------
@@ -421,6 +455,7 @@ export class Controller {
       }));
       if (!hidden) void this.engine.syncProject(projectId);
     },
+    dismissConflict: (projectId, path) => this.engine.dismissConflict(projectId, path),
 
     checkout: (projectId, branch) => this.engine.checkout(projectId, branch),
     checkin: (projectId, branch) => this.engine.checkin(projectId, branch),
@@ -446,17 +481,42 @@ export class Controller {
       const project = this.project(projectId);
       return giga(['rr', 'open', '--project', `${project.owner}/${project.slug}`, '--branch', branch, ...(title ? ['--title', title] : []), ...(body ? ['--body', body] : [])], this.opts());
     },
+    rootFiles: async (projectId) =>
+      (await apiClient(this.settings.apiUrl)).get(`/v1/projects/${projectId}/files?area=root&sort=modified&order=desc&limit=30`),
     // Approves the candidate the list showed, so a candidate regenerated since is refused rather than approved unseen.
     approveReleaseRequest: async (projectId, number, candidateManifestId) => {
       const project = this.project(projectId);
       await giga(['rr', 'approve', String(number), '--project', `${project.owner}/${project.slug}`, '--candidate', candidateManifestId], this.opts());
     },
 
-    reveal: (path) => shell.showItemInFolder(path),
+    // The window joins paths with `/`; Windows wants its own separators.
+    reveal: (path) => shell.showItemInFolder(normalize(path)),
+    openPath: async (path) => {
+      const problem = await shell.openPath(normalize(path));
+      if (problem) throw new Error(problem);
+    },
     openExternal: (url) => {
       if (/^https:\/\//.test(url)) void shell.openExternal(url);
     },
     openTerminal: (path) => openTerminal(path),
+    copyText: (text) => clipboard.writeText(text),
+    contextMenu: (items) =>
+      new Promise<string | null>((resolve) => {
+        let chosen: string | null = null;
+        const menu = Menu.buildFromTemplate(
+          items.flatMap((item): MenuItemConstructorOptions[] => [
+            ...(item.separatorBefore ? [{ type: 'separator' as const }] : []),
+            { label: item.label, enabled: item.enabled ?? true, click: () => (chosen = item.id) },
+          ]),
+        );
+        // The click handler runs before the menu reports it closed.
+        menu.popup({ ...(this.window ? { window: this.window } : {}), callback: () => setTimeout(() => resolve(chosen), 0) });
+      }),
+    zoom: async (direction) => {
+      const level = direction === 'reset' ? 0 : Math.min(3, Math.max(-3, this.settings.zoom + (direction === 'in' ? 0.5 : -0.5)));
+      this.window?.webContents.setZoomLevel(level);
+      await this.updateSettings((settings) => ({ ...settings, zoom: level }));
+    },
     webUrl: (projectId, path) => {
       const project = this.project(projectId);
       return treeUrl(this.settings.appUrl, project.owner, project.slug, path);

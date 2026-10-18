@@ -10,6 +10,7 @@ import { useDismiss } from '../../lib/use-dismiss';
 import { BranchIcon, LockIcon, LogOutIcon, MenuIcon, SearchIcon, StarIcon } from '../icons';
 import { Logo } from '../Logo';
 import { Avatar } from './Avatar';
+import { IntentLink } from './IntentLink';
 import { RelativeTime } from './RelativeTime';
 
 export interface NavProject {
@@ -91,14 +92,14 @@ export function SidebarNav({
         <ul className="app-nav">
           {shown.map((p) => (
             <li key={`${p.owner}/${p.slug}`} className={isCurrent(p) ? 'is-current' : undefined}>
-              <Link href={projectPath(p.owner, p.slug)} title={`${p.owner}/${p.slug}`} onClick={() => setOpen(false)}>
+              <IntentLink href={projectPath(p.owner, p.slug)} title={`${p.owner}/${p.slug}`} onClick={() => setOpen(false)}>
                 {/* Someone else's project shows whose it is, so a fork and its source never look the same. */}
-                <span>
+                <span className="app-nav-project-name">
                   {p.owner !== me?.handle && <span className="app-nav-owner">{p.owner}/</span>}
                   {p.name}
                 </span>
                 <Pending />
-              </Link>
+              </IntentLink>
               {isCurrent(p) && current && <ProjectSections project={current} pathname={pathname} onNavigate={() => setOpen(false)} />}
             </li>
           ))}
@@ -159,7 +160,7 @@ function ProjectSections({ project, pathname, onNavigate }: { project: NavProjec
         const active = pathname === `${base}/branches/${branch.name}`;
         return (
           <li key={branch.name} className={`app-nav-branch${active ? ' is-active' : ''}`}>
-            <Link href={href} onClick={onNavigate}>
+            <IntentLink href={href} onClick={onNavigate}>
               <BranchIcon className="icon" />
               <span className="mono app-nav-branch-name">{branch.name}</span>
               <Pending />
@@ -176,7 +177,7 @@ function ProjectSections({ project, pathname, onNavigate }: { project: NavProjec
                   )}
                 </span>
               ) : null}
-            </Link>
+            </IntentLink>
           </li>
         );
       })}

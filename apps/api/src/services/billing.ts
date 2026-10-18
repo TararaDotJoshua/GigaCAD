@@ -18,10 +18,20 @@ export interface BillingView {
   readonly billingEnabled: boolean;
   /** Has a payment account, so the billing portal can open. */
   readonly canManage: boolean;
+  /** The projects the account owns, largest first. A file stored in two projects counts in each, but once in `usedBytes`. */
+  readonly projects: readonly ProjectUsage[];
+}
+
+export interface ProjectUsage {
+  readonly id: string;
+  readonly ownerHandle: string;
+  readonly slug: string;
+  readonly name: string;
+  readonly usedBytes: number;
 }
 
 export async function getBilling(sql: Sql, userId: string, billingEnabled: boolean): Promise<BillingView> {
-  const [row] = await sql<Omit<BillingView, 'billingEnabled'>[]>`
+  const [row] = await sql<Omit<BillingView, 'billingEnabled' | 'projects'>[]>`
     select coalesce(b.plan, 'free') as plan, b.interval, b.subscription_status as status, b.current_period_end,
       coalesce(b.cancel_at_period_end, false) as cancel_at_period_end,
       storage_used_bytes(p.id)::float8 as used_bytes, p.quota_bytes::float8 as quota_bytes,
@@ -29,7 +39,15 @@ export async function getBilling(sql: Sql, userId: string, billingEnabled: boole
     from profiles p left join billing_accounts b on b.user_id = p.id
     where p.id = ${userId}
   `;
-  return { ...row!, billingEnabled };
+  const projects = await sql<ProjectUsage[]>`
+    select p.id, o.handle as owner_handle, p.slug, p.name, coalesce(sum(b.size), 0)::float8 as used_bytes
+    from projects p join profiles o on o.id = p.owner_id
+    left join project_blobs pb on pb.project_id = p.id left join blobs b on b.sha256 = pb.sha256
+    where p.owner_id = ${userId} and p.deleted_at is null
+    group by p.id, o.handle
+    order by used_bytes desc, p.slug
+  `;
+  return { ...row!, billingEnabled, projects };
 }
 
 /**
@@ -102,7 +120,8 @@ export async function startCheckout(
     userId,
     priceLookupKey: priceLookupKey(plan, interval),
     successUrl: billingReturnUrl(webOrigin, { checkout: 'done' }, from),
-    cancelUrl: billingReturnUrl(webOrigin, { checkout: 'cancelled' }, from),
+    // Back from Stripe without paying, the plans table still shows the plan and interval chosen.
+    cancelUrl: billingReturnUrl(webOrigin, { checkout: 'cancelled', plan, interval }, from),
   });
   return { url };
 }

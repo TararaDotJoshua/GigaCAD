@@ -29,6 +29,9 @@ export const PLANS: readonly Plan[] = [
   { id: 'studio', name: 'Studio', monthlyUsd: 99, yearlyUsd: 990, storageBytes: 2 * TB, summary: 'Small teams with large libraries.' },
 ];
 
+/** The share of storage at which the product starts warning that it's nearly full. */
+export const STORAGE_WARNING_SHARE = 0.8;
+
 export function isPlanId(value: unknown): value is PlanId {
   return typeof value === 'string' && (PLAN_IDS as readonly string[]).includes(value);
 }

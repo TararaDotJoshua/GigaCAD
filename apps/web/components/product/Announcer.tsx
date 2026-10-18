@@ -1,14 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
-const listeners = new Set<(message: string) => void>();
+const listeners = new Set<(message: ReactNode) => void>();
 
 /**
  * Shows an action's result in the page's status region, which outlives the control that
  * produced it. Returns false when no region is on the page, so the caller can show it itself.
  */
-export function announce(message: string): boolean {
+export function announce(message: ReactNode): boolean {
   for (const listener of listeners) listener(message);
   return listeners.size > 0;
 }
@@ -17,9 +17,9 @@ const SHOWN_MS = 8000;
 
 /** The page's status region: the latest action result, for a few seconds. */
 export function Announcer() {
-  const [message, setMessage] = useState<{ text: string; at: number } | null>(null);
+  const [message, setMessage] = useState<{ text: ReactNode; at: number } | null>(null);
   useEffect(() => {
-    const listener = (text: string) => setMessage({ text, at: Date.now() });
+    const listener = (text: ReactNode) => setMessage({ text, at: Date.now() });
     listeners.add(listener);
     return () => {
       listeners.delete(listener);

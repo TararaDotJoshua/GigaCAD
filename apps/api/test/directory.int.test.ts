@@ -120,6 +120,10 @@ describe('the project root', () => {
     expect(detail.body.revisions.map((revision: { number: number }) => revision.number)).toEqual([2, 1]);
     expect(detail.body.tags).toEqual([{ id: tag.body.id, name: 'Machined' }]);
     expect(detail.body.writable).toBe(false);
+    // What deleting would remove: the file and its revisions, or everything inside a folder.
+    expect(detail.body.contents).toEqual({ files: 1, folders: 0, revisions: 2 });
+    expect((await asReader.get(`/v1/projects/${projectId}/directory/entries/${empty.body.id}`)).body.contents).toEqual({ files: 1, folders: 1, revisions: 2 });
+    expect((await asReader.get(`/v1/projects/${projectId}/directory/entries/${designs.body.id}`)).body.contents).toEqual({ files: 0, folders: 0, revisions: 0 });
 
     const root = await list(api, projectId);
     expect(names(root.body)).toEqual(['Branches', 'Releases', 'Designs', 'Empty']);
@@ -206,8 +210,40 @@ describe('the project root', () => {
   });
 });
 
+describe('branch folders', () => {
+  it("credit a file to whoever changed it on the branch, not to the branch's creator", async () => {
+    const projectId = await project();
+    const first = await api.post(`/v1/projects/${projectId}/branches`, { name: 'first' });
+    const content = `base ${randomUUID()}`;
+    await commitVersion(harness, api, projectId, first.body.id, { 'Base.SLDPRT': content, 'Other.SLDPRT': `other ${randomUUID()}` });
+    await release(projectId, first.body.id);
+    const [{ createdAt: releasedAt }] = (await api.get(`/v1/projects/${projectId}/releases`)).body;
+
+    // The helper branches from v1 and changes one file.
+    const next = await asHelper.post(`/v1/projects/${projectId}/branches`, { name: 'next' });
+    const inherited = await list(api, projectId, 'Branches/next');
+    // Unchanged files date from v1, not from when the branch was made.
+    for (const file of inherited.body.entries) expect(file).toMatchObject({ modifiedByHandle: null, modifiedAt: releasedAt });
+    const otherItem = inherited.body.entries.find((file: { name: string }) => file.name === 'Other.SLDPRT').itemId;
+    await commitVersion(harness, asHelper, projectId, next.body.id, { 'Base.SLDPRT': content, 'Other.SLDPRT': `edited ${randomUUID()}` }, {
+      itemIds: { 'Base.SLDPRT': inherited.body.entries.find((file: { name: string }) => file.name === 'Base.SLDPRT').itemId, 'Other.SLDPRT': otherItem },
+      checkIn: false,
+    });
+
+    const listed = await list(api, projectId, 'Branches/next');
+    const byName = Object.fromEntries(listed.body.entries.map((file: { name: string; modifiedByHandle: string | null }) => [file.name, file.modifiedByHandle]));
+    expect(byName).toEqual({ 'Base.SLDPRT': null, 'Other.SLDPRT': helper.handle });
+    expect(listed.body.location.branch).toMatchObject({ headKind: 'version', checkedOutByHandle: helper.handle });
+
+    // Search agrees.
+    const found = await api.get(`/v1/projects/${projectId}/files?q=Base&area=branch`);
+    const onNext = found.body.entries.find((file: { location: { branchName: string } }) => file.location.branchName === 'next');
+    expect(onNext.modifiedByHandle).toBeNull();
+  });
+});
+
 describe('tags, favorites, recent files, and search', () => {
-  it('find root, branch, and release appearances of a file, each with its location', async () => {
+  it('find root, branch, and release appearances of a file, once each with its location', async () => {
     const projectId = await project();
     const branch = await api.post(`/v1/projects/${projectId}/branches`, { name: 'dev' });
     const committed = await commitVersion(harness, api, projectId, branch.body.id, { 'frame/Rail.SLDPRT': `rail ${randomUUID()}`, 'Notes.txt': 'notes' });
@@ -215,13 +251,17 @@ describe('tags, favorites, recent files, and search', () => {
     const rootRail = await addFile(api, projectId, null, 'Rail drawing.PDF', `pdf ${randomUUID()}`);
     const railItem = committed.files.find((file) => file.path === 'frame/Rail.SLDPRT')!.itemId;
 
+    // dev is released, so its head is history; the rail is found once, in v1.
     const found = await asReader.get(`/v1/projects/${projectId}/files?q=rail`);
     expect(found.status).toBe(200);
-    expect(found.body.total).toBe(3);
+    expect(found.body.total).toBe(2);
     const where = found.body.entries.map((file: { path: string }) => file.path).sort();
-    expect(where).toEqual(['Branches/dev/frame/Rail.SLDPRT', 'Rail drawing.PDF', 'Releases/v1/frame/Rail.SLDPRT']);
-    // One logical file, two appearances.
-    expect(found.body.entries.filter((file: { itemId: string }) => file.itemId === railItem)).toHaveLength(2);
+    expect(where).toEqual(['Rail drawing.PDF', 'Releases/v1/frame/Rail.SLDPRT']);
+    expect(found.body.entries.map((file: { alsoIn: number }) => file.alsoIn)).toEqual([0, 0]);
+    // Asking for history finds it in dev too, still as one file: its newest place, with the other counted.
+    const everywhere = await asReader.get(`/v1/projects/${projectId}/files?q=rail&history=true`);
+    expect(everywhere.body.total).toBe(2);
+    expect(everywhere.body.entries.find((file: { itemId: string }) => file.itemId === railItem)).toMatchObject({ path: 'Releases/v1/frame/Rail.SLDPRT', alsoIn: 1 });
     expect((await asReader.get(`/v1/projects/${projectId}/files?q=rail&area=release`)).body.entries[0].location).toEqual({
       area: 'release',
       branchId: null,
@@ -231,13 +271,14 @@ describe('tags, favorites, recent files, and search', () => {
     });
     // Search text is literal.
     expect((await asReader.get(`/v1/projects/${projectId}/files?q=${encodeURIComponent('%')}`)).body.total).toBe(0);
-    // Searching inside a folder finds only what's under it.
+    // Searching inside a folder finds only what's under it, even inside a released branch.
     const inFolder = async (under: string) =>
       (await asReader.get(`/v1/projects/${projectId}/files?q=rail&under=${encodeURIComponent(under)}`)).body.entries.map((file: { path: string }) => file.path);
     expect(await inFolder('Branches/dev')).toEqual(['Branches/dev/frame/Rail.SLDPRT']);
+    expect(await inFolder('Branches/dev/frame')).toEqual(['Branches/dev/frame/Rail.SLDPRT']);
     expect(await inFolder('Releases/v1/frame')).toEqual(['Releases/v1/frame/Rail.SLDPRT']);
     expect(await inFolder('Releases/v1/fr')).toEqual([]);
-    expect((await inFolder('')).length).toBe(3);
+    expect((await inFolder('')).length).toBe(2);
 
     // Tags follow the file into every snapshot; a file needs every requested tag.
     const steel = await asHelper.post(`/v1/projects/${projectId}/tags`, { name: 'Steel' });
@@ -245,10 +286,11 @@ describe('tags, favorites, recent files, and search', () => {
     expect((await asHelper.post(`/v1/projects/${projectId}/tags`, { name: 'steel' })).body.error.code).toBe('tag_exists');
     await asHelper.put(`/v1/projects/${projectId}/items/${railItem}/tags`, { tagIds: [steel.body.id, cut.body.id] });
     await asHelper.put(`/v1/projects/${projectId}/items/${rootRail.body.itemId}/tags`, { tagIds: [steel.body.id] });
-    expect((await asReader.get(`/v1/projects/${projectId}/files?tags=${steel.body.id}`)).body.total).toBe(3);
+    expect((await asReader.get(`/v1/projects/${projectId}/files?tags=${steel.body.id}`)).body.total).toBe(2);
     const both = await asReader.get(`/v1/projects/${projectId}/files?tags=${steel.body.id},${cut.body.id}`);
-    expect(both.body.entries.map((file: { location: { area: string } }) => file.location.area).sort()).toEqual(['branch', 'release']);
+    expect(both.body.entries.map((file: { location: { area: string } }) => file.location.area)).toEqual(['release']);
     expect(both.body.entries[0].tags.map((tag: { name: string }) => tag.name)).toEqual(['Laser cut', 'Steel']);
+    // Tag counts agree with searching for the tag.
     const tags = await asReader.get(`/v1/projects/${projectId}/tags`);
     expect(tags.body.map((tag: { name: string; fileCount: number }) => [tag.name, tag.fileCount])).toEqual([['Laser cut', 1], ['Steel', 2]]);
 
@@ -263,7 +305,7 @@ describe('tags, favorites, recent files, and search', () => {
     // Favorites are personal, and any reader can keep them.
     expect((await asReader.put(`/v1/projects/${projectId}/items/${railItem}/favorite`, {})).body).toEqual({ favorite: true });
     const favorites = await asReader.get(`/v1/projects/${projectId}/files?favorites=true`);
-    expect(favorites.body.total).toBe(2);
+    expect(favorites.body.total).toBe(1);
     expect(favorites.body.entries.every((file: { favorite: boolean }) => file.favorite)).toBe(true);
     expect((await api.get(`/v1/projects/${projectId}/files?favorites=true`)).body.total).toBe(0);
     expect((await api.get(`/v1/projects/${projectId}/files?q=Rail.SLDPRT`)).body.entries.every((file: { favorite: boolean }) => !file.favorite)).toBe(true);
@@ -273,10 +315,51 @@ describe('tags, favorites, recent files, and search', () => {
     // Recent files: the newest change first, and paged.
     const recent = await asReader.get(`/v1/projects/${projectId}/files?sort=modified&limit=1`);
     expect(recent.body.entries[0].path).toBe('Rail drawing.PDF');
-    expect(recent.body).toMatchObject({ total: 5, nextOffset: 1 });
+    expect(recent.body).toMatchObject({ total: 3, nextOffset: 1 });
     const rest = await asReader.get(`/v1/projects/${projectId}/files?sort=modified&limit=10&offset=1`);
-    expect(rest.body.entries).toHaveLength(4);
+    expect(rest.body.entries.map((file: { path: string }) => file.path).sort()).toEqual(['Releases/v1/Notes.txt', 'Releases/v1/frame/Rail.SLDPRT']);
     expect(rest.body.nextOffset).toBeNull();
+  });
+
+  it('show a file kept on several branches and releases as one row, and leave archived branches out unless asked', async () => {
+    const projectId = await project();
+    const first = await api.post(`/v1/projects/${projectId}/branches`, { name: 'first' });
+    const committed = await commitVersion(harness, api, projectId, first.body.id, { 'Wheel.SLDPRT': `wheel 1 ${randomUUID()}` });
+    const wheel = committed.files[0]!.itemId;
+    await release(projectId, first.body.id);
+    // Work goes on in a branch from v1, and an abandoned branch is archived.
+    const next = await api.post(`/v1/projects/${projectId}/branches`, { name: 'next', fromRelease: 1 });
+    await commitVersion(harness, api, projectId, next.body.id, { 'Wheel.SLDPRT': `wheel 2 ${randomUUID()}` }, { itemIds: { 'Wheel.SLDPRT': wheel } });
+    const abandoned = await api.post(`/v1/projects/${projectId}/branches`, { name: 'abandoned' });
+    const spoke = (await commitVersion(harness, api, projectId, abandoned.body.id, { 'Spoke.SLDPRT': `spoke ${randomUUID()}` })).files[0]!.itemId;
+    expect((await api.post(`/v1/branches/${abandoned.body.id}/archive`)).status).toBe(200);
+
+    const search = async (query: string) => (await asReader.get(`/v1/projects/${projectId}/files?${query}`)).body;
+    expect(await search('q=wheel')).toMatchObject({ total: 1, entries: [{ itemId: wheel, path: 'Branches/next/Wheel.SLDPRT', alsoIn: 1 }] });
+    expect(await search('q=wheel&history=true')).toMatchObject({ total: 1, entries: [{ path: 'Branches/next/Wheel.SLDPRT', alsoIn: 2 }] });
+    expect((await search('q=spoke')).total).toBe(0);
+    expect(await search('q=spoke&history=true')).toMatchObject({ total: 1, entries: [{ path: 'Branches/abandoned/Spoke.SLDPRT' }] });
+    // Inside a folder, the file is found there, as a README naming `Releases/v1/Wheel.SLDPRT` needs, in any case.
+    expect(await search('q=wheel&under=Releases/v1&history=true')).toMatchObject({ total: 1, entries: [{ path: 'Releases/v1/Wheel.SLDPRT' }] });
+    expect(await search('q=wheel&under=releases/V1')).toMatchObject({ total: 1, entries: [{ path: 'Releases/v1/Wheel.SLDPRT' }] });
+    // A page past the end still says how many files there are.
+    expect(await search('q=wheel&history=true&offset=50')).toMatchObject({ total: 1, entries: [], nextOffset: null });
+
+    // A tag counts each file once, and only where search looks by default.
+    const round = await api.post(`/v1/projects/${projectId}/tags`, { name: 'Round' });
+    await api.put(`/v1/projects/${projectId}/items/${wheel}/tags`, { tagIds: [round.body.id] });
+    const tagged = await api.put(`/v1/projects/${projectId}/items/${spoke}/tags`, { tagIds: [round.body.id] });
+    expect(tagged.status).toBe(200);
+    expect((await asReader.get(`/v1/projects/${projectId}/tags`)).body).toEqual([{ id: round.body.id, name: 'Round', fileCount: 1 }]);
+    expect((await api.patch(`/v1/projects/${projectId}/tags/${round.body.id}`, { name: 'Circular' })).body.fileCount).toBe(1);
+    expect((await search(`tags=${round.body.id}`)).total).toBe(1);
+    expect((await search(`tags=${round.body.id}&history=true`)).total).toBe(2);
+
+    // Starring the file stars every place it appears, and it's one favorite.
+    await asReader.put(`/v1/projects/${projectId}/items/${wheel}/favorite`, {});
+    expect(await search('favorites=true')).toMatchObject({ total: 1, entries: [{ itemId: wheel, favorite: true }] });
+    await asReader.delete(`/v1/projects/${projectId}/items/${wheel}/favorite`);
+    expect((await search('favorites=true')).total).toBe(0);
   });
 
   it('pages and sorts folder listings', async () => {
@@ -285,11 +368,42 @@ describe('tags, favorites, recent files, and search', () => {
       await addFile(api, projectId, null, name, content + randomUUID());
     }
     await api.post(`/v1/projects/${projectId}/directory/folders`, { parentId: null, name: 'Zed' });
-    const first = await list(api, projectId, '', '&limit=4');
+    // Branches and Releases lead the first page, outside the paging: the total counts the root's own entries.
+    const first = await list(api, projectId, '', '&limit=2');
     expect(names(first.body)).toEqual(['Branches', 'Releases', 'Zed', 'a.txt']);
-    expect(first.body).toMatchObject({ total: 6, nextOffset: 4 });
-    expect(names((await list(api, projectId, '', '&limit=4&offset=4')).body)).toEqual(['b.txt', 'c.txt']);
+    expect(first.body).toMatchObject({ total: 4, nextOffset: 2 });
+    expect(names((await list(api, projectId, '', '&limit=2&offset=2')).body)).toEqual(['b.txt', 'c.txt']);
+    expect((await list(api, projectId, '', '&limit=2&offset=2')).body).toMatchObject({ total: 4, nextOffset: null });
     expect(names((await list(api, projectId, '', '&sort=modified')).body).slice(3)).toEqual(['c.txt', 'a.txt', 'b.txt']);
+  });
+
+  it('keep folders in name order by size, and date them by the last change inside', async () => {
+    const projectId = await project();
+    const folder = async (name: string, parentId: string | null = null) =>
+      (await api.post(`/v1/projects/${projectId}/directory/folders`, { parentId, name })).body.id as string;
+    const alpha = await folder('Alpha');
+    const inner = await folder('Inner', alpha);
+    const zeta = await folder('Zeta');
+    await addFile(api, projectId, null, 'Big.bin', `${'x'.repeat(100)} ${randomUUID()}`);
+    for (const order of ['asc', 'desc']) {
+      expect(names((await list(api, projectId, '', `&sort=size&order=${order}`)).body)).toEqual(['Branches', 'Releases', 'Alpha', 'Zeta', 'Big.bin']);
+    }
+
+    // Adding, replacing, moving, or deleting a file anywhere inside a folder makes it the newest.
+    const newest = async () => names((await list(api, projectId, '', '&sort=modified')).body).slice(2, 4);
+    expect(await newest()).toEqual(['Zeta', 'Alpha']);
+    const part = (await addFile(api, projectId, inner, 'Part.txt', `part ${randomUUID()}`)).body;
+    expect(await newest()).toEqual(['Alpha', 'Zeta']);
+    const note = (await addFile(api, projectId, zeta, 'Note.txt', `note ${randomUUID()}`)).body;
+    expect(await newest()).toEqual(['Zeta', 'Alpha']);
+    const [second] = await upload(harness, api, projectId, [`part 2 ${randomUUID()}`]);
+    await api.post(`/v1/projects/${projectId}/directory/entries/${part.id}/revisions`, { blob: second });
+    expect(await newest()).toEqual(['Alpha', 'Zeta']);
+    await api.patch(`/v1/projects/${projectId}/directory/entries/${note.id}`, { parentId: null });
+    expect(await newest()).toEqual(['Zeta', 'Alpha']);
+    await api.delete(`/v1/projects/${projectId}/directory/entries/${part.id}`);
+    expect(await newest()).toEqual(['Alpha', 'Zeta']);
+    expect(names((await list(api, projectId, 'Alpha', '&sort=modified')).body)).toEqual(['Inner']);
   });
 });
 

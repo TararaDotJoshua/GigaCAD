@@ -27,3 +27,23 @@ export function freeSlug(slug: string, taken: Iterable<string>): string {
 
 /** A release's files as one zip, streamed through the web app. */
 export const releaseDownloadPath = (owner: string, slug: string, number: number) => projectPath(owner, slug, 'releases', number, 'download');
+
+/** Folder segments from a URL, decoded once. A name with a literal `%` that isn't an escape stays as it is. */
+export function decodeSegments(segments: readonly string[]): string {
+  return segments
+    .map((segment) => {
+      try {
+        return decodeURIComponent(segment);
+      } catch {
+        return segment;
+      }
+    })
+    .join('/');
+}
+
+/** The folder path in a `/<owner>/<project>/tree/...` address, decoded like the page decodes it; null for other addresses. */
+export function folderFromUrl(url: string): string | null {
+  const segments = url.split(/[?#]/)[0]!.split('/');
+  if (segments[3] !== 'tree' || segments.length < 5) return null;
+  return decodeSegments(segments.slice(4).filter(Boolean));
+}

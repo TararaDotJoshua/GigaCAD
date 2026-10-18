@@ -1,8 +1,12 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useLayoutEffect, useRef, useState, useTransition, type ReactNode } from 'react';
-import { moveEntryTo, removeEntry, renameEntry } from '../../app/(product)/actions';
+import { entryContents, moveEntryTo, removeEntry, renameEntry } from '../../app/(product)/actions';
+import { deleteSummary, type EntryContents } from '../../lib/directory';
+import { treePath } from '../../lib/paths';
+import { announce } from './Announcer';
 import { focusAfterRefresh } from '../../lib/focus';
 import { safeAction } from '../../lib/safe-action';
 
@@ -19,90 +23,162 @@ type Mode = 'menu' | 'rename' | 'move' | 'delete';
 
 const LONG_PRESS_MS = 550;
 
+/** The part of the window the menu has to stay inside: the visible part, above a phone's keyboard. */
+function viewport() {
+  const visual = window.visualViewport;
+  return visual
+    ? { left: visual.offsetLeft, top: visual.offsetTop, width: visual.width, height: visual.height }
+    : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+}
+
 /**
  * The right-click menu for root files and folders: open, rename, move, and delete. Rows opt in
  * with `data-entry-id` and friends. It also opens from a row's "More actions" button (marked
  * `data-entry-menu-button`), with a long press on touch screens, and from the keyboard's
- * context-menu key or Shift+F10.
+ * context-menu key or Shift+F10. It follows its row when the page scrolls, and a half-typed
+ * rename survives the phone keyboard opening.
  */
-export function EntryMenu({ projectId, folders, children }: { projectId: string; folders: { id: string; path: string }[]; children: ReactNode }) {
+export function EntryMenu({
+  projectId,
+  owner,
+  slug,
+  folders,
+  children,
+}: {
+  projectId: string;
+  owner: string;
+  slug: string;
+  folders: { id: string; path: string }[];
+  children: ReactNode;
+}) {
   const router = useRouter();
   const [target, setTarget] = useState<Target | null>(null);
   const [mode, setMode] = useState<Mode>('menu');
   const [point, setPoint] = useState({ x: 0, y: 0 });
   const [place, setPlace] = useState<{ left: number; top: number } | null>(null);
   const [error, setError] = useState('');
+  const [filter, setFilter] = useState('');
+  const [busy, setBusy] = useState('');
+  // False when it couldn't be counted.
+  const [contents, setContents] = useState<EntryContents | false | null>(null);
   const [pending, start] = useTransition();
   const menu = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLElement | null>(null);
+  // What the menu is pinned to, and where it sat from that element's corner, so it can follow a scroll.
+  const anchor = useRef<{ element: HTMLElement; dx: number; dy: number } | null>(null);
   const press = useRef<{ timer: number; fired: boolean } | null>(null);
+  const placed = place !== null;
 
   const close = (restoreFocus = true) => {
     setTarget(null);
     setError('');
-    if (restoreFocus) opener.current?.focus();
+    setBusy('');
+    if (restoreFocus) opener.current?.focus({ preventScroll: true });
   };
 
-  const open = (row: HTMLElement, x: number, y: number) => {
+  const open = (row: HTMLElement, x: number, y: number, pinTo: HTMLElement = row) => {
     const { entryId, entryKind, entryName, entryPath, entryHref } = row.dataset;
     if (!entryId || !entryName || !entryPath || !entryHref) return;
     opener.current = (row.querySelector('a') as HTMLElement | null) ?? row;
+    const rect = pinTo.getBoundingClientRect();
+    anchor.current = { element: pinTo, dx: x - rect.left, dy: y - rect.top };
     setTarget({ id: entryId, kind: entryKind === 'folder' ? 'folder' : 'file', name: entryName, path: entryPath, href: entryHref });
     setMode('menu');
     setError('');
+    setFilter('');
+    setBusy('');
+    setContents(null);
     setPoint({ x, y });
     setPlace(null);
   };
 
   const rowAt = (node: EventTarget | null) => (node instanceof Element ? node.closest<HTMLElement>('tr[data-entry-id]') : null);
 
-  // Kept inside the viewport once its size is known.
+  // Kept inside the visible viewport once its size is known.
   useLayoutEffect(() => {
     if (!target || !menu.current) return;
     const { width, height } = menu.current.getBoundingClientRect();
+    const view = viewport();
     setPlace({
-      left: Math.max(8, Math.min(point.x, window.innerWidth - width - 8)),
-      top: Math.max(8, Math.min(point.y, window.innerHeight - height - 8)),
+      left: Math.max(view.left + 8, Math.min(point.x, view.left + view.width - width - 8)),
+      top: Math.max(view.top + 8, Math.min(point.y, view.top + view.height - height - 8)),
     });
-  }, [target, mode, point]);
+  }, [target, mode, point, contents, error]);
+
+  // Focus moves in once the menu is visible: a hidden menu can't take focus.
+  useEffect(() => {
+    if (!target || !placed) return;
+    (menu.current?.querySelector<HTMLElement>('input, [role="menuitem"]:not(:disabled)') ?? menu.current)?.focus({ preventScroll: true });
+  }, [target, mode, placed]);
 
   useEffect(() => {
     if (!target) return;
-    (menu.current?.querySelector<HTMLElement>('input, [role="menuitem"]:not(:disabled)') ?? menu.current)?.focus();
-  }, [target, mode]);
-
-  useEffect(() => {
-    if (!target) return;
+    const inside = (node: EventTarget | null) => node instanceof Node && Boolean(menu.current?.contains(node));
     const outside = (event: Event) => {
-      if (event.target instanceof Node && menu.current?.contains(event.target)) return;
-      close(false);
+      if (!inside(event.target)) close(false);
     };
-    const dismiss = () => close(false);
+    // A scroll or resize, including a phone keyboard opening, moves the menu along with its row.
+    // Only the plain menu closes, and only once its row has gone out of view.
+    const follow = (event: Event) => {
+      if (inside(event.target)) return;
+      const pinned = anchor.current;
+      if (!pinned?.element.isConnected) return mode === 'menu' ? close(false) : undefined;
+      const rect = pinned.element.getBoundingClientRect();
+      const view = viewport();
+      if (mode === 'menu' && (rect.bottom < view.top || rect.top > view.top + view.height)) return close(false);
+      setPoint({ x: rect.left + pinned.dx, y: rect.top + pinned.dy });
+    };
+    const blur = () => {
+      if (mode === 'menu') close(false);
+    };
     document.addEventListener('pointerdown', outside, true);
-    window.addEventListener('scroll', outside, true);
-    window.addEventListener('resize', dismiss);
-    window.addEventListener('blur', dismiss);
+    window.addEventListener('scroll', follow, true);
+    window.addEventListener('resize', follow);
+    window.visualViewport?.addEventListener('resize', follow);
+    window.visualViewport?.addEventListener('scroll', follow);
+    window.addEventListener('blur', blur);
     return () => {
       document.removeEventListener('pointerdown', outside, true);
-      window.removeEventListener('scroll', outside, true);
-      window.removeEventListener('resize', dismiss);
-      window.removeEventListener('blur', dismiss);
+      window.removeEventListener('scroll', follow, true);
+      window.removeEventListener('resize', follow);
+      window.visualViewport?.removeEventListener('resize', follow);
+      window.visualViewport?.removeEventListener('scroll', follow);
+      window.removeEventListener('blur', blur);
     };
-  }, [target]);
+  }, [target, mode]);
+
+  // What a delete would take with it, so the confirmation can say.
+  useEffect(() => {
+    if (!target || mode !== 'delete' || contents !== null) return;
+    let current = true;
+    entryContents(projectId, target.id)
+      .catch(() => null)
+      .then((found) => {
+        if (current) setContents(found ?? false);
+      });
+    return () => {
+      current = false;
+    };
+  }, [target, mode, contents, projectId]);
 
   /**
-   * Runs a menu action. The refresh replaces the row (a rename changes its key) or removes it,
-   * so focus then goes to the entry's new row, or the row after it when it left this folder.
+   * Runs a menu action, says what it did, and puts focus back where it makes sense. The refresh
+   * replaces the row (a rename changes its key) or removes it, so focus then goes to the entry's
+   * new row, or the row after it when it left this folder.
    */
-  const run = (action: () => Promise<{ error?: string }>, stays: boolean) => {
+  const run = (label: string, action: () => Promise<{ error?: string }>, done: ReactNode, stays: boolean) => {
     if (!target) return;
     const row = document.querySelector(`tr[data-entry-id="${target.id}"]`);
     const neighbor = row?.nextElementSibling ?? row?.previousElementSibling;
     const nextId = stays ? target.id : (neighbor instanceof HTMLElement ? neighbor.dataset.entryId : undefined);
+    setBusy(label);
     start(async () => {
       const result = await safeAction(action);
+      setBusy('');
       if (result.error) return setError(result.error);
       close(false);
+      // Said in the page's status region, which stays when this menu goes with the last row.
+      announce(done);
       focusAfterRefresh(
         () =>
           (nextId && document.querySelector<HTMLElement>(`tr[data-entry-id="${nextId}"] a`)) ||
@@ -127,20 +203,36 @@ export function EntryMenu({ projectId, folders, children }: { projectId: string;
   }, [target, mode]);
 
   const keys = (event: React.KeyboardEvent) => {
-    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    // Tab leaves a menu the way it does a native one: focus goes back to the opener, then on.
+    if (event.key === 'Tab' && (mode === 'menu' || mode === 'delete')) return close();
+    const typing = event.target instanceof HTMLInputElement;
+    if (!['ArrowDown', 'ArrowUp', ...(typing ? [] : ['Home', 'End'])].includes(event.key)) return;
     const items = [...(menu.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])') ?? [])];
     if (items.length === 0) return;
     event.preventDefault();
     const at = items.indexOf(document.activeElement as HTMLElement);
-    const next = event.key === 'ArrowDown' ? (at + 1) % items.length : (at - 1 + items.length) % items.length;
+    const next =
+      event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : event.key === 'ArrowDown' ? (at + 1) % items.length : (at - 1 + items.length) % items.length;
     items[next]!.focus();
   };
 
   // A folder can't move into itself or anything inside it.
   const destinations = target
-    ? folders.filter((folder) => target.kind === 'file' || (folder.path !== target.path && !folder.path.startsWith(`${target.path}/`)))
+    ? [{ id: null, path: '' } as { id: string | null; path: string }, ...folders]
+        .filter((folder) => target.kind === 'file' || folder.id === null || (folder.path !== target.path && !folder.path.startsWith(`${target.path}/`)))
+        .filter((folder) => !filter.trim() || (folder.path || 'Project root').toLowerCase().includes(filter.trim().toLowerCase()))
     : [];
   const currentParent = target?.path.includes('/') ? target.path.slice(0, target.path.lastIndexOf('/')) : '';
+  const folderLink = (path: string) => (
+    <Link href={treePath(owner, slug, path)} className="mono">
+      {path || 'the project root'}
+    </Link>
+  );
+  const moveTo = (folder: { id: string | null; path: string }) => {
+    if (!target) return;
+    const label = folder.path || 'the project root';
+    run(`Moving to ${label}…`, () => moveEntryTo(projectId, target.id, folder.id), <>Moved <span className="mono">{target.name}</span> to {folderLink(folder.path)}.</>, false);
+  };
 
   return (
     <div
@@ -151,7 +243,7 @@ export function EntryMenu({ projectId, folders, children }: { projectId: string;
         if (!button || !row) return;
         event.preventDefault();
         const rect = button.getBoundingClientRect();
-        open(row, rect.right - 200, rect.bottom + 4);
+        open(row, rect.right - 200, rect.bottom + 4, button);
         opener.current = button;
       }}
       onContextMenu={(event) => {
@@ -192,9 +284,15 @@ export function EntryMenu({ projectId, folders, children }: { projectId: string;
           className="menu-list entry-menu"
           role={mode === 'rename' ? 'dialog' : 'menu'}
           aria-label={mode === 'rename' ? `Rename ${target.name}` : mode === 'move' ? `Move ${target.name} to` : mode === 'delete' ? `Delete ${target.name}` : `Actions for ${target.name}`}
+          aria-busy={pending || undefined}
           tabIndex={-1}
           style={{ position: 'fixed', margin: 0, left: place?.left ?? point.x, top: place?.top ?? point.y, visibility: place ? 'visible' : 'hidden' }}
           onKeyDown={keys}
+          onBlur={(event) => {
+            // Focus moving somewhere else on the page closes the menu; the window losing focus doesn't.
+            const next = event.relatedTarget;
+            if (next instanceof Node && !event.currentTarget.contains(next)) close(false);
+          }}
         >
           {mode === 'menu' && (
             <>
@@ -209,13 +307,7 @@ export function EntryMenu({ projectId, folders, children }: { projectId: string;
                 Move to…
               </button>
               <hr />
-              <button
-                type="button"
-                role="menuitem"
-                className="is-danger"
-                disabled={pending}
-                onClick={() => setMode('delete')}
-              >
+              <button type="button" role="menuitem" className="is-danger" disabled={pending} onClick={() => setMode('delete')}>
                 Delete…
               </button>
             </>
@@ -223,11 +315,19 @@ export function EntryMenu({ projectId, folders, children }: { projectId: string;
           {mode === 'delete' && (
             <div className="entry-menu-form" role="group" aria-label={`Delete ${target.name}`}>
               <p className="entry-menu-title">Delete {target.name}?</p>
-              <p className="muted entry-menu-note">
-                {target.kind === 'folder' ? 'Everything in this folder is deleted too.' : 'Every revision of this file is deleted.'} This can’t be undone. Branches and releases keep their own copies.
+              <p className="muted entry-menu-note" aria-live="polite">
+                {contents ? deleteSummary(target.kind, contents) : contents === null && target.kind === 'folder' ? 'Counting what’s in this folder…' : target.kind === 'folder' ? 'Everything in this folder is deleted too.' : 'Every revision of this file is deleted.'}{' '}
+                This can’t be undone.
+                Branches and releases keep their own copies.
               </p>
-              <button type="button" role="menuitem" className="is-danger" disabled={pending} onClick={() => run(() => removeEntry(projectId, target.id), false)}>
-                {pending ? 'Deleting…' : 'Delete permanently'}
+              <button
+                type="button"
+                role="menuitem"
+                className="is-danger"
+                disabled={pending}
+                onClick={() => run('Deleting…', () => removeEntry(projectId, target.id), <>Deleted <span className="mono">{target.path}</span>.</>, false)}
+              >
+                {busy || 'Delete permanently'}
               </button>
               <button type="button" role="menuitem" onClick={() => setMode('menu')}>
                 Cancel
@@ -241,7 +341,7 @@ export function EntryMenu({ projectId, folders, children }: { projectId: string;
                 event.preventDefault();
                 const name = String(new FormData(event.currentTarget).get('name') ?? '').trim();
                 if (!name || name === target.name) return close();
-                run(() => renameEntry(projectId, target.id, name), true);
+                run('Renaming…', () => renameEntry(projectId, target.id, name), <>Renamed <span className="mono">{target.name}</span> to <span className="mono">{name}</span>.</>, true);
               }}
             >
               <label className="field">
@@ -261,7 +361,7 @@ export function EntryMenu({ projectId, folders, children }: { projectId: string;
               </label>
               <div className="form-actions">
                 <button type="submit" className="btn btn-primary btn-small" disabled={pending}>
-                  Rename
+                  {busy || 'Rename'}
                 </button>
                 <button type="button" className="btn btn-secondary btn-small" onClick={() => setMode('menu')}>
                   Cancel
@@ -272,8 +372,24 @@ export function EntryMenu({ projectId, folders, children }: { projectId: string;
           {mode === 'move' && (
             <>
               <p className="entry-menu-title">Move {target.name} to</p>
+              <label className="field entry-menu-filter">
+                <span className="sr-only">Filter folders</span>
+                <input
+                  type="search"
+                  value={filter}
+                  placeholder="Filter folders"
+                  autoComplete="off"
+                  onChange={(event) => setFilter(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter') return;
+                    event.preventDefault();
+                    const first = destinations.find((folder) => folder.path !== currentParent);
+                    if (first && !pending) moveTo(first);
+                  }}
+                />
+              </label>
               <div className="entry-menu-scroll">
-                {[{ id: null, path: '' } as { id: string | null; path: string }, ...destinations].map((folder) => (
+                {destinations.map((folder) => (
                   <button
                     key={folder.id ?? 'root'}
                     type="button"
@@ -281,12 +397,19 @@ export function EntryMenu({ projectId, folders, children }: { projectId: string;
                     className="mono"
                     disabled={pending || folder.path === currentParent}
                     aria-current={folder.path === currentParent ? 'true' : undefined}
-                    onClick={() => run(() => moveEntryTo(projectId, target.id, folder.id), false)}
+                    onClick={() => moveTo(folder)}
                   >
                     {folder.path || 'Project root'}
+                    {folder.path === currentParent && <span className="muted"> (here now)</span>}
                   </button>
                 ))}
+                {destinations.length === 0 && <p className="muted entry-menu-note">No folders match.</p>}
               </div>
+              {busy && (
+                <p className="muted entry-menu-note" role="status">
+                  {busy}
+                </p>
+              )}
             </>
           )}
           {error && (

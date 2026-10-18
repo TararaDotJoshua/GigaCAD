@@ -80,6 +80,8 @@ export interface Billing {
   quotaBytes: number;
   billingEnabled: boolean;
   canManage: boolean;
+  /** The projects the account owns, largest first. A file in two projects counts in each, but once in usedBytes. */
+  projects?: { id: string; ownerHandle: string; slug: string; name: string; usedBytes: number }[];
 }
 
 export interface Project {
@@ -404,6 +406,8 @@ export interface DirectoryFile {
   location: FileLocation;
   tags: Tag[];
   favorite: boolean;
+  /** Search results only: how many other places (branches, releases) the same file appears in. */
+  alsoIn?: number;
 }
 
 export interface BranchFolder {
@@ -463,4 +467,6 @@ export interface EntryDetail {
   tags: Tag[];
   favorite: boolean;
   writable: boolean;
+  /** What deleting the entry removes: the files and folders inside a folder (a file counts itself), and all their revisions. */
+  contents?: { files: number; folders: number; revisions: number };
 }

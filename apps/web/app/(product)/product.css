@@ -168,6 +168,14 @@
   border-left: 1px solid var(--line);
 }
 
+/* Long project names end in an ellipsis instead of widening the sidebar. */
+.shell .app-nav-project-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .shell .app-nav li.app-nav-branch > a {
   padding-left: 10px;
 }
@@ -384,6 +392,12 @@
   color: var(--ink-muted);
 }
 
+/* A long name without spaces breaks rather than widening a phone screen. */
+.shell .app-crumbs > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .shell .app-crumbs a:hover {
   color: var(--ink);
 }
@@ -410,6 +424,29 @@
 .shell .app-meta {
   gap: 6px 12px;
   margin-top: 10px;
+}
+
+/* A long project description stays a few lines tall until it's opened. */
+.shell .expandable {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  min-width: 0;
+  max-width: 68ch;
+}
+
+.shell .expandable-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
+}
+
+.shell .expandable.is-open .expandable-text {
+  display: block;
+  -webkit-line-clamp: unset;
 }
 
 .shell .page-actions {
@@ -806,6 +843,8 @@
 .shell .data-table .row-link {
   display: grid;
   gap: 1px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .shell .data-table .row-link strong {
@@ -1450,9 +1489,14 @@
 }
 
 @media (max-width: 600px) {
-  .shell .file-table th:nth-child(2),
-  .shell .file-table td:nth-child(2) {
+  /* Phones keep the name, size, and actions. Search results fold their location in under the name. */
+  .shell .file-table .col-modified,
+  .shell .file-table .col-location {
     display: none;
+  }
+
+  .shell .file-table .file-location-inline {
+    display: block;
   }
 
   .shell .pick-row {
@@ -1735,10 +1779,12 @@
 }
 
 .shell .project-card-name {
+  min-width: 0;
   font-size: 1rem;
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--ink);
+  overflow-wrap: anywhere;
 }
 
 .shell .project-card-name:hover {
@@ -2179,6 +2225,9 @@
   background: var(--paper);
   color: var(--ink);
   box-shadow: 0 40px 120px -20px rgb(0 0 0 / 0.55);
+  /* The dialog sits in a table's action cell, so it resets what it would inherit there. */
+  text-align: left;
+  white-space: normal;
 }
 
 .shell .model-dialog::backdrop {
@@ -2194,9 +2243,39 @@
   border-bottom: 1px solid var(--line-ink);
 }
 
+.shell .model-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.shell .model-source {
+  color: var(--ink-muted);
+}
+
+/* Zoom in, Zoom out, Reset view, then Close. */
+.shell .model-tools {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 2px;
+}
+
+.shell .model-tools .icon-button + .icon-button {
+  margin-left: 0;
+}
+
+.shell .model-tools .btn {
+  margin-left: 8px;
+}
+
 .shell .model-stage {
   height: min(620px, calc(100svh - 160px));
   touch-action: none;
+}
+
+.shell .model-stage:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
 }
 
 .shell .model-pane {
@@ -2257,8 +2336,33 @@
 .shell .model-status {
   position: absolute;
   inset: 50% 0 auto;
+  transform: translateY(-50%);
   text-align: center;
   font-size: var(--t-small);
+}
+
+.shell .model-status p {
+  max-width: 46ch;
+  margin: 0 auto;
+}
+
+.shell .model-status.is-error {
+  color: var(--ink);
+}
+
+/* Download, and Preview when a large file asks first. */
+.shell .model-status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+/* Kept in the layout so the dialog doesn't jump when the model appears. */
+.shell .model-hint.is-hidden {
+  visibility: hidden;
 }
 
 /* Project files: the directory, its search, tags, and favorites */
@@ -2271,7 +2375,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: 4px 14px;
   margin-bottom: 14px;
 }
 
@@ -2357,6 +2461,10 @@
 .shell .location-link {
   font-size: 0.8125rem;
   word-break: break-all;
+}
+
+.shell .file-location-inline {
+  display: none;
 }
 
 .shell .modified-by,
@@ -2537,8 +2645,25 @@
 
 .shell .manage-tag {
   display: grid;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.shell .manage-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
-  margin-top: 10px;
+}
+
+.shell .manage-tag-row .field {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.shell .manage-tag-row input {
+  width: 100%;
+  min-width: 0;
 }
 
 .shell .directory-toolbar .interval-toggle {
@@ -2552,6 +2677,14 @@
   display: grid;
   min-width: 220px;
   max-width: min(320px, calc(100vw - 16px));
+  /* At high zoom the delete confirmation is taller than the window; it scrolls instead. */
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.shell .entry-menu-filter {
+  padding: 0 6px 6px;
 }
 
 .shell .entry-menu button[role="menuitem"] {
@@ -2796,10 +2929,12 @@
   overflow-x: auto;
 }
 
+/* Cells break between words, not inside them; a wide table scrolls sideways instead. */
 .shell .readme-markdown :is(th, td) {
   padding: 6px 12px;
   border: 1px solid var(--line-ink);
   text-align: left;
+  overflow-wrap: break-word;
 }
 
 .shell .readme-markdown th {
@@ -2813,6 +2948,45 @@
 
 .shell .readme-markdown .task-list-item input {
   margin: 0 6px 0 -1.3em;
+}
+
+.shell .readme-markdown details > * + * {
+  margin-top: 12px;
+}
+
+.shell .readme-markdown summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.shell .readme-markdown kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--line-ink);
+  border-radius: var(--r-sm);
+  background: var(--mist);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.8125em;
+}
+
+.shell .readme-markdown :target {
+  scroll-margin-top: 16px;
+}
+
+/* An image the README names that isn't in the project, or can't be shown. */
+.shell .readme-missing {
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+}
+
+.shell .readme-note {
+  margin: 0;
+  color: var(--ink-muted);
+}
+
+.shell .readme-note a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 /* Loading placeholders: Mist blocks in the shape of the page. Static, since nothing animates on its own. */
@@ -2926,7 +3100,7 @@
   position: relative;
 }
 
-.shell .drop-zone.is-over > :first-child {
+.shell .drop-zone.is-over {
   outline: 2px dashed var(--forest);
   outline-offset: 4px;
   border-radius: var(--r-md);
@@ -2935,12 +3109,51 @@
 .shell .drop-zone-hint {
   position: absolute;
   inset: 0;
-  display: grid;
-  place-items: center;
+  z-index: 5;
   border-radius: var(--r-md);
   background: rgb(245 245 247 / 0.85);
-  font-weight: 600;
   pointer-events: none;
+}
+
+/* Stays in view however long the folder is. */
+.shell .drop-zone-pill {
+  position: sticky;
+  top: 40vh;
+  display: block;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  margin: 40px auto;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: var(--forest);
+  color: var(--paper);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.shell .upload-full-note {
+  font-size: var(--t-small);
+}
+
+.shell .entry-media img,
+.shell .entry-media video {
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  margin: 0 auto;
+}
+
+.shell .entry-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.shell .replace-confirm {
+  display: grid;
+  gap: 8px;
+  font-size: var(--t-small);
 }
 
 .shell .upload-toast {
@@ -2980,6 +3193,11 @@
   color: var(--paper);
   font-weight: 500;
   box-shadow: 0 12px 40px -12px rgb(10 41 34 / 0.35);
+}
+
+.shell .action-toast a {
+  color: inherit;
+  text-decoration: underline;
 }
 
 .shell .action-toast .icon-button {
@@ -3252,9 +3470,49 @@
   margin-bottom: 12px;
 }
 
+/* The branch version's preview and download sit in a fixed slot at the end of the file cell, lined up down the list. */
+.shell .pick-row > .file-cell {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
 .shell .pick-files {
   display: inline-flex;
-  margin-left: 4px;
+  flex: none;
+  justify-content: flex-end;
+  min-width: 64px;
+  margin-left: auto;
+}
+
+.shell .icon-slot {
+  display: inline-block;
+  width: 30px;
+  height: 30px;
+}
+
+.shell .pick-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-bottom: 10px;
+}
+
+.shell .pick-filter {
+  flex: 1 1 220px;
+}
+
+.shell .pick-more {
+  margin-top: 10px;
+}
+
+/* With a long list of picks, Save stays in reach. */
+.shell .pick-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  padding: 10px 0;
+  background: var(--paper);
 }
 
 /* What happens next on a release request, always in one sentence at the top. */

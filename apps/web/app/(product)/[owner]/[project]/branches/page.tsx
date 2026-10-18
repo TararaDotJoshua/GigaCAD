@@ -54,7 +54,7 @@ export default async function Branches({ params, searchParams }: { params: Promi
       )}
       {branches.length === 0 ? (
         <EmptyState title="No branches yet.">
-          <p>Create a branch to start work toward a release.</p>
+          {canWrite ? <p>Create a branch above to start work toward a release.</p> : <p>Branches are where contributors work toward a release.</p>}
         </EmptyState>
       ) : (
         <>

@@ -7,6 +7,7 @@ import { PageHead } from '../../../../../components/product/PageHead';
 import { RefreshSoon } from '../../../../../components/product/RefreshSoon';
 import { StatusBadge } from '../../../../../components/product/StatusBadge';
 import { dashboardPath } from '../../../../../lib/hosts';
+import { projectPath } from '../../../../../lib/paths';
 import { getBilling } from '../../../../../lib/product';
 import { safeReturnPath } from '../../../../../lib/return-path';
 
@@ -87,6 +88,31 @@ export default async function BillingSettings({
             )
           )}
         </p>
+        {/* The API may predate per-project usage for a moment during a deploy. */}
+        {(billing.projects ?? []).length > 0 && (
+          <table className="data-table">
+            <caption className="sr-only">Storage by project</caption>
+            <thead>
+              <tr>
+                <th scope="col">Project</th>
+                <th scope="col" className="cell-action">
+                  Storage
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {(billing.projects ?? []).map((project) => (
+                <tr key={project.id}>
+                  <td>
+                    <Link href={projectPath(project.ownerHandle, project.slug)}>{project.name}</Link> <span className="mono muted">{project.slug}</span>
+                  </td>
+                  <td className="cell-action muted">{formatBytes(project.usedBytes)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {(billing.projects ?? []).length > 1 && <p className="toolbar-note">A file stored in more than one project counts once toward your total.</p>}
       </section>
 
       {paying && (

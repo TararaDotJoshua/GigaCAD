@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
-import { dashboardPath, isAsset, isMarketingPath, isPublicAuthPath, isPublicBrowsePath, routeRequest, sites } from '../hosts';
+import { canonicalPath, dashboardPath, isAsset, isMarketingPath, isPublicAuthPath, isPublicBrowsePath, routeRequest, sites } from '../hosts';
 import { CURRENT_PATH_HEADER } from '../current-path';
 import { safeReturnPath } from '../return-path';
 import { supabaseConfig } from '../config';
@@ -8,6 +8,13 @@ import { supabaseConfig } from '../config';
 /** Splits the marketing and product hosts, refreshes the Supabase session, and sends signed-out visitors to log in (except on public pages). */
 export async function updateSession(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
+  // /Alex/Robot and /Pricing are /alex/robot and /pricing.
+  const canonical = isAsset(pathname) ? null : canonicalPath(pathname);
+  if (canonical) {
+    const url = request.nextUrl.clone();
+    url.pathname = canonical;
+    return NextResponse.redirect(url, 308);
+  }
   const route = routeRequest(request.headers.get('host') ?? request.nextUrl.host, pathname, search, sites());
   if (route.kind === 'redirect') return NextResponse.redirect(route.url, 308);
   const effectivePath = route.kind === 'rewrite' ? route.pathname : pathname;

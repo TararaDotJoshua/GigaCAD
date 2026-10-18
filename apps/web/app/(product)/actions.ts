@@ -4,6 +4,7 @@ import { formatBytes, HANDLE_PATTERN, isPlanId, type ApprovalRules, type Picks, 
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError, apiRequest, type Project, type ReleaseRequestDetail } from '../../lib/api';
+import type { EntryContents } from '../../lib/directory';
 import { dashboardPath } from '../../lib/hosts';
 import { fieldFor, messageFor } from '../../lib/messages';
 import { projectPath, releasePath, releaseRequestPath, treePath } from '../../lib/paths';
@@ -343,7 +344,7 @@ export async function restoreProject(projectId: string): Promise<ActionState> {
 
 /**
  * A short-lived download link with the file's real name. It is never rendered into a page.
- * No session is fine: anyone can download from a public project, and the API decides.
+ * Public projects' files download signed out too, as the API allows.
  */
 export async function downloadLink(projectId: string, sha256: string, filename: string): Promise<{ url?: string; error?: string }> {
   const token = await getAccessToken();
@@ -356,7 +357,7 @@ export async function downloadLink(projectId: string, sha256: string, filename: 
     const url = plan.downloads[0]?.url;
     return url ? { url } : { error: 'This file is not available.' };
   } catch (error) {
-    return { error: messageFor(error) };
+    return { error: token ? messageFor(error) : 'Log in to download this file.' };
   }
 }
 
@@ -632,12 +633,40 @@ export async function addRootFile(projectId: string, parentId: string | null, na
   return {};
 }
 
-/** Records uploaded contents as a root file's next revision. */
-export async function replaceRootFile(projectId: string, entryId: string, sha256: string): Promise<ActionState> {
-  return mutate(
-    (token) => apiRequest(token, `/v1/projects/${id(projectId)}/directory/entries/${id(entryId)}/revisions`, json('POST', { blob: sha(sha256) })),
-    'Saved a new revision.',
-  );
+/**
+ * Records uploaded contents as a root file's next revision. Given the revision it replaces,
+ * it says whether one was made: identical contents leave the file as it was.
+ */
+export async function replaceRootFile(projectId: string, entryId: string, sha256: string, before: number | null = null): Promise<ActionState> {
+  const token = await getAccessToken();
+  if (!token) return SIGNED_OUT;
+  let revision: number | null;
+  try {
+    ({ revision } = await apiRequest<{ revision: number | null }>(token, `/v1/projects/${id(projectId)}/directory/entries/${id(entryId)}/revisions`, json('POST', { blob: sha(sha256) })));
+  } catch (error) {
+    return { error: messageFor(error), storageFull: storageFull(error) };
+  }
+  refresh();
+  if (before !== null && revision === before) return { message: `No changes: this is already revision ${revision}.` };
+  return { message: revision ? `Saved revision ${revision}.` : 'Saved a new revision.' };
+}
+
+/** The entry id of the root file at `path`, for an upload that found its name taken on another page of the folder. */
+export async function findRootFile(projectId: string, path: string): Promise<string | null> {
+  const name = path.slice(path.lastIndexOf('/') + 1);
+  const under = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+  // Signed out, there's nothing to find; the upload that asked then fails as signed out.
+  const token = await getAccessToken();
+  if (!token) return null;
+  try {
+    const found = await apiRequest<{ entries: { entryId: string | null; location: { path: string } }[] }>(
+      token,
+      `/v1/projects/${id(projectId)}/files?${new URLSearchParams({ q: name, area: 'root', limit: '100', ...(under ? { under } : {}) })}`,
+    );
+    return found.entries.find((file) => file.location.path.toLowerCase() === path.toLowerCase())?.entryId ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function createFolder(projectId: string, parentId: string | null, _state: ActionState, form: FormData): Promise<ActionState> {
@@ -675,6 +704,18 @@ export async function moveEntryTo(projectId: string, entryId: string, parentId: 
   return mutate((token) => apiRequest(token, `/v1/projects/${id(projectId)}/directory/entries/${id(entryId)}`, json('PATCH', { parentId: parent(parentId) })));
 }
 
+/** What deleting a root file or folder would take with it, for the delete confirmation. Null if it can't be told. */
+export async function entryContents(projectId: string, entryId: string): Promise<EntryContents | null> {
+  const token = await getAccessToken();
+  if (!token) return null;
+  try {
+    const detail = await apiRequest<{ contents?: EntryContents }>(token, `/v1/projects/${id(projectId)}/directory/entries/${id(entryId)}`);
+    return detail.contents ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function removeEntry(projectId: string, entryId: string): Promise<ActionState> {
   return mutate((token) => apiRequest(token, `/v1/projects/${id(projectId)}/directory/entries/${id(entryId)}`, json('DELETE')));
 }
@@ -687,7 +728,8 @@ export async function deleteEntry(projectId: string, entryId: string, owner: str
   } catch (error) {
     return { error: messageFor(error) };
   }
-  redirect(treePath(owner, slug, parentPath));
+  // The folder says what went, since the page you were on is gone. It reads the name from the project's feed.
+  redirect(`${treePath(owner, slug, parentPath)}?${new URLSearchParams({ deleted: entryId })}`);
 }
 
 export async function createTag(projectId: string, _state: ActionState, form: FormData): Promise<ActionState> {

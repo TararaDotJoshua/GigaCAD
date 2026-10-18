@@ -7,6 +7,6 @@ import { dirname, join } from 'node:path';
 const dist = join(dirname(createRequire(import.meta.url).resolve('occt-import-js/package.json')), 'dist');
 const target = new URL('../public/vendor/occt/', import.meta.url).pathname;
 mkdirSync(target, { recursive: true });
-for (const file of ['occt-import-js.js', 'occt-import-js.wasm', 'occt-import-js-worker.js', 'license.occt.txt', 'license.occt-import-js.txt']) {
+for (const file of ['occt-import-js.js', 'occt-import-js.wasm', 'license.occt.txt', 'license.occt-import-js.txt']) {
   copyFileSync(join(dist, file), join(target, file));
 }

@@ -58,7 +58,17 @@ function projectCardColumns(sql: Sql) {
     (select max(number) from releases r where r.project_id = p.id) as latest_release_number,
     (select count(*)::int from stars s where s.project_id = p.id) as star_count,
     p.forked_from_release_id is not null as is_fork,
-    project_thumbnail(p.id) as thumbnail_sha
+    coalesce(project_thumbnail(p.id), (
+      -- A project that has only files uploaded in the browser: its largest root file with a thumbnail.
+      select shown.sha256
+      from directory_entries e
+      cross join lateral (select r.blob_sha256 from root_file_revisions r where r.entry_id = e.id order by r.number desc limit 1) rv
+      join blobs b on b.sha256 = rv.blob_sha256
+      cross join lateral (select file_thumbnail(p.id, rv.blob_sha256) as sha256) shown
+      where e.project_id = p.id and e.kind = 'file' and shown.sha256 is not null
+      order by b.size desc, e.name
+      limit 1
+    )) as thumbnail_sha
   `;
 }
 

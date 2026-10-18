@@ -29,7 +29,8 @@ export function isRecentRecovery(amr: unknown, now = Date.now()): boolean {
 }
 
 /** The log-in intro says why you're here when you came from somewhere specific. */
-function loginIntro(rawNext: string | null, next: string): string {
+function loginIntro(rawNext: string | null, next: string, reason: string | null): string {
+  if (reason === 'private') return 'This page is private or no longer exists. Log in to check whether you have access.';
   if (next.startsWith('/device')) return 'Log in to approve the sign-in from your device. You’ll confirm the code next.';
   if (rawNext && next !== dashboardPath()) return 'Log in to continue.';
   return 'Pick up where you left off with your projects and releases.';
@@ -248,7 +249,7 @@ export function AuthForm({ mode, query, siteUrl }: { mode: Mode; query: AuthQuer
       <div className="auth-card">
         <h1>{titles[mode]}</h1>
         <p className="auth-intro">
-          {mode === 'login' && loginIntro(query.next, next)}
+          {mode === 'login' && loginIntro(query.next, next, query.reason)}
           {mode === 'signup' && 'Start a project, work on branches, and keep every release locked.'}
           {mode === 'forgot' && 'Enter your account email and we’ll send a reset link.'}
           {mode === 'reset' && 'Choose a new password for your account.'}

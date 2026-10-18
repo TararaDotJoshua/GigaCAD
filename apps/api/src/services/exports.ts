@@ -1,5 +1,6 @@
 import type { Db, Sql } from '../db.js';
 import { notFound, unprocessable } from '../errors.js';
+import { blobKey, type BlobStorage } from '../storage.js';
 import { projectAccess, requireProjectRole } from './access.js';
 import { recordEvent } from './events.js';
 
@@ -22,9 +23,42 @@ export interface FileExport {
 /** SolidWorks parts and assemblies; drawings have no geometry to export. */
 const EXPORTABLE = /\.(sldprt|sldasm)$/i;
 
-/** Links an uploaded export to the SolidWorks file it was made from, replacing any earlier one. */
+/** How much of an export is read to tell its format: room for a byte order mark and blank lines before a STEP header. */
+const HEAD_BYTES = 512;
+
+/**
+ * Whether a file's first bytes and size fit the format it's claimed to be. A binary STL is
+ * an 80-byte header, a triangle count, and 50 bytes per triangle; a text STL starts with
+ * `solid`; a STEP file starts with `ISO-10303-21`.
+ */
+export function looksLike(format: ExportFormat, head: Uint8Array, size: number): boolean {
+  // Decoding drops a UTF-8 byte order mark.
+  const text = new TextDecoder().decode(head).trimStart();
+  if (format === 'step') return text.startsWith('ISO-10303-21');
+  if (text.startsWith('solid')) return true;
+  return head.byteLength >= 84 && size === 84 + 50 * new DataView(head.buffer, head.byteOffset, head.byteLength).getUint32(80, true);
+}
+
+async function readHead(storage: BlobStorage, sha256: string): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = [];
+  let read = 0;
+  for await (const chunk of await storage.readStream(blobKey(sha256))) {
+    chunks.push(chunk);
+    read += chunk.byteLength;
+    // Leaving the loop closes the stream, so the rest of a large file is never fetched.
+    if (read >= HEAD_BYTES) break;
+  }
+  return Buffer.concat(chunks).subarray(0, HEAD_BYTES);
+}
+
+/**
+ * Links an uploaded export to the SolidWorks file it was made from, replacing any earlier
+ * one. The export must look like the format it's added as: a STEP file added as an STL would
+ * otherwise break the file's thumbnail and preview.
+ */
 export async function setFileExport(
   sql: Sql,
+  storage: BlobStorage,
   projectId: string,
   userId: string,
   input: { source: string; format: ExportFormat; blob: string },
@@ -48,6 +82,9 @@ export async function setFileExport(
     `;
     if (!blob) throw unprocessable('export_not_uploaded', 'Upload the export file to this project first');
     if (input.blob === input.source) throw unprocessable('export_is_source', 'An export must be a different file from its source');
+    if (!looksLike(input.format, await readHead(storage, input.blob), blob.size)) {
+      throw unprocessable('export_wrong_format', `This file isn’t ${input.format === 'stl' ? 'an STL' : 'a STEP'} file`, { format: input.format });
+    }
 
     const [previous] = await tx<{ blobSha256: string }[]>`
       select blob_sha256 from file_exports

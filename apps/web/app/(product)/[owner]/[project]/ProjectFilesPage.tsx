@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { DownloadIcon, ForkIcon, LockIcon } from '../../../../components/icons';
 import { ActivityLine } from '../../../../components/product/ActivityLine';
+import { ExpandableText } from '../../../../components/product/ExpandableText';
 import { FileGlyph } from '../../../../components/product/FileGlyph';
 import { MemberWelcome } from '../../../../components/product/MemberWelcome';
 import { PageHead } from '../../../../components/product/PageHead';
@@ -11,8 +12,9 @@ import { StatusBadge } from '../../../../components/product/StatusBadge';
 import type { Project, Release } from '../../../../lib/api';
 import { getActivity } from '../../../../lib/activity';
 import { releaseFileOrder, releaseName } from '../../../../lib/describe';
+import { hasModel } from '../../../../lib/models';
 import { projectPath, releaseDownloadPath, releasePath, treePath } from '../../../../lib/paths';
-import { getBranches, getProject, getRelease, getReleases, getTags, getViewer } from '../../../../lib/product';
+import { getBranches, getProject, getRelease, getReleases, getTags, getThumbnails, getViewer } from '../../../../lib/product';
 
 /** How much of the feed the project page shows; the rest is on the activity page. */
 const ACTIVITY_SHOWN = 5;
@@ -71,7 +73,7 @@ export async function ProjectFilesPage({
                 </Link>
               </span>
             )}
-            {project.description && <span>{project.description}</span>}
+            {project.description && <ExpandableText className="project-description">{project.description}</ExpandableText>}
           </>
         }
         actions={
@@ -134,6 +136,9 @@ async function LatestRelease({ project, release }: { project: Project; release: 
   const slug = project.slug;
   const { files } = await getRelease(project.id, release.number);
   const shown = [...files].sort(releaseFileOrder).slice(0, RELEASE_FILES_SHOWN);
+  // The release's own thumbnails, drawn from the exports it was made with.
+  const thumbnails = await getThumbnails(project.id, shown.filter((file) => hasModel(file.path)).map((file) => file.blob), release.number);
+  const folderOf = (path: string) => `Releases/v${release.number}${path.includes('/') ? `/${path.slice(0, path.lastIndexOf('/'))}` : ''}`;
   return (
     <section className="latest-release-section" aria-labelledby="latest-release-heading">
       <div className="latest-release-head">
@@ -162,8 +167,10 @@ async function LatestRelease({ project, release }: { project: Project; release: 
       <ul className="latest-release-files">
         {shown.map((file) => (
           <li key={file.itemId}>
-            <FileGlyph path={file.path} />
-            <span className="mono">{file.path}</span>
+            <FileGlyph path={file.path} thumbnailUrl={thumbnails[file.blob]} />
+            <Link href={treePath(owner, slug, folderOf(file.path))} className="mono" prefetch={false}>
+              {file.path}
+            </Link>
           </li>
         ))}
       </ul>

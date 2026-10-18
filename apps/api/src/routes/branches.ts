@@ -2,7 +2,7 @@ import { branchNameProblem } from '@gigacad/core';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
-import { idParams, parse, requireCaller, sha256Schema, viewerId } from '../http.js';
+import { idParams, parse, releaseNumberSchema, requireCaller, sha256Schema, viewerId } from '../http.js';
 import { sendLater } from '../services/notices.js';
 import {
   archiveBranch,
@@ -29,7 +29,7 @@ const machine = z.string().min(1).max(200);
 export function branchRoutes(app: FastifyInstance, { sql, mailer, webOrigin }: AppDeps): void {
   app.post('/v1/projects/:id/branches', async (request, reply) => {
     const { id } = parse(idParams, request.params);
-    const input = parse(z.object({ name: branchName, fromRelease: z.number().int().positive().optional() }), request.body);
+    const input = parse(z.object({ name: branchName, fromRelease: releaseNumberSchema.optional() }), request.body);
     reply.status(201);
     return createBranch(sql, id, requireCaller(request).userId, input);
   });

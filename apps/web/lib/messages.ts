@@ -55,6 +55,8 @@ export function messageFor(error: unknown): string {
       const name = (error.details as { name?: string } | undefined)?.name;
       return name ? `There’s already something named ${name} in this folder.` : 'There’s already something with that name in this folder.';
     }
+    // A project that's gone missing mid-visit: removed from it, or it was deleted or made private.
+    if (error.code === 'not_found' && error.message === 'Project not found') return 'You no longer have access to this project. Refresh the page.';
     return releaseMessage(error) ?? MESSAGES[error.code] ?? sentence(error.message);
   }
   return 'Something went wrong. Try again.';

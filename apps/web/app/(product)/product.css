@@ -4049,6 +4049,11 @@
     gap: 8px;
   }
 
+  .shell .icon-slot {
+    width: 40px;
+    height: 40px;
+  }
+
   .shell .segment {
     min-height: 36px;
   }

@@ -13,7 +13,7 @@ export function Settings({ state }: { state: AppState }) {
 
   return (
     <>
-      <Toolbar state={state} eyebrow="GigaCAD" title="Settings" />
+      <Toolbar state={state} crumbs={[{ label: 'Settings' }]} />
       <div className="content settings">
         <h3>Account</h3>
         <div className="inline">

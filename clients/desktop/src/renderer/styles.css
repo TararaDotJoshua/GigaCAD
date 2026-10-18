@@ -393,20 +393,79 @@ select {
 .toolbar-title {
   display: flex;
   flex: 1 1 auto;
-  flex-direction: column;
+  align-items: center;
+  gap: 6px;
   min-width: 120px;
-  line-height: 1.25;
+  overflow: hidden;
 }
 
-.toolbar-title .project {
+/* The breadcrumb: earlier steps give way first, the current one keeps its room. */
+.crumb {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--paper-muted);
+  font-size: var(--t-body);
+  font-weight: 500;
+}
+
+button.crumb:hover {
+  color: var(--paper);
+}
+
+.crumb.is-current {
+  flex: 0 1 auto;
+  min-width: 48px;
+  margin: 0;
+  color: var(--paper);
+  font-weight: 600;
+}
+
+.crumb:not(.is-current) {
+  flex: 0 100 auto;
+}
+
+.crumb-sep {
+  flex: none;
+  color: var(--paper-faint);
+}
+
+.chip {
+  display: inline-flex;
+  flex: 0 10 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  margin-left: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--paper-muted);
+  font-size: var(--t-micro);
+  font-weight: 500;
+}
+
+.chip .dot {
+  margin-left: 0;
+}
+
+.chip-label {
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* Narrow windows: toolbar buttons with an icon drop their label (it stays for screen readers
-   and in the tooltip). Windows has less room, since the caption buttons cover 150 px. */
+/* Narrow toolbars keep the current name: the steps before it go (the sidebar shows them),
+   and chips with a mark keep only the mark, with the words in the tooltip. */
 @container (max-width: 700px) {
-  .toolbar .btn:has(.icon) .btn-label {
+  .toolbar .crumb:not(.is-current),
+  .toolbar .crumb-sep {
+    display: none;
+  }
+
+  .toolbar .chip:has(.dot, .icon) .chip-label {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -416,7 +475,34 @@ select {
 }
 
 @container (max-width: 860px) {
-  [data-platform='win32'] .toolbar .btn:has(.icon) .btn-label,
+  [data-platform='win32'] .toolbar .crumb:not(.is-current),
+  [data-platform='win32'] .toolbar .crumb-sep {
+    display: none;
+  }
+
+  [data-platform='win32'] .toolbar .chip:has(.dot, .icon) .chip-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+
+/* Narrow windows: toolbar buttons with an icon drop their label (it stays for screen readers
+   and in the tooltip). Windows has less room, since the caption buttons cover 150 px. */
+@container (max-width: 700px) {
+  .toolbar .btn-secondary:has(.icon) .btn-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+
+@container (max-width: 860px) {
+  [data-platform='win32'] .toolbar .btn-secondary:has(.icon) .btn-label,
   [data-platform='win32'] .toolbar .sync-status:has(.icon) .sync-label {
     position: absolute;
     width: 1px;
@@ -426,21 +512,13 @@ select {
   }
 }
 
-.toolbar-title .project {
-  font-size: var(--t-micro);
-  color: var(--paper-faint);
-}
-
-.toolbar-title .branch {
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .sync-status {
   display: inline-flex;
   white-space: nowrap;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
   align-items: center;
   gap: 6px;
   font-size: var(--t-micro);
@@ -528,6 +606,15 @@ select {
 
 .btn-secondary:hover:not(:disabled) {
   background: rgb(245 245 247 / 0.06);
+}
+
+.btn-icon {
+  width: 32px;
+  padding: 0;
+}
+
+.btn-glyph {
+  display: inline-flex;
 }
 
 .btn-small {
@@ -926,4 +1013,73 @@ select {
 
 .settings .check {
   margin-bottom: 6px;
+}
+
+/* Popovers and the ⋯ menu */
+
+.popover-root {
+  position: relative;
+  flex: none;
+}
+
+.popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  min-width: 200px;
+  max-width: 320px;
+  padding: 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--forest-deep);
+  box-shadow: 0 12px 40px -12px rgb(0 0 0 / 0.6);
+  white-space: normal;
+  -webkit-app-region: no-drag;
+}
+
+.popover-body {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px 10px;
+  font-size: var(--t-small);
+  user-select: text;
+}
+
+.popover-body p {
+  margin: 0;
+}
+
+.popover-body .btn {
+  justify-self: start;
+  margin-top: 4px;
+}
+
+.menu {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--paper);
+  font-size: var(--t-small);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.menu-item:hover,
+.menu-item:focus-visible {
+  background: rgb(245 245 247 / 0.08);
+  outline: none;
+}
+
+.menu-item.is-danger {
+  color: var(--danger);
 }

@@ -86,10 +86,39 @@ export function appIconSvg(): string {
   return svg(`<rect x="100" y="100" width="824" height="824" rx="185" fill="${FOREST}"/><rect x="100" y="100" width="824" height="824" rx="185" fill="none" stroke="${PAPER}" stroke-opacity="0.08" stroke-width="4"/>${logo(512, 512, 470, PAPER)}`);
 }
 
-/** The menu bar icon: the logo alone in black, used as a template image (macOS tints it). */
-export function trayIconSvg(): string {
+export type TrayState = 'idle' | 'syncing' | 'problem' | 'paused';
+export const TRAY_STATES: readonly TrayState[] = ['idle', 'syncing', 'problem', 'paused'];
+
+/**
+ * The menu bar icon, used as a template image (macOS tints it, so only shape carries meaning):
+ * the logo alone when all is well; otherwise a smaller logo with a mark at its lower right,
+ * a ring while syncing, a solid dot for a problem, two bars when paused.
+ */
+export function trayIconSvg(state: TrayState = 'idle'): string {
   const s = 1024 / 24;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024"><g transform="scale(${s})" fill="none" stroke="#000000">${LOGO}</g></svg>`;
+  const open = (body: string) => `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024"><g transform="scale(${s})">${body}</g></svg>`;
+  if (state === 'idle') return open(`<g fill="none" stroke="#000000">${LOGO}</g>`);
+  const mark =
+    state === 'syncing'
+      ? '<circle cx="19.6" cy="19.6" r="3" fill="none" stroke="#000000" stroke-width="1.8"/>'
+      : state === 'problem'
+        ? '<circle cx="19.6" cy="19.6" r="4"/>'
+        : '<rect x="16.6" y="15.8" width="2.2" height="7.6" rx="0.6"/><rect x="20.4" y="15.8" width="2.2" height="7.6" rx="0.6"/>';
+  return open(`<g transform="translate(0.6 0.6) scale(0.72)" fill="none" stroke="#000000">${LOGO}</g><g fill="#000000">${mark}</g>`);
+}
+
+const TRAY_COLORS: Record<Exclude<TrayState, 'idle'>, string> = { syncing: PAPER, problem: '#D9A441', paused: '#8A9A95' };
+
+/** The Windows notification area icon: the app icon, with a colored dot for state. */
+export function trayWinSvg(state: TrayState = 'idle'): string {
+  const icon = appIconSvg();
+  if (state === 'idle') return icon;
+  return icon.replace('</svg>', `<circle cx="780" cy="780" r="210" fill="${TRAY_COLORS[state]}" stroke="${FOREST}" stroke-width="56"/></svg>`);
+}
+
+/** The Windows taskbar overlay when something needs you: a danger dot. */
+export function overlaySvg(): string {
+  return svg(`<circle cx="512" cy="512" r="420" fill="#E5484D" stroke="${FOREST}" stroke-width="80"/>`);
 }
 
 // --- Which icon a path gets --------------------------------------------------------------
@@ -139,6 +168,9 @@ export function isFolderIcon(key: string): key is FolderIcon {
 export function iconSvg(key: string): string {
   if (key === 'app') return appIconSvg();
   if (key === 'tray') return trayIconSvg();
+  const tray = key.match(/^tray(Win)?-(idle|syncing|problem|paused)$/);
+  if (tray) return tray[1] ? trayWinSvg(tray[2] as TrayState) : trayIconSvg(tray[2] as TrayState);
+  if (key === 'overlay') return overlaySvg();
   if (isFolderIcon(key)) return folder(FOLDER_ICONS[key]);
   const match = key.match(/^file-(assembly|drawing|part|file)-([a-z0-9_]*)$/);
   if (!match) throw new Error(`Unknown icon ${key}`);

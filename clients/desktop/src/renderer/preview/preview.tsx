@@ -3,7 +3,7 @@
 // Never part of the bundle: vite.config.ts builds only ../index.html.
 import type { Bridge, Navigate } from '../../preload/index.js';
 import type { AppState, CommandName, CommandResult } from '../../shared/types.js';
-import { FIXTURES, SAMPLE_HISTORY, SAMPLE_REQUESTS, SAMPLE_STATUS } from './fixtures.js';
+import { FIXTURES, SAMPLE_HISTORY, SAMPLE_REQUESTS, SAMPLE_ROOT_FILES, SAMPLE_STATUS } from './fixtures.js';
 
 const params = new URLSearchParams(location.search);
 const fixture = FIXTURES.find((candidate) => candidate.name === params.get('fixture')) ?? FIXTURES.find((candidate) => candidate.name === 'project')!;
@@ -22,6 +22,12 @@ function run(name: CommandName, args: readonly unknown[]): unknown {
       return SAMPLE_HISTORY;
     case 'releaseRequests':
       return SAMPLE_REQUESTS;
+    case 'rootFiles':
+      return SAMPLE_ROOT_FILES;
+    case 'contextMenu':
+      // No native menus in a browser: log what it would offer.
+      console.info('preview: context menu', (args[0] as { label: string }[]).map((item) => item.label).join(' · '));
+      return null;
     case 'webUrl':
       return `${state.settings.appUrl}/${String(args[1] ?? '')}`;
     case 'setProjectHidden': {
@@ -47,6 +53,7 @@ const bridge: Bridge = {
     if (fixture.navigate) setTimeout(() => listener(fixture.navigate!), 0);
     return () => {};
   },
+  onShortcut: () => () => {},
 };
 
 // Stand-ins for what the system draws over the window: macOS's traffic lights, and on

@@ -2,6 +2,7 @@ import type { AppState } from '../../shared/types.js';
 import { platformWords } from '../../shared/platform.js';
 import { act, ago } from '../api.js';
 import { pluginSummary } from '../plugins.js';
+import { ActionButton } from './ActionButton.js';
 import { Setup } from './Setup.js';
 import { Toolbar } from './Toolbar.js';
 
@@ -13,16 +14,30 @@ export function Settings({ state }: { state: AppState }) {
 
   return (
     <>
-      <Toolbar state={state} eyebrow="GigaCAD" title="Settings" />
+      <Toolbar state={state} crumbs={[{ label: 'Settings' }]} />
       <div className="content settings">
+        {state.setup.some((step) => step.status === 'error') ? (
+          <div className="notice is-error" role="alert">
+            <div className="grow">
+              A setup step failed: {state.setup.filter((step) => step.status === 'error').map((step) => step.title).join(', ')}. Details and Repair are below.
+            </div>
+            <button type="button" className="btn btn-secondary btn-small" onClick={() => document.getElementById('setup')?.scrollIntoView({ behavior: 'smooth' })}>
+              Show
+            </button>
+          </div>
+        ) : null}
         <h3>Account</h3>
         <div className="inline">
           <span>
             Signed in as <strong>@{state.user?.handle}</strong> <span className="faint">({state.user?.apiUrl})</span>
           </span>
-          <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('signOut')}>
-            Sign Out
-          </button>
+          <ActionButton
+            small
+            label="Sign Out"
+            pending="Signing out…"
+            confirm="Syncing stops until you sign in again. The giga command line tool is signed out too."
+            run={() => act('signOut')}
+          />
         </div>
         <p className="field-note">The giga command line tool on {words.thisComputer} uses the same sign-in.</p>
 
@@ -38,10 +53,33 @@ export function Settings({ state }: { state: AppState }) {
         </div>
 
         <h3>Syncing</h3>
-        <label className="check">
-          <input type="checkbox" checked={settings.paused} onChange={(event) => void act('setPaused', event.target.checked)} />
-          Pause syncing
-        </label>
+        {settings.paused ? (
+          <div className="inline">
+            <span>
+              Syncing is paused
+              {settings.pausedUntil
+                ? ` until ${new Date(settings.pausedUntil).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`
+                : ' until you resume it'}
+              .
+            </span>
+            <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('setPaused', false)}>
+              Resume
+            </button>
+          </div>
+        ) : (
+          <div className="inline">
+            <span>Pause syncing</span>
+            <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('setPaused', true, 'hour')}>
+              For 1 hour
+            </button>
+            <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('setPaused', true, 'tomorrow')}>
+              Until tomorrow
+            </button>
+            <button type="button" className="btn btn-secondary btn-small" onClick={() => void act('setPaused', true, null)}>
+              Until I resume
+            </button>
+          </div>
+        )}
         <label className="check">
           <input type="checkbox" checked={settings.startAtLogin} onChange={(event) => void act('updateSettings', { startAtLogin: event.target.checked })} />
           Start GigaCAD when you log in
@@ -63,6 +101,22 @@ export function Settings({ state }: { state: AppState }) {
             </ul>
           </>
         ) : null}
+
+        <h3>Notifications</h3>
+        <p className="field-note">While the GigaCAD window is closed, tell me when:</p>
+        {(
+          [
+            ['conflicts', 'A root file changes here and on gigacad.site at once'],
+            ['approvals', 'A release request is waiting for my approval'],
+            ['checkouts', `Someone checks out a branch I have on ${words.thisComputer}`],
+            ['problems', 'Syncing has been failing for 5 minutes'],
+          ] as const
+        ).map(([kind, label]) => (
+          <label key={kind} className="check">
+            <input type="checkbox" checked={settings.notify[kind]} onChange={(event) => void act('setNotify', kind, event.target.checked)} />
+            {label}
+          </label>
+        ))}
 
         <h3>Command line tool</h3>
         {app.cliInstalled ? (
@@ -96,7 +150,7 @@ export function Settings({ state }: { state: AppState }) {
           {updates.kind === 'ready' ? ` · Version ${updates.version} applies when GigaCAD restarts` : ''}
         </p>
 
-        <h3>Repair</h3>
+        <h3 id="setup">Repair</h3>
         <p className="field-note">Checks the GigaCAD folder, {words.rightClickMenu}, gigacad:// links, and the rest of setup, and fixes what it can.</p>
         <Setup state={state} />
       </div>

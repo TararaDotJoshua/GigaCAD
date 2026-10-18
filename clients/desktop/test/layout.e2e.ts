@@ -16,17 +16,26 @@ for (const platform of ['darwin', 'win32'] as const) {
         page.on('pageerror', (error) => errors.push(error.message));
         await page.setViewportSize(size);
         await page.goto(`/preview/?fixture=${fixture.name}&platform=${platform}`);
-        await page.locator('#root > *').first().waitFor();
+        await page.locator('#root > *').first().waitFor({ timeout: 10_000 });
         if (fixture.tab) await page.getByRole('tab', { name: fixture.tab }).click();
+        for (const name of typeof fixture.press === 'string' ? [fixture.press] : (fixture.press ?? [])) {
+          await page.getByRole('button', { name, exact: true }).or(page.getByRole('menuitem', { name, exact: true })).click();
+        }
+        // A question in place (Sign Out) replaces the button; the rest open a popover or a sheet.
+        if (fixture.press) await expect(page.locator('.popover, .sheet, .confirm-inline').first()).toBeVisible();
         // Data loads through the fake bridge on the next tick.
         await page.waitForTimeout(100);
         await page.screenshot({ path: `test-results/layout/${platform}/${size.width}x${size.height}/${fixture.name}.png` });
 
         const layout = await page.evaluate(() => {
           const box = (element: Element) => element.getBoundingClientRect();
+          // An open popover must fit in the window.
+          const popover = document.querySelector('.popover');
+          const offscreen = popover && (box(popover).left < 0 || box(popover).right > innerWidth || box(popover).bottom > innerHeight) ? ['popover'] : [];
           const overflowing = [...document.querySelectorAll('body, .app, .main, .content, .sidebar, .toolbar')]
             .filter((element) => element.scrollWidth > element.clientWidth + 1)
-            .map((element) => element.className || element.tagName);
+            .map((element) => element.className || element.tagName)
+            .concat(offscreen);
           const toolbar = document.querySelector('.toolbar');
           const title = document.querySelector('.toolbar-title');
           // Nothing in the toolbar may reach into its padding: on Windows that's under the caption buttons.
@@ -36,11 +45,14 @@ for (const platform of ['darwin', 'win32'] as const) {
                 .map((child) => child.className)
             : [];
           // Names in lists cut down to a few letters (or nothing) are unreadable.
-          const squeezed = [...document.querySelectorAll('.rows > li > .strong, .rows > li > .grow')]
+          const squeezed = [...document.querySelectorAll('.rows > li > .strong, .rows > li > .grow, .table-row > .cell-name')]
             .filter((element) => element.textContent && (box(element).width < 1 || (element.scrollWidth > element.clientWidth + 1 && box(element).width < 96)))
             .map((element) => `${element.textContent} (${Math.round(box(element).width)} px)`);
-          // Rows in one list share a height, whether or not they have a button.
-          const unevenLists = [...document.querySelectorAll('.rows:not(.nested)')]
+          // The current place in the breadcrumb, cut to a few letters.
+          const current = document.querySelector('.crumb.is-current');
+          if (current && current.scrollWidth > current.clientWidth + 1 && box(current).width < 96) squeezed.push(`${current.textContent} (${Math.round(box(current).width)} px)`);
+          // Rows in one list share a height, whether or not they have a button. Activity wraps.
+          const unevenLists = [...document.querySelectorAll('.rows:not(.nested):not(.activity)')]
             .map((list) => [...new Set([...list.children].filter((row) => !row.querySelector('.rows')).map((row) => Math.round(box(row).height)))])
             .filter((heights) => heights.length > 1);
           const update = document.querySelector('.update');

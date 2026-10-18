@@ -1,6 +1,11 @@
-/** URLs for product pages: app.gigacad.site/<owner>/<project>/... */
+/**
+ * URLs for product pages: app.gigacad.site/<owner>/<project>/...
+ * Every segment is encoded, owner and slug included. Real handles and slugs never need it,
+ * but route params can be anything a visitor typed, and an owner like `//evil.example`
+ * must not turn a redirect into another site.
+ */
 export function projectPath(owner: string, slug: string, ...rest: (string | number)[]): string {
-  return ['', owner, slug, ...rest.map((part) => encodeURIComponent(String(part)))].join('/');
+  return ['', owner, slug, ...rest].map((part) => encodeURIComponent(String(part))).join('/');
 }
 
 export const branchPath = (owner: string, slug: string, branch: string) => projectPath(owner, slug, 'branches', branch);

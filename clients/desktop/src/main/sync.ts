@@ -4,7 +4,7 @@ import { basename, dirname, join } from 'node:path';
 import { createIgnoreMatcher } from '@gigacad/core';
 import type { Api, BranchView, ProjectSummary, ReleaseView, WorkspaceState } from '@gigacad/cli/lib';
 import { platformWords } from '../shared/platform.js';
-import type { ActivityItem, BranchState, Holder, ProjectState, ReleaseState, Settings, SyncStatus } from '../shared/types.js';
+import type { ActivityItem, BranchState, ConflictState, Holder, ProjectState, ReleaseState, Settings, SyncStatus } from '../shared/types.js';
 import { apiClient, thisMachine } from './api.js';
 import { giga, GigaError, isGigaError } from './cli.js';
 import { fileIconKey, type FolderIcon } from './iconArt.js';
@@ -32,6 +32,7 @@ interface ProjectRuntime {
   releases: ReleaseView[];
   lastEventId: number;
   error: string | null;
+  conflicts: ConflictState[];
 }
 
 export interface EngineHost {
@@ -93,7 +94,7 @@ export class SyncEngine {
   projectStates(): ProjectState[] {
     const settings = this.host.settings();
     return [...this.projects.values()]
-      .map(({ summary, branches, releases, error }) => {
+      .map(({ summary, branches, releases, error, conflicts }) => {
         const dir = projectDir(settings.folder, summary.ownerHandle, summary.slug);
         return {
           id: summary.id,
@@ -104,6 +105,7 @@ export class SyncEngine {
           dir,
           hidden: settings.hiddenProjects.includes(summary.id),
           error,
+          conflicts,
           branches: branches.map((branch): BranchState => ({
             id: branch.id,
             name: branch.name,
@@ -131,8 +133,8 @@ export class SyncEngine {
   /** Branch and release folders known to be downloaded (checked during each sync). */
   private readonly downloaded = new Set<string>();
 
-  private log(text: string, kind: ActivityItem['kind'] = 'info'): void {
-    this.activity.unshift({ at: new Date().toISOString(), text, kind });
+  private log(text: string, kind: ActivityItem['kind'] = 'info', about: { projectId?: string; branch?: string } = {}): void {
+    this.activity.unshift({ at: new Date().toISOString(), text, kind, ...about });
     this.activity.length = Math.min(this.activity.length, 50);
     this.host.changed();
   }
@@ -231,7 +233,7 @@ export class SyncEngine {
     for (const summary of summaries) {
       const known = this.projects.get(summary.id);
       if (known) known.summary = summary;
-      else this.projects.set(summary.id, { summary, branches: [], releases: [], lastEventId: -1, error: null });
+      else this.projects.set(summary.id, { summary, branches: [], releases: [], lastEventId: -1, error: null, conflicts: [] });
     }
     for (const id of this.projects.keys()) if (!summaries.some((summary) => summary.id === id)) this.projects.delete(id);
     await Promise.all(
@@ -275,7 +277,7 @@ export class SyncEngine {
         project.error = null;
       } catch (error) {
         project.error = describe(error);
-        this.log(`${project.summary.ownerHandle}/${project.summary.slug}: ${project.error}`, 'error');
+        this.log(`${project.summary.ownerHandle}/${project.summary.slug}: ${project.error}`, 'error', { projectId });
       }
     });
   }
@@ -296,10 +298,13 @@ export class SyncEngine {
     await this.quietly(`${summary.id}:root`, async () => {
       if (!(await exists(join(dir, '.giga', 'root.json')))) {
         await giga(['root', 'clone', ref, dir], this.opts(settings.folder));
-        this.log(`Downloaded ${ref}`);
+        this.log(`Downloaded ${ref}`, 'info', { projectId: summary.id });
       } else {
         const result = await giga<{ conflicts?: { path: string; copy: string }[] }>(['root', summary.role === 'viewer' ? 'pull' : 'push'], this.opts(dir));
-        for (const conflict of result.conflicts ?? []) this.log(`${ref}: ${conflict.path} changed here and on gigacad.site. Your version is ${conflict.copy}.`);
+        for (const conflict of result.conflicts ?? []) {
+          project.conflicts = [...project.conflicts.filter((known) => known.path !== conflict.path), { ...conflict, at: new Date().toISOString() }];
+          this.log(`${ref}: ${conflict.path} changed here and on gigacad.site. Your version is ${conflict.copy}.`, 'error', { projectId: summary.id });
+        }
       }
     });
 
@@ -444,7 +449,7 @@ export class SyncEngine {
       await this.iconPass(bdir, [{ target: bdir, key: branchIcon(holder) }]);
       if (holder !== 'me') await lock(bdir);
     });
-    this.log(`Downloaded ${branch.name} of ${summary.ownerHandle}/${summary.slug}`);
+    this.log(`Downloaded ${branch.name} of ${summary.ownerHandle}/${summary.slug}`, 'info', { projectId: summary.id, branch: branch.name });
   }
 
   downloadBranch(projectId: string, name: string): Promise<void> {
@@ -469,7 +474,7 @@ export class SyncEngine {
       this.downloaded.delete(bdir);
       await this.remember(projectId, name, false);
       await this.placeholder(bdir, 'folder-branch-cloud');
-      this.log(`Removed the local copy of ${name}`);
+      this.log(`Removed the local copy of ${name}`, 'info', { projectId, branch: name });
     });
   }
 
@@ -486,7 +491,7 @@ export class SyncEngine {
       }
       await this.refreshBranches(project);
       await this.iconPass(bdir, [{ target: bdir, key: 'folder-branch-yours' }]);
-      this.log(`Checked out ${name}. Its files are editable on ${platformWords(process.platform).thisComputer}.`);
+      this.log(`Checked out ${name}. Its files are editable on ${platformWords(process.platform).thisComputer}.`, 'info', { projectId, branch: name });
     });
   }
 
@@ -499,7 +504,7 @@ export class SyncEngine {
       await this.refreshBranches(project);
       await this.iconPass(bdir, [{ target: bdir, key: 'folder-branch' }]);
       await lock(bdir);
-      this.log(`Checked in ${name}. Others can check it out now.`);
+      this.log(`Checked in ${name}. Others can check it out now.`, 'info', { projectId, branch: name });
     });
   }
 
@@ -507,7 +512,7 @@ export class SyncEngine {
     return this.branchAction(projectId, name, async (_project, bdir) => {
       this.cancelTimer(`${projectId}:${name}`);
       await giga(['commit', '-m', message, ...(label ? ['--label', label] : [])], this.opts(bdir));
-      this.log(`Committed ${label ? `${label} ` : ''}on ${name}: “${message}”`);
+      this.log(`Committed ${label ? `${label} ` : ''}on ${name}: “${message}”`, 'info', { projectId, branch: name });
     });
   }
 
@@ -518,6 +523,12 @@ export class SyncEngine {
       else await whileUnlocked(bdir, () => giga(['pull'], this.opts(bdir)));
       await this.iconPass(bdir, [], undefined, this.holder(branch) !== 'me');
     });
+  }
+
+  dismissConflict(projectId: string, path: string): void {
+    const project = this.findProject(projectId);
+    project.conflicts = project.conflicts.filter((conflict) => conflict.path !== path);
+    this.host.changed();
   }
 
   downloadRelease(projectId: string, number: number): Promise<void> {
@@ -541,7 +552,7 @@ export class SyncEngine {
     this.downloaded.add(rdir);
     await this.iconPass(rdir, [{ target: rdir, key: 'folder-release' }]);
     await lock(rdir);
-    this.log(`Downloaded v${number} of ${summary.ownerHandle}/${summary.slug}`);
+    this.log(`Downloaded v${number} of ${summary.ownerHandle}/${summary.slug}`, 'info', { projectId: summary.id });
   }
 
   private branchAction(projectId: string, name: string, work: (project: ProjectRuntime, bdir: string) => Promise<void>): Promise<void> {
@@ -632,9 +643,9 @@ export class SyncEngine {
       if (!branch || this.holder(branch) !== 'me') return;
       this.debounce(key, () => void this.enqueue(id, () => this.quietly(key, async () => {
         try {
-          if (await this.autosaveNow(location.areaDir!)) this.log(`Autosaved ${location.name} of ${project.summary.ownerHandle}/${project.summary.slug}`);
+          if (await this.autosaveNow(location.areaDir!)) this.log(`Autosaved ${location.name} of ${project.summary.ownerHandle}/${project.summary.slug}`, 'info', { projectId: id, branch: location.name });
         } catch (error) {
-          this.log(`Couldn’t autosave ${location.name}: ${describe(error)}`, 'error');
+          this.log(`Couldn’t autosave ${location.name}: ${describe(error)}`, 'error', { projectId: id, branch: location.name });
         }
       })));
     } else if (location.area === 'project-root' && location.inner) {

@@ -49,6 +49,7 @@ const rover: ProjectState = {
     release(2, 'Battery tray moved forward', 61),
   ],
   error: null,
+  conflicts: [],
 };
 
 const projects: readonly ProjectState[] = [
@@ -64,6 +65,7 @@ const projects: readonly ProjectState[] = [
     branches: [branch('fingers-v2', { downloaded: false })],
     releases: [release(1, 'First release', 5)],
     error: null,
+    conflicts: [],
   },
   {
     id: 'drone',
@@ -76,6 +78,7 @@ const projects: readonly ProjectState[] = [
     branches: [],
     releases: [],
     error: null,
+    conflicts: [],
   },
 ];
 
@@ -107,8 +110,10 @@ const base: AppState = {
   sync: { status: 'idle', active: 0, message: null, lastSyncedAt: minutesAgo(3) },
   projects,
   activity: [
-    { at: minutesAgo(3), text: 'Autosaved suspension-v3', kind: 'info' },
-    { at: minutesAgo(9), text: 'Downloaded wheel-hub', kind: 'info' },
+    { at: minutesAgo(3), text: 'Autosaved suspension-v3 of josh/mars-rover-chassis', kind: 'info', projectId: 'rover', branch: 'suspension-v3' },
+    { at: minutesAgo(9), text: 'Downloaded wheel-hub of josh/mars-rover-chassis', kind: 'info', projectId: 'rover', branch: 'wheel-hub' },
+    { at: minutesAgo(26), text: 'Committed for print on suspension-v3: “Thicker rocker arm walls for printing”', kind: 'info', projectId: 'rover', branch: 'suspension-v3' },
+    { at: minutesAgo(70), text: 'Downloaded v1 of josh/soft-gripper', kind: 'info', projectId: 'gripper' },
   ],
   setup: doneSteps,
   updates: { kind: 'idle', lastChecked: minutesAgo(30) },
@@ -124,6 +129,8 @@ export interface Fixture {
   readonly navigate?: Navigate;
   /** A tab to open after loading, by its label. */
   readonly tab?: string;
+  /** A button to press after loading, by its accessible name: a menu or popover to check. */
+  readonly press?: string;
 }
 
 const withProjects = (change: (project: ProjectState) => ProjectState): readonly ProjectState[] =>
@@ -144,12 +151,39 @@ export const FIXTURES: readonly Fixture[] = [
   { name: 'project-empty', state: base, navigate: { projectId: 'drone' } },
   { name: 'branch-mine', state: base, navigate: { projectId: 'rover', branch: 'suspension-v3' } },
   { name: 'branch-history', state: base, navigate: { projectId: 'rover', branch: 'suspension-v3' }, tab: 'History' },
+  { name: 'branch-menu', state: base, navigate: { projectId: 'rover', branch: 'suspension-v3' }, press: 'More actions' },
   { name: 'branch-other', state: base, navigate: { projectId: 'rover', branch: 'wheel-hub' } },
   { name: 'branch-not-downloaded', state: base, navigate: { projectId: 'rover', branch: 'gripper' } },
   {
     name: 'project-hidden',
     state: { ...base, projects: withProjects((project) => ({ ...project, hidden: true })), settings: { ...base.settings, hiddenProjects: ['rover'] } },
     navigate: { projectId: 'rover' },
+  },
+  {
+    name: 'project-conflict',
+    state: {
+      ...base,
+      projects: withProjects((project) => ({
+        ...project,
+        conflicts: [{ path: 'specs/motor-mounts.xlsx', copy: 'specs/motor-mounts (conflict, Sam’s MacBook Pro).xlsx', at: minutesAgo(4) }],
+      })),
+      activity: [
+        {
+          at: minutesAgo(4),
+          text: 'josh/mars-rover-chassis: specs/motor-mounts.xlsx changed here and on gigacad.site. Your version is specs/motor-mounts (conflict, Sam’s MacBook Pro).xlsx.',
+          kind: 'error',
+          projectId: 'rover',
+        },
+        ...base.activity,
+      ],
+    },
+    navigate: { projectId: 'rover' },
+  },
+  {
+    name: 'activity',
+    state: base,
+    navigate: { projectId: 'rover' },
+    press: 'Synced 3 min ago',
   },
   {
     name: 'settings-failed',
@@ -160,6 +194,7 @@ export const FIXTURES: readonly Fixture[] = [
     name: 'sync-problem',
     state: { ...base, sync: { status: 'error', active: 0, message: 'api.gigacad.site answered 503', lastSyncedAt: minutesAgo(40) } },
     navigate: { projectId: 'rover' },
+    press: 'Sync problem',
   },
   {
     name: 'update-ready',

@@ -2,7 +2,6 @@ import { contributionCalendar, type ContributionDay } from '@gigacad/core';
 
 const CELL = 11;
 const STEP = CELL + 3;
-const LEFT = 30;
 const TOP = 18;
 const WEEKDAYS = [
   [1, 'Mon'],
@@ -24,7 +23,7 @@ function describe(count: number, date: string): string {
 export function ContributionGraph({ days }: { days: readonly ContributionDay[] }) {
   const { weeks, total, months } = contributionCalendar(days, new Date());
   const busiest = days.reduce((best, day) => (day.count > (best?.count ?? 0) ? day : best), null as ContributionDay | null);
-  const width = LEFT + weeks.length * STEP;
+  const width = weeks.length * STEP;
   const height = TOP + 7 * STEP;
   const summary = `${total} ${total === 1 ? 'contribution' : 'contributions'} in the last year.${busiest ? ` The busiest day had ${describe(busiest.count, busiest.day)}.` : ''}`;
   return (
@@ -33,38 +32,42 @@ export function ContributionGraph({ days }: { days: readonly ContributionDay[] }
         {total} {total === 1 ? 'contribution' : 'contributions'} in the last year
       </h2>
       <div className="contrib-frame">
-        <div className="contrib-scroll">
-          <svg className="contrib-graph" viewBox={`0 0 ${width} ${height}`} width={width} height={height} role="img" aria-label={summary}>
-            {months.map((month) => (
-              <text key={`${month.label}-${month.weekIndex}`} x={LEFT + month.weekIndex * STEP} y={10} className="contrib-label">
-                {month.label}
-              </text>
-            ))}
+        <div className="contrib-body">
+          <div className="contrib-days" aria-hidden="true">
             {WEEKDAYS.map(([row, label]) => (
-              <text key={label} x={0} y={TOP + row * STEP + CELL - 2} className="contrib-label">
+              <span key={label} style={{ top: `${((TOP + row * STEP + CELL / 2) / height) * 100}%` }}>
                 {label}
-              </text>
+              </span>
             ))}
-            {weeks.map((week, column) =>
-              week.map(
-                (cell, row) =>
-                  cell && (
-                    <rect
-                      key={cell.date}
-                      x={LEFT + column * STEP}
-                      y={TOP + row * STEP}
-                      width={CELL}
-                      height={CELL}
-                      rx={2}
-                      className={`contrib-level-${cell.level}`}
-                      data-count={cell.count}
-                    >
-                      <title>{describe(cell.count, cell.date)}</title>
-                    </rect>
-                  ),
-              ),
-            )}
-          </svg>
+          </div>
+          <div className="contrib-scroll">
+            <svg className="contrib-graph" viewBox={`0 0 ${width} ${height}`} width={width} height={height} role="img" aria-label={summary}>
+              {months.map((month) => (
+                <text key={`${month.label}-${month.weekIndex}`} x={month.weekIndex * STEP} y={10} className="contrib-label">
+                  {month.label}
+                </text>
+              ))}
+              {weeks.map((week, column) =>
+                week.map(
+                  (cell, row) =>
+                    cell && (
+                      <rect
+                        key={cell.date}
+                        x={column * STEP}
+                        y={TOP + row * STEP}
+                        width={CELL}
+                        height={CELL}
+                        rx={2}
+                        className={`contrib-level-${cell.level}`}
+                        data-count={cell.count}
+                      >
+                        <title>{describe(cell.count, cell.date)}</title>
+                      </rect>
+                    ),
+                ),
+              )}
+            </svg>
+          </div>
         </div>
         <div className="contrib-foot">
           <span>Version commits, release requests, releases, and approvals. Days are in UTC.</span>

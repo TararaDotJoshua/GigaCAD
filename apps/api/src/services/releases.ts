@@ -3,7 +3,7 @@ import type { ManifestEntry } from '@gigacad/core';
 import type { Sql } from '../db.js';
 import { notFound } from '../errors.js';
 import { blobKey, type BlobStorage } from '../storage.js';
-import { zipStream } from '../zip.js';
+import { zipSize, zipStream } from '../zip.js';
 import { projectAccess } from './access.js';
 import { loadManifest } from './manifests.js';
 
@@ -53,9 +53,39 @@ export async function getRelease(
   return { release, files: await loadManifest(sql, release.manifestId) };
 }
 
+/** SolidWorks parts and assemblies, the files that can have STEP and STL exports. */
+const EXPORTABLE = /\.(sldprt|sldasm)$/i;
+
 /**
- * A release as one ZIP, every file under a `<project>-v<n>/` folder. Streamed: nothing is
- * held in memory, so it works for assemblies of any size.
+ * The STEP and STL exports a release was made with (its snapshot, which never changes), as
+ * `exports/<path>.step` and `.stl`. A part and an assembly with the same name keep their
+ * extensions, so their exports don't collide.
+ */
+async function exportFiles(sql: Sql, releaseId: string, files: readonly ManifestEntry[]): Promise<{ path: string; blob: string }[]> {
+  const sources = files.filter((file) => EXPORTABLE.test(file.path));
+  if (sources.length === 0) return [];
+  const rows = await sql<{ source: string; format: string; blob: string }[]>`
+    select source_sha256 as source, format, blob_sha256 as blob from release_exports
+    where release_id = ${releaseId} and source_sha256 = any(${[...new Set(sources.map((file) => file.blob))]}::text[])
+    order by format
+  `;
+  const bySource = new Map<string, { format: string; blob: string }[]>();
+  for (const { source, ...row } of rows) bySource.set(source, [...(bySource.get(source) ?? []), row]);
+  const exported = sources.filter((file) => bySource.has(file.blob));
+  const stem = (path: string) => path.replace(EXPORTABLE, '');
+  const stems = new Map<string, number>();
+  for (const file of exported) stems.set(stem(file.path).toLowerCase(), (stems.get(stem(file.path).toLowerCase()) ?? 0) + 1);
+  return exported.flatMap((file) => {
+    const name = stems.get(stem(file.path).toLowerCase())! > 1 ? file.path : stem(file.path);
+    return bySource.get(file.blob)!.map((row) => ({ path: `exports/${name}.${row.format}`, blob: row.blob }));
+  });
+}
+
+/**
+ * A release as one ZIP, every file under a `<project>-v<n>/` folder, optionally with its
+ * SolidWorks files' exports in an `exports/` folder there (or in `<project>-v<n>-exports/` when
+ * the release has an `exports/` folder of its own). Streamed: nothing is held in
+ * memory, so it works for assemblies of any size. `length` is the ZIP's exact size.
  */
 export async function releaseArchive(
   sql: Sql,
@@ -63,14 +93,28 @@ export async function releaseArchive(
   projectId: string,
   number: number,
   userId: string | null,
-): Promise<{ filename: string; size: number; stream: Readable }> {
+  options: { exports?: boolean | undefined } = {},
+): Promise<{ filename: string; size: number; length: number; stream: Readable }> {
   const { release, files } = await getRelease(sql, projectId, number, userId);
   const [project] = await sql<{ slug: string }[]>`select slug from projects where id = ${projectId}`;
-  const sizes = new Map(
-    (await sql<{ sha256: string; size: number }[]>`select sha256, size::float8 as size from blobs where sha256 = any(${files.map((file) => file.blob)}::text[])`).map((row) => [row.sha256, row.size]),
-  );
   const folder = `${project?.slug ?? 'project'}-v${release.number}`;
-  const entries = files.map((file) => ({ path: `${folder}/${file.path}`, size: sizes.get(file.blob) ?? 0, open: () => storage.readStream(blobKey(file.blob)) }));
+  const exported = options.exports ? await exportFiles(sql, release.id, files) : [];
+  // A release with an `exports/` folder of its own (in any case) gets the exports beside it instead,
+  // in a folder none of its files can be in, so no path is in the zip twice.
+  const clash = files.some((file) => file.path.toLowerCase().startsWith('exports/'));
+  const listed: { path: string; blob: string }[] = [
+    ...files.map((file) => ({ path: `${folder}/${file.path}`, blob: file.blob })),
+    ...exported.map((file) => ({ path: clash ? `${folder}-${file.path}` : `${folder}/${file.path}`, blob: file.blob })),
+  ];
+  const sizes = new Map(
+    (await sql<{ sha256: string; size: number }[]>`select sha256, size::float8 as size from blobs where sha256 = any(${listed.map((file) => file.blob)}::text[])`).map((row) => [row.sha256, row.size]),
+  );
+  const entries = listed.map((file) => ({ path: file.path, size: sizes.get(file.blob) ?? 0, open: () => storage.readStream(blobKey(file.blob)) }));
   const stream = zipStream(entries, { modified: release.createdAt });
-  return { filename: `${folder}.zip`, size: entries.reduce((total, entry) => total + entry.size, 0), stream };
+  return {
+    filename: options.exports ? `${folder}-with-exports.zip` : `${folder}.zip`,
+    size: entries.reduce((total, entry) => total + entry.size, 0),
+    length: zipSize(entries),
+    stream,
+  };
 }

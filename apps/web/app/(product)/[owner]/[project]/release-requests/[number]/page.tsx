@@ -15,8 +15,8 @@ import type { ReleaseRequestDetail } from '../../../../../../lib/api';
 import { REBUILD_STATUS_LABEL, blockerText, eligibleApprovers, errorText, requestBadge, ruleSummary, warningText } from '../../../../../../lib/describe';
 import { sites } from '../../../../../../lib/hosts';
 import { branchPath, projectPath, releasePath, releaseRequestPath } from '../../../../../../lib/paths';
-import { previewFormat } from '../../../../../../lib/preview';
-import { getVisibleMembers, getViewer, getProject, getRebuildReport, getRelease, getReleaseRequestByNumber, isFullMember, parseNumber } from '../../../../../../lib/product';
+import { isSolidWorks, previewFormat } from '../../../../../../lib/preview';
+import { getFileExports, getVisibleMembers, getViewer, getProject, getRebuildReport, getRelease, getReleaseRequestByNumber, isFullMember, parseNumber } from '../../../../../../lib/product';
 import { nextStep } from '../../../../../../lib/request-next';
 import type { ProjectParams } from '../../layout';
 
@@ -50,6 +50,13 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
   // Finished requests read against the main they targeted; active ones against the latest.
   const mainRelease = finished ? targetRelease : latestRelease;
   const [me, visibleMembers, main] = await Promise.all([getViewer(), getVisibleMembers(project.id), mainRelease ? getRelease(project.id, mainRelease.number) : Promise.resolve(null)]);
+  // SolidWorks rows preview through their STEP and STL exports: the branch version's current ones,
+  // and main's as its release keeps them.
+  const solidWorks = preview.rows.filter((row) => isSolidWorks(row.path));
+  const [branchExports, mainExports] = await Promise.all([
+    getFileExports(project.id, solidWorks.flatMap((row) => (row.branchChange && row.branchChange.kind !== 'deleted' ? [row.branchChange.after.blob] : []))),
+    getFileExports(project.id, (main?.files ?? []).filter((file) => solidWorks.some((row) => row.itemId === file.itemId)).map((file) => file.blob), mainRelease?.number),
+  ]);
   // Only the project's own members get ids and roles, so outsiders see who has approved rather than who may.
   const outsider = !project.role;
   const members = visibleMembers.filter(isFullMember);
@@ -319,6 +326,7 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
                 picksOk={preview.ok}
                 hasCandidate={Boolean(candidate)}
                 resetWarning={resetWarning}
+                exports={{ ...mainExports, ...branchExports }}
                 rebuiltElsewhere={rebuiltElsewhere}
                 releasedBlobs={request.status === 'released' && candidate ? Object.fromEntries(candidate.files.map((file) => [file.itemId, file.blob])) : undefined}
               />
@@ -377,8 +385,11 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
                   <ul className="approvers">
                     {approvals.given.map((approval) => (
                       <li key={approval.userId}>
-                        <span>@{approval.handle}</span>
-                        <span className={counted.has(approval.userId) ? 'badge badge-signal' : 'muted'}>{counted.has(approval.userId) ? 'Approved' : 'Older candidate'}</span>
+                        <span className="approver-name" title={`@${approval.handle}`}>
+                          @{approval.handle}
+                          {me && approval.userId === me.id && <span className="muted"> (you)</span>}
+                        </span>
+                        <span className={counted.has(approval.userId) ? 'badge badge-signal approver-state' : 'muted approver-state'}>{counted.has(approval.userId) ? 'Approved' : 'Older candidate'}</span>
                       </li>
                     ))}
                   </ul>
@@ -392,8 +403,11 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
                     const isCurrent = approval?.candidateManifestId === request.candidateManifestId && !exportChanged(approval);
                     return (
                       <li key={member.userId}>
-                        <span>@{member.handle}</span>
-                        <span className={isCurrent ? 'badge badge-signal' : 'muted'}>{approval ? (isCurrent ? 'Approved' : exportChanged(approval) ? 'Export changed' : 'Older candidate') : 'Waiting'}</span>
+                        <span className="approver-name" title={`@${member.handle}`}>
+                          @{member.handle}
+                          {me && member.userId === me.id && <span className="muted"> (you)</span>}
+                        </span>
+                        <span className={isCurrent ? 'badge badge-signal approver-state' : 'muted approver-state'}>{approval ? (isCurrent ? 'Approved' : exportChanged(approval) ? 'Export changed' : 'Older candidate') : 'Waiting'}</span>
                       </li>
                     );
                   })}

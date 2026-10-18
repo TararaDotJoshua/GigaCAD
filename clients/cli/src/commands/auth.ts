@@ -74,6 +74,9 @@ async function pollForGrant(rt: Runtime, api: Api, code: DeviceCode): Promise<De
       if (error.code === 'authorization_pending' || error.code === 'expired_token') {
         throw new CliError('expired_token', 'The sign-in code expired before it was approved', { hint: 'Run `giga login` again to get a new code.' });
       }
+      if (error.code === 'access_denied') {
+        throw new CliError('access_denied', 'The sign-in was turned down in the browser', { hint: 'Run `giga login` again if that was a mistake.' });
+      }
       if (error.code === 'invalid_grant') {
         throw new CliError('invalid_grant', 'This sign-in code was already used or is unknown', { hint: 'Run `giga login` again.' });
       }

@@ -10,8 +10,14 @@ export async function confirmEmail(form: FormData) {
   const type = form.get('type');
   const rawNext = form.get('next');
   if (typeof tokenHash !== 'string' || (type !== 'email' && type !== 'recovery' && type !== 'email_change')) redirect('/login?error=confirmation');
-  const { error } = await (await createClient()).auth.verifyOtp({ token_hash: tokenHash, type });
-  if (error) redirect(type === 'recovery' ? '/forgot-password?error=recovery' : type === 'email_change' ? '/settings?email=expired' : '/login?error=confirmation');
+  const supabase = await createClient();
+  const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type });
+  if (error) {
+    // Someone opening their confirmation link a second time is already in. The log-in page
+    // would only send them on to the dashboard, under an address that says something failed.
+    if (type === 'email' && (await supabase.auth.getUser()).data.user) redirect(dashboardPath());
+    redirect(type === 'recovery' ? '/forgot-password?error=recovery' : type === 'email_change' ? '/settings?email=expired' : '/login?error=confirmation');
+  }
 
   const appOrigin = process.env.NEXT_PUBLIC_GIGACAD_APP_URL ?? 'https://app.gigacad.site';
   let next = type === 'recovery' ? '/reset-password' : type === 'email_change' ? '/settings?email=confirmed' : dashboardPath();

@@ -42,6 +42,19 @@ export async function approveDeviceSignIn(sql: Sql, userId: string, userCode: st
   return row;
 }
 
+/**
+ * The signed-in user turns down a code they didn't start, so the waiting client stops at
+ * once instead of polling until it expires. A denied code is used up without an approver.
+ */
+export async function denyDeviceSignIn(sql: Sql, userCode: string): Promise<void> {
+  const [row] = await sql`
+    update device_codes set consumed_at = now()
+    where user_code = ${userCode.trim().toUpperCase()} and expires_at > now() and approved_by is null and consumed_at is null
+    returning user_code
+  `;
+  if (!row) throw notFound('Sign-in code');
+}
+
 /** Shows the signed-in approver which client they are authorizing. */
 export async function pendingDeviceSignIn(sql: Sql, userCode: string): Promise<{ clientName: string; expiresAt: Date }> {
   const [row] = await sql<{ clientName: string; expiresAt: Date }[]>`
@@ -60,6 +73,7 @@ export async function pollDeviceSignIn(sql: Sql, deviceCode: string): Promise<Is
       select approved_by, consumed_at, expires_at <= now() as expired, client_name
       from device_codes where device_code_hash = ${hashSecret(deviceCode)} for update
     `;
+    if (row?.consumedAt && !row.approvedBy) throw badRequest('access_denied', 'The sign-in was turned down on the website');
     if (!row || row.consumedAt) throw badRequest('invalid_grant', 'Unknown or already used sign-in code');
     if (row.expired) throw badRequest('expired_token', 'The sign-in code expired; start again');
     if (!row.approvedBy) throw badRequest('authorization_pending', 'Waiting for approval on the website');

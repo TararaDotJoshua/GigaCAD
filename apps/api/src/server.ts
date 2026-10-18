@@ -69,8 +69,8 @@ const thumbnails = async () => {
 if (config.THUMBNAILS_INTERVAL_SECONDS > 0) timers.push(setInterval(thumbnails, config.THUMBNAILS_INTERVAL_SECONDS * 1000));
 
 // Once at startup too, outside the jobs lock, which an old instance may still hold during a deploy
-// overlap. Rows that instance writes after this run still wait for the next job pass it doesn't hold.
-// (No current API writes them; this goes away with the model_* columns.)
+// overlap. Anything that old instance writes after this run is reset by a later job pass instead.
+// (No current API writes such rows; this goes away with the model_* columns.)
 resetExportDrawnThumbnails(sql)
   .then((count) => count && app.log.info({ thumbnails: count }, 'reset export-drawn thumbnails'))
   .catch((error: unknown) => app.log.warn(error, 'thumbnail reset failed'));

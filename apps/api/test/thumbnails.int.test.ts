@@ -4,7 +4,7 @@ import { deleteOrphanBlobs, purgeDeletedProjects, unlinkUnusedBlobs } from '../s
 import { thumbnailKey } from '../src/storage.js';
 import { inlineRenderer } from '../src/thumbnails/index.js';
 import { generateThumbnails } from '../src/thumbnails/job.js';
-import { client, commitVersion, createHarness, createUser, sha256, type Client, type Harness, type TestUser } from './helpers.js';
+import { client, commitVersion, createHarness, createUser, sha256, upload, type Client, type Harness, type TestUser } from './helpers.js';
 
 let harness: Harness;
 let owner: TestUser;
@@ -81,6 +81,17 @@ describe('thumbnails', () => {
     expect(after.body.projects.find((project: { id: string }) => project.id === projectId).thumbnailUrl).toContain(thumbnailKey(sha256(stl)));
     const explore = await client(harness, null).get('/v1/explore?sort=recent&limit=100');
     expect(explore.body.find((project: { id: string }) => project.id === projectId)).toMatchObject({ thumbnailUrl: expect.stringContaining('.png') });
+  });
+
+  it('give a project of browser uploads a cover from its root files', async () => {
+    const stl = tetrahedron();
+    const slug = `uploads-${randomUUID().slice(0, 8)}`;
+    const projectId = (await api.post('/v1/projects', { slug, name: `Uploads ${slug}`, visibility: 'public' })).body.id as string;
+    const [blob] = await upload(harness, api, projectId, [stl]);
+    expect((await api.post(`/v1/projects/${projectId}/directory/files`, { parentId: null, name: 'Bracket.stl', blob })).status).toBe(201);
+    await render();
+    const page = await client(harness, null).get(`/v1/users/${owner.handle}`);
+    expect(page.body.projects.find((project: { id: string }) => project.id === projectId).thumbnailUrl).toContain(thumbnailKey(sha256(stl)));
   });
 
   it('fail for files that cannot be read, and skip files that are too large', async () => {

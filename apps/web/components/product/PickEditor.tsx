@@ -3,9 +3,10 @@
 import type { ManifestEntry, PickRow, Picks } from '@gigacad/core';
 import { useEffect, useState, useTransition } from 'react';
 import { savePicks } from '../../app/(product)/actions';
+import type { FileExport } from '../../lib/api';
 import { safeAction } from '../../lib/safe-action';
 import { rowNote } from '../../lib/describe';
-import { previewFormat } from '../../lib/preview';
+import { pickModels } from '../../lib/models';
 import { canReplace, draftFromPicks, hasStrayPicks, outcomeText, pickChoices, pickLabel, pickOutcome, picksFromDraft, replaceableFiles, replacedBy, samePicks, type RowPick } from '../../lib/picks';
 import { FormStatus } from './ActionButton';
 import { DownloadButton } from './DownloadButton';
@@ -14,10 +15,17 @@ import { PreviewButton } from './PreviewButton';
 import { useRequestDraft } from './RequestDraft';
 import type { ActionState } from '../../app/(product)/actions';
 
+/** Rows shown before "Show all", so a request with thousands of changes stays usable. */
+const ROWS_SHOWN = 200;
+/** Past this many rows the list gets a filter and bulk picks. */
+const MANY_ROWS = 20;
+
 /**
  * The diff pick: one row per changed file, each taking the branch's version or keeping
  * main's. A summary above says what the release will contain as picks change.
  * `nextNumber` is the release these picks would make; null once the request is finished.
+ * `exports` are SolidWorks files' STEP and STL exports by file hash, for their previews.
+ * Long lists can be filtered and picked in bulk, and the save bar stays in view.
  */
 export function PickEditor({
   projectId,
@@ -35,6 +43,7 @@ export function PickEditor({
   resetWarning,
   rebuiltElsewhere,
   releasedBlobs,
+  exports = {},
 }: {
   projectId: string;
   requestId: string;
@@ -56,6 +65,7 @@ export function PickEditor({
   rebuiltElsewhere: number;
   /** For a released request: the released contents by item, which a rebuild may have changed. */
   releasedBlobs?: Readonly<Record<string, string>>;
+  exports?: Readonly<Record<string, FileExport[]>>;
 }) {
   // `saved` is the server's picks this draft started from. Live refreshes can bring newer ones:
   // take them over an untouched draft, but never silently over unsaved changes.
@@ -92,6 +102,18 @@ export function PickEditor({
   const pathOf = (itemId: string) => mainFiles.find((file) => file.itemId === itemId)?.path ?? rows.find((row) => row.itemId === itemId)?.path;
   const replaceOptions = replaceableFiles(mainFiles, rows);
   const outcome = outcomeText(pickOutcome(rows, draft));
+  const [filter, setFilter] = useState('');
+  const [conflictsOnly, setConflictsOnly] = useState(false);
+  const [all, setAll] = useState(false);
+  const many = rows.length > MANY_ROWS;
+  const matching = rows.filter((row) => (!conflictsOnly || row.conflict) && (!filter.trim() || row.path.toLowerCase().includes(filter.trim().toLowerCase())));
+  const visible = all ? matching : matching.slice(0, ROWS_SHOWN);
+  const which = matching.length === rows.length ? 'all' : `these ${matching.length}`;
+  const pickAll = (action: 'take_branch' | 'keep_main') => {
+    setDraft((current) => ({ ...current, ...Object.fromEntries(matching.filter((row) => !replaced.has(row.itemId)).map((row) => [row.itemId, { kind: 'action' as const, action }])) }));
+    setState({});
+    setAsking(false);
+  };
   const rebuilt = rebuiltElsewhere ? `, plus ${rebuiltElsewhere} ${rebuiltElsewhere === 1 ? 'file' : 'files'} rebuilt in SolidWorks` : '';
   const save = () => {
     setAsking(false);
@@ -127,9 +149,32 @@ export function PickEditor({
           )}
         </p>
       )}
+      {many && (
+        <div className="pick-tools">
+          <label className="field pick-filter">
+            <span className="sr-only">Filter files</span>
+            <input type="search" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder={`Filter ${rows.length} files`} />
+          </label>
+          <label className="choice">
+            <input type="checkbox" checked={conflictsOnly} onChange={(event) => setConflictsOnly(event.target.checked)} />
+            <span>Only files changed on both</span>
+          </label>
+          {!readOnly && (
+            <>
+              <button type="button" className="btn btn-secondary btn-small" onClick={() => pickAll('take_branch')}>
+                Take branch for {which}
+              </button>
+              <button type="button" className="btn btn-secondary btn-small" onClick={() => pickAll('keep_main')}>
+                Keep main for {which}
+              </button>
+            </>
+          )}
+        </div>
+      )}
       <div className="pick-list" role="group" aria-label="File picks">
         {rows.length === 0 && <p className="empty">There are no file differences to pick.</p>}
-        {rows.map((row) => {
+        {many && matching.length === 0 && <p className="empty">No files match.</p>}
+        {visible.map((row) => {
           const pick = draft[row.itemId] ?? { kind: 'action' as const, action: row.defaultAction };
           const note = rowNote(row, latestNumber);
           const choices = pickChoices(row, numbers);
@@ -149,10 +194,14 @@ export function PickEditor({
                   {overwrites && <span className="pick-note is-caution">{overwrites}</span>}
                 </div>
                 {shownBlob && (
-                  <span className="pick-files" aria-label={`${shownBlob === branchBlob ? 'Branch' : 'Released'} version of ${row.path}`}>
-                    {previewFormat(row.path) && <PreviewButton projectId={projectId} sha256={shownBlob} path={row.path} format={previewFormat(row.path)!} compare={mainCopy(mainFiles, row.itemId, shownBlob)} />}
-                    <DownloadButton projectId={projectId} sha256={shownBlob} path={row.path} />
-                  </span>
+                  <PickFiles
+                    projectId={projectId}
+                    path={row.path}
+                    blob={shownBlob}
+                    mainBlob={mainFiles.find((file) => file.itemId === row.itemId)?.blob ?? null}
+                    exports={exports}
+                    label={`${shownBlob === branchBlob ? 'Branch' : 'Released'} version of ${row.path}`}
+                  />
                 )}
               </div>
               {replacement ? (
@@ -195,6 +244,11 @@ export function PickEditor({
           );
         })}
       </div>
+      {visible.length < matching.length && (
+        <button type="button" className="btn btn-secondary btn-small pick-more" onClick={() => setAll(true)}>
+          Show all {matching.length} files
+        </button>
+      )}
       {!readOnly && changedElsewhere && dirty && (
         <p className="notice notice-caution" role="status">
           Someone else saved different picks while you were editing.{' '}
@@ -257,8 +311,34 @@ export function PickEditor({
   );
 }
 
-/** Main's copy of a file, for a side-by-side preview, when it exists and differs from the branch's. */
-function mainCopy(mainFiles: readonly ManifestEntry[], itemId: string, branchBlob: string) {
-  const file = mainFiles.find((entry) => entry.itemId === itemId);
-  return file && file.blob !== branchBlob ? { sha256: file.blob, path: file.path } : undefined;
+/**
+ * A version's preview and download, in a fixed slot at the end of the file cell so they line up
+ * down the list. SolidWorks files preview through their exports, beside main's when both have one.
+ */
+function PickFiles({
+  projectId,
+  path,
+  blob,
+  mainBlob,
+  exports,
+  label,
+}: {
+  projectId: string;
+  path: string;
+  blob: string;
+  mainBlob: string | null;
+  exports: Readonly<Record<string, FileExport[]>>;
+  label: string;
+}) {
+  const models = pickModels(path, blob, mainBlob, exports);
+  return (
+    <span className="pick-files" aria-label={label}>
+      {models ? (
+        <PreviewButton projectId={projectId} sha256={models.model.sha256} path={path} format={models.model.format} source={models.model.source} size={models.model.size} compare={models.compare} />
+      ) : (
+        <span className="icon-slot" aria-hidden="true" />
+      )}
+      <DownloadButton projectId={projectId} sha256={blob} path={path} />
+    </span>
+  );
 }

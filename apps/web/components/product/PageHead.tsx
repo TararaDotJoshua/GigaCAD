@@ -7,6 +7,9 @@ export interface Crumb {
   readonly mono?: boolean;
 }
 
+/** Past this many breadcrumbs, the middle ones fold into a "…" menu: deep folders would otherwise take many lines. */
+const CRUMBS_SHOWN = 5;
+
 /** Breadcrumbs, the page title, and a meta line, as in the release request window on the home page. */
 export function PageHead({
   crumbs,
@@ -19,15 +22,36 @@ export function PageHead({
   meta?: React.ReactNode;
   actions?: React.ReactNode;
 }) {
+  const folded = crumbs.length > CRUMBS_SHOWN ? crumbs.slice(2, -2) : [];
+  const shown: readonly (Crumb | null)[] = folded.length ? [...crumbs.slice(0, 2), null, ...crumbs.slice(-2)] : crumbs;
   return (
     <header className="page-header">
       <div className="page-header-text">
         {crumbs.length > 0 && (
           <nav className="app-crumbs" aria-label="Breadcrumbs">
-            {crumbs.map((crumb, index) => (
-              <span key={`${crumb.label}-${index}`}>
+            {shown.map((crumb, index) => (
+              <span key={`${crumb?.label ?? '…'}-${index}`}>
                 {index > 0 && <span className="crumb-sep"> / </span>}
-                {crumb.href ? (
+                {crumb === null ? (
+                  <details className="menu crumb-more">
+                    <summary title={folded.map((hidden) => hidden.label).join(' / ')} aria-label={`${folded.length} more folders`}>
+                      …
+                    </summary>
+                    <div className="menu-list">
+                      {folded.map((hidden, at) =>
+                        hidden.href ? (
+                          <Link key={at} href={hidden.href} className={hidden.mono ? 'mono' : undefined}>
+                            {hidden.label}
+                          </Link>
+                        ) : (
+                          <span key={at} className={hidden.mono ? 'mono' : undefined}>
+                            {hidden.label}
+                          </span>
+                        ),
+                      )}
+                    </div>
+                  </details>
+                ) : crumb.href ? (
                   <Link href={crumb.href} className={crumb.mono ? 'mono' : undefined}>
                     {crumb.label}
                   </Link>

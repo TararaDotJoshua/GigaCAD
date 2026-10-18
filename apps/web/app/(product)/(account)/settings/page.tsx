@@ -112,34 +112,36 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
             A deleted project can be restored for 30 days, with everything in it, and its address stays reserved until then. Restoring counts its files toward your
             storage again. After 30 days it’s gone for good.
           </p>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th scope="col">Project</th>
-                <th scope="col">Deleted</th>
-                <th scope="col">Removed for good</th>
-                <th scope="col">
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {deleted.map((project) => (
-                <tr key={project.id}>
-                  <td>
-                    {project.name} <span className="mono muted">{project.slug}</span>
-                  </td>
-                  <td className="muted">
-                    <RelativeTime value={project.deletedAt} />
-                  </td>
-                  <td className="muted">{daysLeft(project.purgeAt)}</td>
-                  <td className="cell-action">
-                    <RestoreProjectButton projectId={project.id} billingEnabled={billing.billingEnabled} />
-                  </td>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th scope="col">Project</th>
+                  <th scope="col">Deleted</th>
+                  <th scope="col">Removed for good</th>
+                  <th scope="col">
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {deleted.map((project) => (
+                  <tr key={project.id}>
+                    <td>
+                      {project.name} <span className="mono muted">{project.slug}</span>
+                    </td>
+                    <td className="muted">
+                      <RelativeTime value={project.deletedAt} />
+                    </td>
+                    <td className="muted">{daysLeft(project.purgeAt)}</td>
+                    <td className="cell-action">
+                      <RestoreProjectButton projectId={project.id} billingEnabled={billing.billingEnabled} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       )}
 
@@ -149,38 +151,40 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
         {devices.length === 0 ? (
           <EmptyState title="No devices are signed in." />
         ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th scope="col">Device</th>
-                <th scope="col">Signed in</th>
-                <th scope="col">Last used</th>
-                <th scope="col">
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {devices.map((device) => (
-                <tr key={device.id}>
-                  <td className="cell-wrap">{device.name}</td>
-                  <td className="muted cell-nowrap">
-                    <RelativeTime value={device.createdAt} />
-                  </td>
-                  <td className="muted cell-nowrap">{device.lastUsedAt ? <RelativeTime value={device.lastUsedAt} /> : 'Never'}</td>
-                  <td className="cell-action">
-                    <ActionButton
-                      action={signOutDevice.bind(null, device.id)}
-                      className="btn btn-danger btn-small"
-                      confirm={`Sign out ${device.name}? It will need to sign in again.`}
-                    >
-                      Sign out
-                    </ActionButton>
-                  </td>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th scope="col">Device</th>
+                  <th scope="col">Signed in</th>
+                  <th scope="col">Last used</th>
+                  <th scope="col">
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {devices.map((device) => (
+                  <tr key={device.id}>
+                    <td className="cell-wrap">{device.name}</td>
+                    <td className="muted cell-nowrap">
+                      <RelativeTime value={device.createdAt} />
+                    </td>
+                    <td className="muted cell-nowrap">{device.lastUsedAt ? <RelativeTime value={device.lastUsedAt} /> : 'Never'}</td>
+                    <td className="cell-action">
+                      <ActionButton
+                        action={signOutDevice.bind(null, device.id)}
+                        className="btn btn-danger btn-small"
+                        confirm={`Sign out ${device.name}? It will need to sign in again.`}
+                      >
+                        Sign out
+                      </ActionButton>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </div>

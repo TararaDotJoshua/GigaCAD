@@ -4,9 +4,10 @@ import { FolderIcon } from "../../../components/icons";
 import { APP_URL } from "../../../components/site";
 
 export const metadata: Metadata = {
-  title: "GigaCAD for Windows and Mac",
+  title: { absolute: "GigaCAD for Windows and Mac" },
   description:
     "The GigaCAD desktop apps for Windows and Mac are in development. Until they're ready, use GigaCAD in your browser or from the command line.",
+  alternates: { canonical: "/download" },
 };
 
 const menu = [
@@ -30,8 +31,8 @@ export default function DownloadPage() {
             <h1 className="page-title">Desktop apps, coming soon.</h1>
             <p className="lead">
               We’re building GigaCAD for Windows and Mac: your projects as folders in File Explorer or
-              Finder, with check out, commit, and check in in the right-click menu. They aren’t ready to
-              download yet.
+              Finder, with Check Out, Commit Version, and Check In on the right-click menu. They aren’t
+              ready to download yet.
             </p>
             <div className="download-actions">
               <a className="button button-large" href={`${APP_URL}/signup`}>
@@ -82,7 +83,7 @@ export default function DownloadPage() {
             <div>
               <h3 className="h3">The app</h3>
               <p className="body">
-                Sign in, see what’s syncing, and commit a version with a message. Check Out, Commit Version,
+                Log in, see what’s syncing, and commit a version with a message. Check Out, Commit Version,
                 and Check In will also be in the right-click menu.
               </p>
             </div>

@@ -205,3 +205,18 @@ export function rehypeProjectFiles(project: ReadmeProject, find: FindFiles) {
     }
   };
 }
+
+/**
+ * The page already has an h1, so a README's or Markdown file's headings move down a level: `# Name`
+ * renders as an h2.
+ * A rehype plugin, so headings written as HTML move too.
+ */
+export function rehypeDemoteHeadings() {
+  type Node = { type?: string; tagName?: string; children?: Node[] };
+  const walk = (node: Node) => {
+    const level = node.type === 'element' && /^h([1-5])$/.exec(node.tagName ?? '')?.[1];
+    if (level) node.tagName = `h${Number(level) + 1}`;
+    node.children?.forEach(walk);
+  };
+  return walk;
+}

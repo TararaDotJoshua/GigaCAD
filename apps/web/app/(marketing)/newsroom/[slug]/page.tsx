@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ArrowLeftIcon } from "../../../../components/icons";
-import { ARTICLE_KINDS, findArticle, formatArticleDate, getArticles, headingId } from "../../../../lib/newsroom";
+import { ARTICLE_KINDS, findArticle, formatArticleDate, getArticles, headingId, remarkSmartQuotes } from "../../../../lib/newsroom";
 
 export const dynamicParams = false;
 
@@ -23,8 +23,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title: article.title,
     description: article.summary,
     authors: [{ name: article.author }],
-    alternates: { types: { "application/rss+xml": "/newsroom/feed.xml" } },
+    alternates: { canonical: `/newsroom/${article.slug}`, types: { "application/rss+xml": "/newsroom/feed.xml" } },
     openGraph: {
+      siteName: "GigaCAD",
+      // An article's openGraph replaces the site's, so it names the share image again.
+      images: [{ url: "/opengraph-image.png", width: 1200, height: 630, alt: "GigaCAD: Version control for the things you build." }],
       type: "article",
       title: article.title,
       description: article.summary,
@@ -110,7 +113,7 @@ export default async function ArticlePage({ params }: Props) {
         </header>
 
         <div className="prose article-body">
-          <Markdown remarkPlugins={[remarkGfm]} components={components}>
+          <Markdown remarkPlugins={[remarkGfm, remarkSmartQuotes]} components={components}>
             {article.body}
           </Markdown>
         </div>

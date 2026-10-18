@@ -184,6 +184,12 @@ export const MenuIcon = ({ className }: IconProps) => (
   </svg>
 );
 
+export const CloseIcon = ({ className }: IconProps) => (
+  <svg className={className} {...base}>
+    <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" />
+  </svg>
+);
+
 /** Three dots: more actions for a row. */
 export const MoreIcon = ({ className }: IconProps) => (
   <svg className={className} {...base} fill="currentColor" stroke="none">

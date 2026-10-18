@@ -65,7 +65,7 @@ export default async function ReleaseRequests({ params, searchParams }: { params
                     </Link>
                   </td>
                   <td className="mono">{request.branchName}</td>
-                  <td>@{request.requesterHandle || 'unknown'}</td>
+                  <td className="nowrap">@{request.requesterHandle || 'unknown'}</td>
                   <td>
                     <StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>
                   </td>

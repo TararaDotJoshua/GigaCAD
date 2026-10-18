@@ -65,11 +65,14 @@ export function TagPicker({ projectId, itemId, name, tags, selected }: { project
         }
         const button = event.currentTarget.querySelector('summary')!.getBoundingClientRect();
         const right = Math.max(8, window.innerWidth - button.right);
-        // Opens upward when there's more room above the button than below it.
+        // Opens upward only when there's too little room below and more above. Either way it's no taller
+        // than the room on its own side, so Save stays on screen.
+        const above = button.top - 14;
+        const below = window.innerHeight - button.bottom - 14;
         setPlace(
-          button.bottom + 320 > window.innerHeight && button.top > window.innerHeight - button.bottom
-            ? { position: 'fixed', right, bottom: window.innerHeight - button.top + 6, marginTop: 0 }
-            : { position: 'fixed', right, top: button.bottom, marginTop: 6 },
+          button.bottom + 320 > window.innerHeight && above > below
+            ? { position: 'fixed', right, bottom: window.innerHeight - button.top + 6, maxHeight: Math.max(120, above), marginTop: 0 }
+            : { position: 'fixed', right, top: button.bottom, maxHeight: Math.max(120, below), marginTop: 6 },
         );
       }}
     >

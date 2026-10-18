@@ -6,6 +6,7 @@ import { getFileExports, getThumbnails } from '../../lib/product';
 import { EmptyState } from './EmptyState';
 import { FileActions } from './FileActions';
 import { FileGlyph } from './FileGlyph';
+import { PathText } from './PathText';
 import { StatusBadge } from './StatusBadge';
 
 /** A rename or move that left the contents alone. */
@@ -55,7 +56,7 @@ export async function ChangeList({
           <li key={change.itemId} className={`change-row is-${change.kind}`}>
             <FileGlyph path={path} thumbnailUrl={after ? thumbnails[after.blob] : undefined} />
             <span className="change-path">
-              <span className="mono">{path}</span>
+              <PathText path={path} />
               <span className="change-verb">
                 <StatusBadge tone={change.kind === 'added' ? 'signal' : change.kind === 'deleted' ? 'danger' : 'quiet'}>
                   {change.kind === 'added' ? 'Added' : change.kind === 'deleted' ? 'Removed' : onlyMoved(change) ? 'Moved' : 'Edited'}

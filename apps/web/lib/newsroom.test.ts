@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatArticleDate, headingId, parseArticle, sortArticles, type Article } from './newsroom';
+import { formatArticleDate, headingId, parseArticle, smartQuotes, sortArticles, type Article } from './newsroom';
 
 const header = (extra = '') => `---
 title: Git and Scrum for hardware
@@ -64,5 +64,16 @@ describe('formatting', () => {
 
   it('makes heading anchors', () => {
     expect(headingId('What we’re building, and why')).toBe('what-were-building-and-why');
+  });
+});
+
+describe('smartQuotes', () => {
+  it('curls quotes and apostrophes', () => {
+    expect(smartQuotes(`Here's why "Git for CAD" doesn't fit, ('mostly').`)).toBe('Here’s why “Git for CAD” doesn’t fit, (‘mostly’).');
+  });
+
+  it('continues from the text before it', () => {
+    expect(smartQuotes('" said', 'd')).toBe('” said');
+    expect(smartQuotes('"Hi"', ' ')).toBe('“Hi”');
   });
 });

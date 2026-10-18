@@ -102,6 +102,10 @@ export default async function BranchPage({ params, searchParams }: { params: Pro
                 'an empty project'
               )}
             </span>
+            {/* On narrow screens the Checked out card falls below the files, so the lock is said up here too. */}
+            {branch.checkedOutByHandle && (
+              <span className="narrow-only">Checked out by {viewer && branch.checkedOutBy === viewer.id ? 'you' : `@${branch.checkedOutByHandle}`}</span>
+            )}
           </>
         }
       />

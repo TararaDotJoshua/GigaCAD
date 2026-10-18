@@ -4,7 +4,7 @@ import { MarkdownAsync } from 'react-markdown';
 import type { Project } from '../../lib/api';
 import { entryPath } from '../../lib/paths';
 import { getReadmeFiles, type Readme } from '../../lib/product';
-import { readmeMarkdown } from '../../lib/readme';
+import { readmeMarkdown, rehypeDemoteHeadings } from '../../lib/readme';
 import { FileGlyph } from './FileGlyph';
 
 /**
@@ -16,6 +16,7 @@ import { FileGlyph } from './FileGlyph';
  */
 export async function ProjectReadme({ project, readme }: { project: Project; readme: Readme }) {
   const { file } = readme;
+  const options = readmeMarkdown(project, (paths) => getReadmeFiles(project.id, paths));
   const href = file.entryId ? entryPath(project.ownerHandle, project.slug, file.entryId) : null;
   const name = href ? (
     <Link href={href} className="mono">
@@ -37,7 +38,8 @@ export async function ProjectReadme({ project, readme }: { project: Project; rea
       ) : readme.markdown ? (
         <div className="readme-body readme-markdown">
           <MarkdownAsync
-            {...readmeMarkdown(project, (paths) => getReadmeFiles(project.id, paths))}
+            {...options}
+            rehypePlugins={[...options.rehypePlugins, rehypeDemoteHeadings]}
             components={{
               // Links are already pointed at their pages; ones within the app navigate in place.
               a: ({ node: _node, href, ...props }) => (href?.startsWith('/') ? <Link href={href} {...props} /> : <a href={href} {...props} />),

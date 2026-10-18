@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { SiteAccountLink } from "./AccountLinks";
 import { MenuIcon } from "./icons";
 
 const links = [
@@ -40,9 +41,9 @@ export function SiteNav() {
 
 /**
  * The same links on narrow screens, behind a Menu button. Log in moves in here too, so
- * the bar fits a phone. It closes on a link, Escape, a click outside, or a new page.
+ * the bar fits a phone. It closes on a link, Escape, a click or focus outside, or a new page.
  */
-export function SiteMenu({ loginHref }: { loginHref: string }) {
+export function SiteMenu() {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
@@ -69,7 +70,13 @@ export function SiteMenu({ loginHref }: { loginHref: string }) {
   }, [open]);
 
   return (
-    <div ref={root} className="nav-menu">
+    <div
+      ref={root}
+      className="nav-menu"
+      onBlur={(e) => {
+        if (open && !root.current?.contains(e.relatedTarget as Node | null)) setOpen(false);
+      }}
+    >
       <button
         ref={button}
         type="button"
@@ -83,9 +90,7 @@ export function SiteMenu({ loginHref }: { loginHref: string }) {
       </button>
       <nav id="site-menu" className="nav-menu-panel" aria-label="Main" hidden={!open}>
         <Links onNavigate={() => setOpen(false)} />
-        <a href={loginHref} className="nav-menu-login">
-          Log in
-        </a>
+        <SiteAccountLink className="nav-menu-login" />
       </nav>
     </div>
   );

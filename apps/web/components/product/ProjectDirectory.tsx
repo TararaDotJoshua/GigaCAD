@@ -30,6 +30,8 @@ import { TagPicker } from './TagPicker';
 import { UploadFiles } from './UploadFiles';
 
 const PAGE_SIZE = 100;
+/** Tag chips a file row shows before the rest fold into "+N". */
+const TAGS_SHOWN = 3;
 
 /** The page of a folder the URL asks for, as getDirectory takes it. The tab title reads the same page, so they share one request. */
 export function directoryPaging(params: DirectoryParams) {
@@ -565,7 +567,10 @@ async function DirectoryTable({
   return (
     <EntryMenu projectId={project.id} owner={owner} slug={slug} folders={folders}>
       {table}
-      <p className="muted entry-menu-hint">Right-click a file or folder, or use its ⋯ button, to rename, move, or delete it.</p>
+      <p className="muted entry-menu-hint">
+        <span className="hint-pointer">Right-click a file or folder, or use its ⋯ button, to rename, move, or delete it.</span>
+        <span className="hint-touch">Press and hold a file or folder, or use its ⋯ button, to rename, move, or delete it.</span>
+      </p>
     </EntryMenu>
   );
 }
@@ -631,11 +636,21 @@ function FileRow({
                     Also in {elsewhere} other {elsewhere === 1 ? 'place' : 'places'}
                   </span>
                 )}
-                {file.tags.map((tag) => (
+                {file.tags.slice(0, TAGS_SHOWN).map((tag) => (
                   <Link key={tag.id} href={tagLink(tag.id)} className="tag-chip" prefetch={false}>
                     {tag.name}
                   </Link>
                 ))}
+                {file.tags.length > TAGS_SHOWN &&
+                  (file.entryId ? (
+                    <Link href={entryPath(owner, slug, file.entryId)} className="tag-chip" prefetch={false} title={file.tags.slice(TAGS_SHOWN).map((tag) => tag.name).join(', ')}>
+                      +{file.tags.length - TAGS_SHOWN}
+                    </Link>
+                  ) : (
+                    <span className="tag-chip" title={file.tags.slice(TAGS_SHOWN).map((tag) => tag.name).join(', ')}>
+                      +{file.tags.length - TAGS_SHOWN}
+                    </span>
+                  ))}
               </span>
             )}
           </span>

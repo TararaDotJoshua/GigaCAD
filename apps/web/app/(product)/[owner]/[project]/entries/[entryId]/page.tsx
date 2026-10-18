@@ -72,12 +72,6 @@ export default async function EntryPage({ params }: { params: Promise<EntryParam
         meta={
           <>
             <span>{entry.kind === 'folder' ? 'Folder' : `Revision ${entry.revision}`}</span>
-            <span>
-              In{' '}
-              <Link href={treePath(owner, slug, parentPath)} className={parentPath ? 'mono' : undefined}>
-                {parentPath || 'the project root'}
-              </Link>
-            </span>
             {detail.tags.map((tag) => (
               <Link key={tag.id} href={`${projectPath(owner, slug)}?tags=${tag.id}`} className="tag-chip">
                 {tag.name}

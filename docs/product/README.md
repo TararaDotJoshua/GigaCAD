@@ -24,6 +24,7 @@ Use these exact words in the UI, docs, and code.
 | Item | A stable file identity across releases and renames. A "replace" pick makes the new file inherit the old item ID |
 | Root files | Files and folders at the project root, with their own "Revisions", outside the branch and release flow |
 | Tags | Labels on files. Not releases |
+| Log in / Create account | The web account's sign-in and sign-up, said this way everywhere (forms, sidebar, docs). Devices "sign in" with a code instead |
 
 ## Workflow rules
 

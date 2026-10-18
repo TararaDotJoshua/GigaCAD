@@ -276,6 +276,14 @@ export async function showModel(container: HTMLElement, bytes: ArrayBuffer, form
   const observer = new ResizeObserver(resize);
   observer.observe(container);
   resize();
+  // Forced colors (Windows High Contrast) swap the Paper stage for the system's own colors.
+  const contrast = window.matchMedia('(forced-colors: active)');
+  const repaint = () => {
+    paint(container, scene, surface, edges, contrast.matches);
+    render();
+  };
+  contrast.addEventListener('change', repaint);
+  repaint();
 
   return {
     // The model is turned Y-up, so its height is along Y and its depth along Z.
@@ -289,6 +297,7 @@ export async function showModel(container: HTMLElement, bytes: ArrayBuffer, form
     zoomOut: () => zoom(false),
     reset,
     release: () => {
+      contrast.removeEventListener('change', repaint);
       observer.disconnect();
       container.removeEventListener('keydown', onKey);
       controls.removeEventListener('start', onStart);
@@ -310,4 +319,26 @@ export function sizeText(size: ModelView['size'], format: PreviewFormat): string
   const number = (value: number) => Number(value.toPrecision(3)).toLocaleString('en-US');
   const units = format === 'step' || format === 'iges' || format === '3mf' ? 'mm' : 'units';
   return `${number(size.width)} × ${number(size.depth)} × ${number(size.height)} ${units} (W × D × H)`;
+}
+
+/** The stage in Paper, Mist and Ink, or in the system's Canvas and CanvasText under forced colors. */
+function paint(container: HTMLElement, scene: Scene, surface: MeshStandardMaterial, edges: LineBasicMaterial, forced: boolean) {
+  if (!forced) {
+    scene.background = new Color(PAPER);
+    surface.color.set(MIST);
+    edges.color.set(INK);
+    edges.opacity = 0.7;
+    return;
+  }
+  const probe = document.createElement('span');
+  probe.style.cssText = 'display: none; color: CanvasText; background-color: Canvas';
+  container.append(probe);
+  const { color, backgroundColor } = getComputedStyle(probe);
+  probe.remove();
+  const canvas = new Color(backgroundColor);
+  const text = new Color(color);
+  scene.background = canvas;
+  surface.color.copy(canvas).lerp(text, 0.25);
+  edges.color.copy(text);
+  edges.opacity = 1;
 }

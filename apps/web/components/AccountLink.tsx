@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { readSignedIn } from '../lib/signed-in';
 import { createClient } from '../lib/supabase/client';
 
 /**
@@ -10,6 +11,8 @@ import { createClient } from '../lib/supabase/client';
 export function AccountLink({ dashboard, login }: { dashboard: string; login: string }) {
   const [signedIn, setSignedIn] = useState(false);
   useEffect(() => {
+    // The app's marker cookie reaches gigacad.site, where the app's own session cookies don't.
+    if (readSignedIn()) return setSignedIn(true);
     let current = true;
     void createClient()
       .auth.getSession()

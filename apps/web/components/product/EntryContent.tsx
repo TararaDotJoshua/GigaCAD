@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { MarkdownAsync } from 'react-markdown';
 import type { Project } from '../../lib/api';
 import { getFileText, getReadmeFiles, isMarkdownFile, isTextFile, MAX_README_BYTES } from '../../lib/product';
-import { mediaKind, mediaPath, readmeMarkdown } from '../../lib/readme';
+import { mediaKind, mediaPath, readmeMarkdown, rehypeDemoteHeadings } from '../../lib/readme';
 
 /**
  * A root file's contents on its own page, when the browser can show them: an image or video,
@@ -27,6 +27,7 @@ export async function EntryContent({ project, name, blob, size }: { project: Pro
   const text = await getFileText(project.id, blob, size);
   // Like thumbnails, it's a nicety: a failure just leaves it out.
   if (text === null && size <= MAX_README_BYTES) return null;
+  const options = readmeMarkdown(project, (paths) => getReadmeFiles(project.id, paths));
   return (
     <section className="readme entry-content" aria-label={`Contents of ${name}`}>
       {text === null ? (
@@ -37,7 +38,8 @@ export async function EntryContent({ project, name, blob, size }: { project: Pro
         <div className="readme-body readme-markdown">
           {/* Paths in it are read from the project root, as in the README. */}
           <MarkdownAsync
-            {...readmeMarkdown(project, (paths) => getReadmeFiles(project.id, paths))}
+            {...options}
+            rehypePlugins={[...options.rehypePlugins, rehypeDemoteHeadings]}
             components={{ a: ({ node: _node, href, ...props }) => (href?.startsWith('/') ? <Link href={href} {...props} /> : <a href={href} {...props} />) }}
           >
             {text}

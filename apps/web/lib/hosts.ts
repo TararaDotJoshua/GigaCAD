@@ -37,6 +37,25 @@ export function isPublicBrowsePath(pathname: string): boolean {
   return !!first && !isReservedHandle(first);
 }
 
+/**
+ * The canonical spelling of a path whose case is off, or null when it's fine. Handles, project
+ * slugs, and marketing pages are all lowercase, so `/Alex/Robot` is `/alex/robot` and `/DOCS/cli`
+ * is `/docs/cli`. Deeper segments (branch, folder, and file names) keep their case.
+ */
+export function canonicalPath(pathname: string): string | null {
+  const segments = pathname.split('/');
+  const first = segments[1];
+  if (!first) return null;
+  const lowered = pathname.toLowerCase();
+  if (first !== first.toLowerCase() && isMarketingPath(lowered)) return lowered;
+  const fixed = [...segments];
+  fixed[1] = first.toLowerCase();
+  // A user's page: the second segment is a project slug.
+  if (segments[2] && !isReservedHandle(fixed[1]!)) fixed[2] = segments[2].toLowerCase();
+  const canonical = fixed.join('/');
+  return canonical === pathname ? null : canonical;
+}
+
 /** Sign-in pages that work without a session. */
 export function isPublicAuthPath(pathname: string): boolean {
   return ['/login', '/signup', '/forgot-password', '/reset-password', '/auth'].some(

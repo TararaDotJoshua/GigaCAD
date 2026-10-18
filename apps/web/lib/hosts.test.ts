@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isAsset, isPublicBrowsePath, routeRequest } from './hosts';
+import { canonicalPath, isAsset, isPublicBrowsePath, routeRequest } from './hosts';
 
 const prod = { siteUrl: 'https://gigacad.site', appUrl: 'https://app.gigacad.site' };
 const local = { siteUrl: 'http://localhost:3000', appUrl: 'http://localhost:3000' };
@@ -44,5 +44,18 @@ describe('routeRequest', () => {
   it('lets signed-out visitors browse profiles, projects, and Explore, but not account pages', () => {
     for (const path of ['/explore', '/alex', '/alex/robot', '/alex/robot/releases/2']) expect(isPublicBrowsePath(path), path).toBe(true);
     for (const path of ['/', '/app', '/new', '/settings', '/settings/billing', '/billing/checkout', '/device', '/login']) expect(isPublicBrowsePath(path), path).toBe(false);
+  });
+
+  it('sends mixed-case handles, slugs, and marketing pages to their lowercase spelling', () => {
+    expect(canonicalPath('/Alex')).toBe('/alex');
+    expect(canonicalPath('/ALEX/Robot')).toBe('/alex/robot');
+    expect(canonicalPath('/alex/Robot/tree/Designs/Arm.SLDPRT')).toBe('/alex/robot/tree/Designs/Arm.SLDPRT');
+    expect(canonicalPath('/alex/robot/branches/Gripper-Redesign')).toBeNull();
+    expect(canonicalPath('/Pricing')).toBe('/pricing');
+    expect(canonicalPath('/DOCS/cli')).toBe('/docs/cli');
+    expect(canonicalPath('/Settings/billing')).toBe('/settings/billing');
+    expect(canonicalPath('/settings/Billing')).toBeNull();
+    expect(canonicalPath('/')).toBeNull();
+    expect(canonicalPath('/alex/robot')).toBeNull();
   });
 });

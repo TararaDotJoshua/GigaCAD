@@ -150,14 +150,16 @@ describe('stale checkout notices', () => {
     const projectId = await newProject();
     const branchId = await newBranch(projectId, `stale-${randomUUID().slice(0, 6)}`);
     await commitVersion(harness, api, projectId, branchId, { 'A.SLDPRT': unique('a') }, { checkIn: false });
-    await harness.sql`update branches set checked_out_at = now() - interval '8 days' where id = ${branchId}`;
+    await harness.sql`update branches set checked_out_at = now() - interval '10 days' where id = ${branchId}`;
     await harness.sql`update commits set created_at = now() - interval '8 days' where branch_id = ${branchId}`;
 
     await notifyStaleCheckouts(harness.sql, mailer, 'https://app.example');
     const mine = sent.filter((message) => message.text.includes(branchId) || message.subject.includes('stale-'));
     expect(mine).toHaveLength(1);
     expect(mine[0]!.to).toMatch(/@test\.gigacad\.site$/);
-    expect(mine[0]!.text).toContain('8 days ago');
+    // Counted from the last save, not the checkout, and says where to check in.
+    expect(mine[0]!.text).toContain('10 days ago, and it was last saved 8 days ago.');
+    expect(mine[0]!.text).toContain('giga checkin');
     expect(mine[0]!.text).toContain(`https://app.example/${owner.handle}/`);
 
     await notifyStaleCheckouts(harness.sql, mailer, 'https://app.example');

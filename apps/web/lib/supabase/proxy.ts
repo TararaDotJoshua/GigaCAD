@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
-import { dashboardPath, isAsset, isMarketingPath, isPublicAuthPath, isPublicBrowsePath, routeRequest, sites } from '../hosts';
+import { canonicalPath, dashboardPath, isAsset, isMarketingPath, isPublicAuthPath, isPublicBrowsePath, routeRequest, sites } from '../hosts';
 import { CURRENT_PATH_HEADER } from '../current-path';
 import { safeReturnPath } from '../return-path';
 import { supabaseConfig } from '../config';
@@ -8,6 +8,13 @@ import { supabaseConfig } from '../config';
 /** Splits the marketing and product hosts, refreshes the Supabase session, and sends signed-out visitors to log in (except on public pages). */
 export async function updateSession(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
+  // /Alex/Robot and /Pricing are /alex/robot and /pricing.
+  const canonical = isAsset(pathname) ? null : canonicalPath(pathname);
+  if (canonical) {
+    const url = request.nextUrl.clone();
+    url.pathname = canonical;
+    return NextResponse.redirect(url, 308);
+  }
   const route = routeRequest(request.headers.get('host') ?? request.nextUrl.host, pathname, search, sites());
   if (route.kind === 'redirect') return NextResponse.redirect(route.url, 308);
   const effectivePath = route.kind === 'rewrite' ? route.pathname : pathname;
@@ -35,7 +42,10 @@ export async function updateSession(request: NextRequest) {
     },
   });
   const { data } = await supabase.auth.getClaims();
-  if (!data?.claims && !isPublicAuthPath(effectivePath) && !isPublicBrowsePath(effectivePath)) {
+  // A server action posted from a page whose session has since ended answers for itself, so
+  // the form keeps what was typed. Redirected, the browser would get a login page it can't read.
+  const isAction = request.method === 'POST' && request.headers.has('next-action');
+  if (!data?.claims && !isAction && !isPublicAuthPath(effectivePath) && !isPublicBrowsePath(effectivePath)) {
     const login = request.nextUrl.clone();
     login.pathname = '/login';
     login.search = '';

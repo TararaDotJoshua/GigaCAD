@@ -371,8 +371,8 @@ function forOutsiders(result: ReleaseRequestDetail): ReleaseRequestDetail {
 }
 
 async function detail(db: Db, request: ReleaseRequestRow): Promise<ReleaseRequestDetail> {
-  const [names] = await db<{ requesterHandle: string | null; branchName: string; branchStatus: ReleaseRequestDetail['branch']['status']; baseNumber: number | null; reporterHandle: string | null }[]>`
-    select p.handle as requester_handle, b.name as branch_name, b.status as branch_status, base.number as base_number, rp.handle as reporter_handle
+  const [names] = await db<{ requesterHandle: string | null; branchName: string; branchStatus: ReleaseRequestDetail['branch']['status']; baseNumber: number | null; baseReleaseId: string | null; reporterHandle: string | null }[]>`
+    select p.handle as requester_handle, b.name as branch_name, b.status as branch_status, base.number as base_number, b.base_release_id, rp.handle as reporter_handle
     from branches b
     left join releases base on base.id = b.base_release_id
     left join profiles p on p.id = ${request.requesterId}
@@ -383,7 +383,9 @@ async function detail(db: Db, request: ReleaseRequestRow): Promise<ReleaseReques
   const active = request.status === 'open' || request.status === 'candidate';
   const inputs = await candidateInputs(db, request, active ? 'latest' : 'target');
   const { manifest: picked, ...preview } = buildCandidate(inputs);
-  const [target, released] = await Promise.all([releaseRef(db, request.targetReleaseId), releaseRef(db, request.releasedReleaseId)]);
+  // A finished request without a candidate was compared against its branch's base, as in candidateInputs.
+  const targetId = request.targetReleaseId ?? (active ? null : (names?.baseReleaseId ?? null));
+  const [target, released] = await Promise.all([releaseRef(db, targetId), releaseRef(db, request.releasedReleaseId)]);
 
   const given = await db<{ userId: string; handle: string; candidateManifestId: string; createdAt: Date }[]>`
     select a.user_id, p.handle, a.candidate_manifest_id, a.created_at
@@ -789,6 +791,9 @@ export async function approve(
   return sql.begin(async (tx) => {
     const request = await loadRequest(tx, id, true);
     const { role } = await projectAccess(tx, request.projectId, userId);
+    // Shares the project lock an export change holds (setFileExport), so this waits for a swap that
+    // hasn't committed yet, and the exports check below sees it.
+    await tx`select 1 from projects where id = ${request.projectId} for share`;
     await requireActive(tx, request);
     const manifestId = requireCandidate(request, input.candidateManifestId);
     await requireExportsSeen(tx, request, input.exportsChangedAt);

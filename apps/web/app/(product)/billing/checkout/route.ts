@@ -20,6 +20,7 @@ export async function GET(request: Request) {
     const { url: checkout } = await apiRequest<{ url: string }>(token, '/v1/billing/checkout', { method: 'POST', body: JSON.stringify({ plan, interval }) });
     return NextResponse.redirect(checkout, 303);
   } catch (error) {
-    return back(`?error=${error instanceof ApiError ? encodeURIComponent(error.code) : 'failed'}`);
+    // Keep the choice, so the plans table comes back on the same plan and interval.
+    return back(`?${new URLSearchParams({ error: error instanceof ApiError ? error.code : 'failed', plan, interval })}`);
   }
 }

@@ -3,11 +3,11 @@ import Link from 'next/link';
 import { ChangeList, changeSummary } from '../../../../../../components/product/ChangeList';
 import { MarkdownText } from '../../../../../../components/product/MarkdownText';
 import { PageHead } from '../../../../../../components/product/PageHead';
-import { ProjectDirectory } from '../../../../../../components/product/ProjectDirectory';
+import { ProjectDirectory, type DirectoryParams } from '../../../../../../components/product/ProjectDirectory';
 import { RelativeTime } from '../../../../../../components/product/RelativeTime';
 import { DownloadIcon, LockIcon } from '../../../../../../components/icons';
 import { projectPath, releaseDownloadPath, releasePath, releaseRequestPath } from '../../../../../../lib/paths';
-import { getProject, getRelease, getReleases, getViewer, parseNumber } from '../../../../../../lib/product';
+import { getFileExports, getProject, getRelease, getReleases, getViewer, parseNumber } from '../../../../../../lib/product';
 import type { ProjectParams } from '../../layout';
 
 type ReleaseParams = ProjectParams & { number: string };
@@ -24,13 +24,18 @@ export async function generateMetadata({ params }: { params: Promise<ReleasePara
 }
 
 /** A release: what it's called, what changed since the one before, and all its files, locked. */
-export default async function ReleasePage({ params }: { params: Promise<ReleaseParams> }) {
-  const { owner, project: slug, number } = await params;
+export default async function ReleasePage({ params, searchParams }: { params: Promise<ReleaseParams>; searchParams: Promise<DirectoryParams & { download?: string }> }) {
+  const [{ owner, project: slug, number }, { sort, order, offset, download }] = await Promise.all([params, searchParams]);
   const project = await getProject(owner, slug);
   const [{ release, files }, viewer, releases] = await Promise.all([getRelease(project.id, parseNumber(number)), getViewer(), getReleases(project.id)]);
+  // The exports this release was made with, which never change.
+  const exportable = files.filter((file) => /\.(sldprt|sldasm)$/i.test(file.path)).map((file) => file.blob);
+  const exported = getFileExports(project.id, exportable, release.number);
   const previous = release.number > 1 ? await getRelease(project.id, release.number - 1) : null;
   const newer = releases.some((other) => other.number === release.number + 1) ? release.number + 1 : null;
   const changes = diffManifests(previous?.files ?? [], files);
+  // The lookup takes 1000 files at a time; a release with more offers its exports either way.
+  const hasExports = exportable.length > 1000 || Object.keys(await exported).length > 0;
   return (
     <div className="page">
       <PageHead
@@ -54,12 +59,24 @@ export default async function ReleasePage({ params }: { params: Promise<ReleaseP
           </>
         }
         actions={
-          <a className="btn btn-primary" href={releaseDownloadPath(owner, slug, release.number)} download>
-            <DownloadIcon className="icon" />
-            Download all ({files.length} {files.length === 1 ? 'file' : 'files'})
-          </a>
+          <>
+            {hasExports && (
+              <a className="btn btn-secondary" href={`${releaseDownloadPath(owner, slug, release.number)}?exports=1`}>
+                Download all with STEP and STL exports
+              </a>
+            )}
+            <a className="btn btn-primary" href={releaseDownloadPath(owner, slug, release.number)}>
+              <DownloadIcon className="icon" />
+              Download all ({files.length} {files.length === 1 ? 'file' : 'files'})
+            </a>
+          </>
         }
       />
+      {download === 'failed' && (
+        <p className="notice" role="alert">
+          This release couldn’t be downloaded. Try again in a moment.
+        </p>
+      )}
       {release.notes && <MarkdownText className="notes release-notes">{release.notes}</MarkdownText>}
       <div className="stack">
         <section className="section">
@@ -67,7 +84,7 @@ export default async function ReleasePage({ params }: { params: Promise<ReleaseP
           {previous ? (
             <>
               {changes.length > 0 && <p className="change-summary">{changeSummary(changes)}</p>}
-              <ChangeList projectId={project.id} changes={changes} empty={`Same files as v${previous.release.number}.`} />
+              <ChangeList projectId={project.id} changes={changes} empty={`Same files as v${previous.release.number}.`} releaseNumber={release.number} />
             </>
           ) : (
             <p className="muted">Everything below is new in v1.</p>
@@ -81,7 +98,15 @@ export default async function ReleasePage({ params }: { params: Promise<ReleaseP
         </section>
         <section className="section">
           <h2>Files</h2>
-          <ProjectDirectory project={project} path={`Releases/v${release.number}`} params={{}} signedIn={!!viewer} viewerHandle={viewer?.handle ?? null} embedded />
+          <ProjectDirectory
+            project={project}
+            path={`Releases/v${release.number}`}
+            params={{ sort, order, offset }}
+            signedIn={!!viewer}
+            viewerHandle={viewer?.handle ?? null}
+            embedded
+            basePath={releasePath(owner, slug, release.number)}
+          />
         </section>
       </div>
     </div>

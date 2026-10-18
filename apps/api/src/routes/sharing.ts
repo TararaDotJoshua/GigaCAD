@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
-import { idParams, parse, requireCaller, viewerId } from '../http.js';
+import { idParams, parse, releaseNumberSchema, requireCaller, viewerId } from '../http.js';
 import { searchProfiles, withAvatars } from '../services/profiles.js';
 import { exploreProjects, forkProject, starProject, starredProjects, userProfile } from '../services/sharing.js';
 import { withCovers } from '../services/thumbnails.js';
@@ -53,7 +53,7 @@ export function sharingRoutes(app: FastifyInstance, { sql, storage }: AppDeps): 
   app.post('/v1/projects/:id/forks', async (request, reply) => {
     const { id } = parse(idParams, request.params);
     const input = parse(
-      z.object({ slug, name: z.string().min(1).max(100), releaseNumber: z.number().int().positive().optional(), visibility: visibility.optional() }),
+      z.object({ slug, name: z.string().min(1).max(100), releaseNumber: releaseNumberSchema.optional(), visibility: visibility.optional() }),
       request.body,
     );
     reply.status(201);

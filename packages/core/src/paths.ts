@@ -110,15 +110,3 @@ export function validateProjectPath(input: string): string {
   }
   return path;
 }
-
-/** Branch names: letters, digits, dots, dashes and underscores, starting and ending with a letter or digit. */
-export const BRANCH_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$/;
-
-/** What's wrong with a branch name, in a sentence for the person typing it; null when it's fine. */
-export function branchNameProblem(name: string): string | null {
-  if (name.length === 0) return 'Give the branch a name.';
-  if (name.length > 100) return 'Use 100 characters or fewer.';
-  if (/[^A-Za-z0-9._-]/.test(name)) return 'Use letters, digits, dots, dashes, or underscores.';
-  if (!BRANCH_NAME.test(name)) return 'Start and end with a letter or digit.';
-  return null;
-}

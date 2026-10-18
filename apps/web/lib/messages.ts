@@ -21,6 +21,9 @@ const MESSAGES: Readonly<Record<string, string>> = {
   nothing_to_fork: 'This project has no releases to fork yet.',
   billing_unavailable: 'Paid plans aren’t available yet.',
   no_billing_account: 'Choose a paid plan first.',
+  handle_taken: 'That handle is taken. Pick another.',
+  branch_not_archived: 'Only archived branches can be restored.',
+  branch_frozen: 'Close its release request before archiving this branch.',
   not_found: 'That no longer exists. Refresh the page to see where things are now.',
   owner_role_fixed: 'The project owner’s role can’t be changed.',
   single_owner: 'A project has exactly one owner.',
@@ -52,6 +55,8 @@ export function messageFor(error: unknown): string {
       const name = (error.details as { name?: string } | undefined)?.name;
       return name ? `There’s already something named ${name} in this folder.` : 'There’s already something with that name in this folder.';
     }
+    // A project that's gone missing mid-visit: removed from it, or it was deleted or made private.
+    if (error.code === 'not_found' && error.message === 'Project not found') return 'You no longer have access to this project. Refresh the page.';
     return releaseMessage(error) ?? MESSAGES[error.code] ?? sentence(error.message);
   }
   return 'Something went wrong. Try again.';

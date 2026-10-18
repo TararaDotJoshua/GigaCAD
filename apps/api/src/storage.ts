@@ -30,7 +30,7 @@ export interface BlobStorage {
    * `filename` makes browsers save the download under that name instead of the blob key.
    * `contentType` serves it inline as that type instead, for embedding an image or video.
    */
-  presignDownload(key: string, filename?: string, contentType?: string): Promise<string>;
+  presignDownload(key: string, filename?: string, contentType?: string, options?: PresignOptions): Promise<string>;
   stat(key: string): Promise<StoredObject | null>;
   copy(fromKey: string, toKey: string): Promise<void>;
   remove(key: string): Promise<void>;
@@ -38,11 +38,22 @@ export interface BlobStorage {
   read(key: string): Promise<Uint8Array>;
   /** Streams an object, for passing large files through without holding them in memory. */
   readStream(key: string): Promise<AsyncIterable<Uint8Array> | Iterable<Uint8Array>>;
-  write(key: string, body: Uint8Array, contentType: string): Promise<void>;
+  /** `cacheControl` is sent back with every download, for objects that never change. */
+  write(key: string, body: Uint8Array, contentType: string, cacheControl?: string): Promise<void>;
+}
+
+export interface PresignOptions {
+  /**
+   * The same link all day, valid for a week, so browsers can cache what it points to.
+   * For small objects that never change, like avatars.
+   */
+  readonly stable?: boolean;
 }
 
 export const MAX_SINGLE_UPLOAD_BYTES = 5 * 1024 ** 3;
 const URL_LIFETIME_SECONDS = 60 * 60;
+/** S3's longest presigned lifetime. A stable link is signed at the start of its UTC day. */
+const STABLE_URL_LIFETIME_SECONDS = 7 * 24 * 60 * 60;
 
 export const blobKey = (sha256: string) => `blobs/${sha256.slice(0, 2)}/${sha256}`;
 export const stagingKey = (uploadId: string) => `uploads/${uploadId}`;
@@ -78,10 +89,12 @@ export function createS3Storage(config: Config): BlobStorage {
       return { url, method: 'PUT', headers: { 'x-amz-checksum-sha256': checksum } };
     },
 
-    presignDownload(key, filename, contentType) {
+    presignDownload(key, filename, contentType, options) {
       const disposition = filename ? contentDisposition(filename, contentType ? 'inline' : 'attachment') : undefined;
+      const day = new Date();
+      day.setUTCHours(0, 0, 0, 0);
       return getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key, ResponseContentDisposition: disposition, ResponseContentType: contentType }), {
-        expiresIn: URL_LIFETIME_SECONDS,
+        ...(options?.stable ? { expiresIn: STABLE_URL_LIFETIME_SECONDS, signingDate: day } : { expiresIn: URL_LIFETIME_SECONDS }),
       });
     },
 
@@ -115,8 +128,8 @@ export function createS3Storage(config: Config): BlobStorage {
       return response.Body as unknown as AsyncIterable<Uint8Array>;
     },
 
-    async write(key, body, contentType) {
-      await client.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: contentType }));
+    async write(key, body, contentType, cacheControl) {
+      await client.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: contentType, CacheControl: cacheControl }));
     },
   };
 }

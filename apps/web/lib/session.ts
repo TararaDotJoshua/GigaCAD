@@ -28,3 +28,13 @@ export const getViewerEmail = cache(async (): Promise<string | null> => {
   const email = data?.claims?.email;
   return typeof email === 'string' ? email : null;
 });
+
+/**
+ * The signed-in user's email and any email change waiting for confirmation, fresh from Auth.
+ * The session's claims can lag an hour behind a change confirmed in another browser.
+ */
+export async function getViewerEmails(): Promise<{ email: string | null; pending: string | null }> {
+  const { data } = await (await createClient()).auth.getUser();
+  if (!data.user) return { email: await getViewerEmail(), pending: null };
+  return { email: data.user.email ?? null, pending: data.user.new_email ?? null };
+}

@@ -7,10 +7,11 @@ import { useState } from 'react';
 import { STORAGE_BANNER_COOKIE } from '../../lib/storage-banner';
 
 /**
- * A thin warning across the work pane once the viewer's own storage is 80% used. It can be
- * dismissed for the session until storage is full; then uploads stop, so it stays.
+ * A thin warning across the work pane once the viewer's own storage is nearly used
+ * (STORAGE_WARNING_SHARE). It can be dismissed for the session until storage is full;
+ * then uploads stop, so it stays.
  */
-export function StorageBanner({ usedBytes, quotaBytes }: { usedBytes: number; quotaBytes: number }) {
+export function StorageBanner({ usedBytes, quotaBytes, billingEnabled, home }: { usedBytes: number; quotaBytes: number; billingEnabled: boolean; home: string }) {
   const pathname = usePathname();
   const [hidden, setHidden] = useState(false);
   const full = usedBytes >= quotaBytes;
@@ -25,7 +26,8 @@ export function StorageBanner({ usedBytes, quotaBytes }: { usedBytes: number; qu
     <div className={`storage-banner${full ? ' is-full' : ''}`} role={full ? 'alert' : 'status'}>
       <p>
         {full ? 'Your storage is full, so uploads are paused' : `Your storage is ${Math.floor((usedBytes / quotaBytes) * 100)}% full`}: {formatBytes(usedBytes)} of {formatBytes(quotaBytes)} used.{' '}
-        <Link href={`/settings/billing?from=${encodeURIComponent(pathname)}`}>Upgrade</Link>
+        {/* With paid plans not open yet, the only way to more space is deleting projects. */}
+        {billingEnabled ? <Link href={`/settings/billing?from=${encodeURIComponent(pathname)}`}>Upgrade</Link> : <Link href={home}>Free up space</Link>}
       </p>
       {!full && (
         <button type="button" className="storage-banner-close" onClick={dismiss}>

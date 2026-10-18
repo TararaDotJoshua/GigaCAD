@@ -1,5 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { decodeSegments, folderFromUrl, freeSlug, treePath } from './paths';
+import { decodeSegments, folderFromUrl, freeSlug, projectPath, releasePath, treePath } from './paths';
+
+describe('project addresses', () => {
+  it('leaves real handles and slugs unchanged', () => {
+    expect(projectPath('alex', 'robot-arm.v2')).toBe('/alex/robot-arm.v2');
+    expect(releasePath('alex', 'robot', 3)).toBe('/alex/robot/releases/3');
+  });
+
+  it('never produces a path another site could take over', () => {
+    for (const owner of ['//evil.example', '/\\evil.example', '\\evil.example', '..', 'a/../..']) {
+      const path = projectPath(owner, 'x', 'releases', 1);
+      expect(path.startsWith('//')).toBe(false);
+      expect(path.startsWith('/\\')).toBe(false);
+      expect(path.split('/')).toHaveLength(5);
+      expect(new URL(path, 'https://app.gigacad.site').host).toBe('app.gigacad.site');
+    }
+  });
+});
 
 describe('free project address', () => {
   it('keeps a free address and numbers a taken one', () => {

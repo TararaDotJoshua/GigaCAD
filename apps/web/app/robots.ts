@@ -8,7 +8,11 @@ export default function robots(): MetadataRoute.Robots {
       userAgent: '*',
       allow: '/',
       // Whole segments only: a handle like "apple" or "loginov" starts with a reserved word but is a profile.
-      disallow: ['/app$', '/app/', '/settings$', '/settings/', '/new$', '/device$', '/device/', '/billing$', '/billing/', '/login$', '/signup$', '/forgot-password$', '/reset-password$', '/auth/'],
+      disallow: [
+        '/app$', '/app/', '/settings$', '/settings/', '/new$', '/billing$', '/billing/', '/auth/',
+        '/device$', '/device?', '/device/', '/login$', '/login?', '/signup$', '/signup?',
+        '/forgot-password$', '/forgot-password?', '/reset-password$', '/reset-password?',
+      ],
     },
     sitemap: `${sites().siteUrl}/sitemap.xml`,
   };

@@ -27,7 +27,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     openGraph: {
       siteName: "GigaCAD",
       // An article's openGraph replaces the site's, so it names the share image again.
-      images: ["/opengraph-image.png"],
+      images: [{ url: "/opengraph-image.png", width: 1200, height: 630, alt: "GigaCAD: Version control for the things you build." }],
       type: "article",
       title: article.title,
       description: article.summary,

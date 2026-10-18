@@ -2693,3 +2693,14 @@ p .text-link:hover {
     background: Highlight;
   }
 }
+
+/* The code-block fade follows the scroll position, so it stays under Reduce Motion. */
+@media (prefers-reduced-motion: reduce) {
+  @supports (animation-timeline: scroll()) {
+    .prose pre,
+    .prose-table {
+      animation: more-to-the-right linear both !important;
+      animation-timeline: scroll(self inline) !important;
+    }
+  }
+}

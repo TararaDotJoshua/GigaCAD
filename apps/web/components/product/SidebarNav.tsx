@@ -185,7 +185,7 @@ export function SidebarNav({
   );
 }
 
-/** Branches listed under a project before the rest fold into "All N branches". The active one always shows. */
+/** Branches listed under a project before the rest fold into an "All branches" link. The active one always shows. */
 const BRANCHES_SHOWN = 5;
 
 function ProjectSections({ project, pathname, onNavigate }: { project: NavProject; pathname: string; onNavigate: () => void }) {

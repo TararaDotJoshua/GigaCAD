@@ -2328,6 +2328,15 @@
 }
 
 /* A Remove or Leave confirm wraps at a fixed width instead of stretching the column (the cell is 1% wide, nowrap). */
+.shell .data-table .cell-action .form-status {
+  display: inline-block;
+  width: max-content;
+  max-width: 24ch;
+  text-align: left;
+  vertical-align: middle;
+  white-space: normal;
+}
+
 .shell .data-table .cell-action .confirm-inline {
   width: max-content;
   max-width: 28ch;
@@ -3589,6 +3598,18 @@
   height: 26px;
 }
 
+/* The link around each path is the row's flex item, so it shrinks and lets PathText cut the folders. */
+.shell .latest-release-files .latest-release-path {
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.shell .latest-release-path:hover .path-name {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .shell .latest-release-more {
   display: inline-block;
   margin-top: 12px;
@@ -4164,5 +4185,21 @@
   .shell .member-role select {
     appearance: auto;
     background-image: none;
+  }
+}
+
+/* Reduce Motion turns animations off site-wide; these follow the scroll position and never move by themselves. */
+@media (prefers-reduced-motion: reduce) {
+  @supports (animation-timeline: scroll()) {
+    .shell .table-wrap .data-table td.cell-action:last-child,
+    .shell .table-wrap .data-table th:last-child:has(> .sr-only) {
+      animation: table-more linear both !important;
+      animation-timeline: --table-scroll !important;
+    }
+
+    .shell .table-wrap:not(:has(td.cell-action:last-child)) {
+      animation: table-fade linear both !important;
+      animation-timeline: scroll(self inline) !important;
+    }
   }
 }

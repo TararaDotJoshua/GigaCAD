@@ -228,6 +228,9 @@ describe('rebuilds', () => {
     // A blank message (as installed 0.1.0 clients may forward) is left out, not a reason to refuse the report.
     expect((await report('passed', [{ level: 'info', message: '   ' }])).status).toBe(200);
     expect((await asCam.get(`/v1/release-requests/${id}/rebuild-report`)).body.total).toBe(0);
+    // A blank message's level still counts: a blank error can't pass, and a blank warning raises a pass.
+    expect((await report('passed', [{ level: 'error', message: '' }])).body.releaseRequest.rebuildStatus).toBe('failed');
+    expect((await report('passed', [{ level: 'warning', message: '  ' }])).body.releaseRequest.rebuildStatus).toBe('passed_with_warnings');
     const messages = [
       ...Array.from({ length: 60 }, (_, index) => ({ level: 'info', message: `Note ${index}` })),
       { level: 'warning', message: 'Mate is over-defined', path: 'Robot.SLDASM' },

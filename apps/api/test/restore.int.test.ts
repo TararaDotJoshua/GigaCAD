@@ -56,10 +56,14 @@ describe('restoring deleted projects', () => {
     expect(branches.body.map((item: { name: string }) => item.name)).toContain('work');
   });
 
-  it('keeps the address reserved while the project is deleted', async () => {
+  it('keeps the address reserved while the project is deleted, and says so', async () => {
     const project = await newProject();
+    const live = (await api.post('/v1/projects', { slug: project.slug, name: 'Twin' })).body.error;
+    expect(live.code).toBe('address_taken');
     await api.delete(`/v1/projects/${project.id}`);
-    expect((await api.post('/v1/projects', { slug: project.slug, name: 'Taken' })).status).toBe(409);
+    const taken = await api.post('/v1/projects', { slug: project.slug, name: 'Taken' });
+    expect(taken.status).toBe(409);
+    expect(taken.body.error).toMatchObject({ code: 'address_deleted', details: { projectId: project.id } });
   });
 
   it('lets only the owner see and restore a deleted project', async () => {
@@ -71,6 +75,39 @@ describe('restoring deleted projects', () => {
     expect((await other.post(`/v1/projects/${project.id}/restore`)).status).toBe(404);
     expect((await client(harness, null).post(`/v1/projects/${project.id}/restore`)).status).toBe(401);
     expect((await api.post(`/v1/projects/${randomUUID()}/restore`)).status).toBe(404);
+  });
+
+  it('refuses a restore that would go past the storage limit', async () => {
+    // Its own account, so the lowered limit doesn't reach the other tests.
+    const tight = await createUser(harness, 'tight');
+    const as = client(harness, tight);
+    const create = async (name: string) => {
+      const project = await as.post('/v1/projects', { slug: `${name.toLowerCase()}-${randomUUID().slice(0, 8)}`, name });
+      const branch = await as.post(`/v1/projects/${project.body.id}/branches`, { name: 'work' });
+      return { id: project.body.id as string, branchId: branch.body.id as string };
+    };
+    const deleted = await create('Deleted');
+    const kept = `kept ${randomUUID()}`;
+    const freed = `freed ${randomUUID()}`;
+    // One file it shares with a live project costs nothing to bring back; the other does.
+    await commitVersion(harness, as, deleted.id, deleted.branchId, { 'Kept.SLDPRT': kept, 'Freed.SLDPRT': freed });
+    expect((await as.delete(`/v1/projects/${deleted.id}`)).status).toBe(204);
+
+    // The freed space goes to another project.
+    const live = await create('Live');
+    await commitVersion(harness, as, live.id, live.branchId, { 'Kept.SLDPRT': kept, 'New.SLDPRT': `new ${randomUUID()}` });
+    const usedNow = (await as.get('/v1/me/billing')).body.usedBytes as number;
+    await harness.sql`update profiles set quota_bytes = ${usedNow + Buffer.byteLength(freed) - 1} where id = ${tight.id}`;
+
+    const refused = await as.post(`/v1/projects/${deleted.id}/restore`);
+    expect(refused.status).toBe(403);
+    expect(refused.body.error).toMatchObject({ code: 'storage_full', details: { neededBytes: Buffer.byteLength(freed) } });
+    expect(await deletedIds(as)).toContain(deleted.id);
+    expect((await as.get('/v1/me/billing')).body.usedBytes).toBe(usedNow);
+
+    await harness.sql`update profiles set quota_bytes = ${usedNow + Buffer.byteLength(freed)} where id = ${tight.id}`;
+    expect((await as.post(`/v1/projects/${deleted.id}/restore`)).status).toBe(200);
+    expect((await as.get('/v1/me/billing')).body.usedBytes).toBe(usedNow + Buffer.byteLength(freed));
   });
 
   it('refuses a project that is not deleted, or past its 30 days', async () => {

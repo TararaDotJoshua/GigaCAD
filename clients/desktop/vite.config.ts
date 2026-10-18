@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url';
-import { defineConfig } from 'vite';
+import { defaultClientConditions, defineConfig } from 'vite';
 
 // The window's UI. It's loaded from the bundle folder with file://, so asset paths are relative.
 export default defineConfig({
@@ -12,6 +12,8 @@ export default defineConfig({
     sourcemap: false,
   },
   server: { port: 5178, strictPort: true },
+  // @gigacad/core from source, as the main process gets it (tsconfig's customConditions).
+  resolve: { conditions: ['@gigacad/source', ...defaultClientConditions] },
   // Found up front, so the dev server never re-optimizes (and splits React in two) mid-load.
   optimizeDeps: { include: ['react', 'react-dom/client', 'react/jsx-runtime', 'react/jsx-dev-runtime'] },
   oxc: { jsx: { runtime: 'automatic' } },

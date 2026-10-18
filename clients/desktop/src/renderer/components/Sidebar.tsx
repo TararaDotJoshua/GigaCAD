@@ -16,6 +16,7 @@ export function Sidebar({ state, selection, onSelect }: Props) {
   const projects = state.projects.filter((project) => !project.hidden);
   const owners = [...new Set(projects.map((project) => project.owner))];
   const fallback = selection.kind === 'none' ? projects[0]?.id : undefined;
+  const setupFailed = state.setup.some((step) => step.status === 'error');
 
   return (
     <aside className="sidebar">
@@ -43,11 +44,13 @@ export function Sidebar({ state, selection, onSelect }: Props) {
           <span className="name">@{state.user?.handle}</span>
           <button
             type="button"
-            className={`link${selection.kind === 'settings' ? ' is-active' : ''}`}
-            aria-label="Settings"
+            className={`link settings-button${selection.kind === 'settings' ? ' is-active' : ''}`}
+            aria-label={setupFailed ? 'Settings: a setup step failed' : 'Settings'}
+            title={setupFailed ? 'A setup step failed' : 'Settings'}
             onClick={() => onSelect({ kind: 'settings' })}
           >
             <SettingsIcon className="icon" />
+            {setupFailed ? <span className="dot dot-danger" aria-hidden="true" /> : null}
           </button>
         </div>
       </div>
@@ -69,7 +72,8 @@ function ProjectRows({
   thisComputer: string;
 }) {
   const selected = selection.kind === 'project' && selection.projectId === project.id;
-  const shown = project.branches.filter((branch) => branch.downloaded || branch.holder === 'me');
+  // Downloaded branches and yours, plus the one that's open (dimmed when it isn't downloaded).
+  const shown = project.branches.filter((branch) => branch.downloaded || branch.holder === 'me' || (selected && selection.branch === branch.name));
   return (
     <li>
       <button
@@ -80,7 +84,7 @@ function ProjectRows({
       >
         <CubeIcon className="icon" />
         <span className="name">{project.name}</span>
-        {project.error ? <span className="dot dot-danger" title={project.error} /> : null}
+        {project.error ? <span className="dot dot-danger" title={project.error} /> : project.conflicts.length > 0 ? <span className="dot dot-caution" title="A root file changed here and on gigacad.site" /> : null}
       </button>
       {shown.length > 0 ? (
         <ul className="nav">
@@ -88,7 +92,8 @@ function ProjectRows({
             <li key={branch.id}>
               <button
                 type="button"
-                className={`nav-row is-branch${selected && selection.branch === branch.name ? ' is-active' : ''}`}
+                className={`nav-row is-branch${selected && selection.branch === branch.name ? ' is-active' : ''}${branch.downloaded ? '' : ' is-cloud'}`}
+                title={branch.downloaded ? undefined : `${branch.name} isn’t downloaded`}
                 onClick={() => onSelect({ kind: 'project', projectId: project.id, branch: branch.name })}
               >
                 <BranchIcon className="icon" />

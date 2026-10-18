@@ -1,4 +1,11 @@
-<h1>Confirm your new GigaCAD email</h1>
-<p>Someone asked to change your GigaCAD account email from {{ .Email }} to {{ .NewEmail }}. The change finishes once it is confirmed from both addresses.</p>
+{{ if eq .SendingTo .Email }}
+<h1>Someone asked to move your GigaCAD account to another email</h1>
+<p>Someone asked to change your GigaCAD account email from {{ .Email }} to {{ .NewEmail }}. If that was you, confirm it here. The change finishes once it is confirmed from both addresses.</p>
 <p><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=email_change&amp;next={{ .RedirectTo }}">Confirm the change</a></p>
-<p>If you did not ask for this, ignore this email and change your password.</p>
+<p>If you did not ask for this, do not click the link. Log in and change your password: the change cannot finish without this address.</p>
+{{ else }}
+<h1>Confirm your new GigaCAD email</h1>
+<p>Someone asked to change a GigaCAD account email from {{ .Email }} to {{ .NewEmail }}. The change finishes once it is confirmed from both addresses.</p>
+<p><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=email_change&amp;next={{ .RedirectTo }}">Confirm the change</a></p>
+<p>If you did not ask for this, ignore this email.</p>
+{{ end }}

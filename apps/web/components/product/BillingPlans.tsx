@@ -15,14 +15,19 @@ export function BillingPlans({
   paying,
   billingEnabled,
   from,
+  chosen,
+  initialInterval,
 }: {
   current: PlanId;
   currentInterval: BillingInterval | null;
   paying: boolean;
   billingEnabled: boolean;
   from?: string;
+  /** A plan picked for a checkout that didn't finish, marked so it's easy to find again. */
+  chosen?: PlanId;
+  initialInterval?: BillingInterval;
 }) {
-  const [interval, setInterval] = useState<BillingInterval>(currentInterval ?? 'monthly');
+  const [interval, setInterval] = useState<BillingInterval>(initialInterval ?? currentInterval ?? 'monthly');
   return (
     <div className="billing-plans">
       <div className="segmented interval-toggle" role="group" aria-label="Billing interval">
@@ -44,10 +49,12 @@ export function BillingPlans({
           </thead>
           <tbody>
             {PLANS.map((plan) => {
-              const isCurrent = plan.id === current && (plan.id === 'free' || currentInterval === interval);
+              // Your plan stays marked whichever interval the table shows; the other one says how you're billed.
+              const isCurrent = plan.id === current;
+              const billedOtherwise = isCurrent && plan.id !== 'free' && currentInterval !== null && currentInterval !== interval;
               const price = plan.id === 'free' ? '$0' : interval === 'monthly' ? `$${plan.monthlyUsd} / month` : `$${plan.yearlyUsd} / year`;
               return (
-                <tr key={plan.id}>
+                <tr key={plan.id} className={plan.id === chosen && !isCurrent ? 'is-chosen' : undefined} aria-current={plan.id === chosen && !isCurrent ? 'true' : undefined}>
                   <td>
                     <strong>{plan.name}</strong>
                     <span className="plan-summary">{plan.summary}</span>
@@ -56,7 +63,7 @@ export function BillingPlans({
                   <td className="nowrap">{price}</td>
                   <td className="cell-action">
                     {isCurrent ? (
-                      <span className="badge">Current plan</span>
+                      <span className="badge">{billedOtherwise ? `Current plan (billed ${currentInterval})` : 'Current plan'}</span>
                     ) : paying || plan.id === 'free' ? null : billingEnabled ? (
                       <ActionButton action={() => choosePlan(plan.id, interval, from)} className="btn btn-primary">
                         Choose {plan.name}

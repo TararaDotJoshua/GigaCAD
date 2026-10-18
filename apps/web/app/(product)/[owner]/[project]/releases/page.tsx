@@ -43,7 +43,7 @@ export default async function Releases({ params }: { params: Promise<ProjectPara
                 </Link>
                 <p className="timeline-meta">
                   {index === 0 && <StatusBadge tone="signal">Latest</StatusBadge>} Released <RelativeTime value={release.createdAt} />
-                  {release.createdByHandle && ` by @${release.createdByHandle}`} · <a href={releaseDownloadPath(owner, slug, release.number)} download>Download</a>
+                  {release.createdByHandle && ` by @${release.createdByHandle}`} · <a href={releaseDownloadPath(owner, slug, release.number)}>Download</a>
                 </p>
                 {release.notes && <MarkdownText className="timeline-text release-notes">{release.notes}</MarkdownText>}
               </div>

@@ -3,6 +3,8 @@ import Link from 'next/link';
 export interface Crumb {
   readonly label: string;
   readonly href?: string;
+  /** A real file, folder, or branch name, set in mono like the file tables. */
+  readonly mono?: boolean;
 }
 
 /** Past this many breadcrumbs, the middle ones fold into a "…" menu: deep folders would otherwise take many lines. */
@@ -36,11 +38,25 @@ export function PageHead({
                       …
                     </summary>
                     <div className="menu-list">
-                      {folded.map((hidden, at) => (hidden.href ? <Link key={at} href={hidden.href}>{hidden.label}</Link> : <span key={at}>{hidden.label}</span>))}
+                      {folded.map((hidden, at) =>
+                        hidden.href ? (
+                          <Link key={at} href={hidden.href} className={hidden.mono ? 'mono' : undefined}>
+                            {hidden.label}
+                          </Link>
+                        ) : (
+                          <span key={at} className={hidden.mono ? 'mono' : undefined}>
+                            {hidden.label}
+                          </span>
+                        ),
+                      )}
                     </div>
                   </details>
                 ) : crumb.href ? (
-                  <Link href={crumb.href}>{crumb.label}</Link>
+                  <Link href={crumb.href} className={crumb.mono ? 'mono' : undefined}>
+                    {crumb.label}
+                  </Link>
+                ) : crumb.mono ? (
+                  <span className="mono">{crumb.label}</span>
                 ) : (
                   crumb.label
                 )}

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { DownloadIcon, ForkIcon, LockIcon } from '../../../../components/icons';
 import { ActivityLine } from '../../../../components/product/ActivityLine';
+import { ExpandableText } from '../../../../components/product/ExpandableText';
 import { FileGlyph } from '../../../../components/product/FileGlyph';
 import { MemberWelcome } from '../../../../components/product/MemberWelcome';
 import { PageHead } from '../../../../components/product/PageHead';
@@ -12,8 +13,9 @@ import { StatusBadge } from '../../../../components/product/StatusBadge';
 import type { Project, Release } from '../../../../lib/api';
 import { getActivity } from '../../../../lib/activity';
 import { releaseFileOrder, releaseName } from '../../../../lib/describe';
+import { hasModel } from '../../../../lib/models';
 import { projectPath, releaseDownloadPath, releasePath, treePath } from '../../../../lib/paths';
-import { getBranches, getProject, getRelease, getReleaseRequests, getReleases, getTags, getViewer } from '../../../../lib/product';
+import { getBranches, getProject, getRelease, getReleaseRequests, getReleases, getTags, getThumbnails, getViewer } from '../../../../lib/product';
 
 /** How much of the feed the project page shows; the rest is on the activity page. */
 const ACTIVITY_SHOWN = 5;
@@ -31,6 +33,7 @@ export async function ProjectFilesPage({
   params,
   justForked = false,
   finishStar = false,
+  restored = false,
 }: {
   owner: string;
   slug: string;
@@ -40,6 +43,8 @@ export async function ProjectFilesPage({
   justForked?: boolean;
   /** Clicked Star while signed out, then logged in. */
   finishStar?: boolean;
+  /** Just brought back from Deleted projects. */
+  restored?: boolean;
 }) {
   const project = await getProject(owner, slug);
   const isRoot = path === '';
@@ -69,7 +74,7 @@ export async function ProjectFilesPage({
                 </Link>
               </span>
             )}
-            {project.description && <span>{project.description}</span>}
+            {project.description && <ExpandableText className="project-description">{project.description}</ExpandableText>}
           </>
         }
         actions={
@@ -95,6 +100,11 @@ export async function ProjectFilesPage({
         }
       />
       {isRoot && !searching && <ProjectStatus project={project} />}
+      {restored && (
+        <p className="notice" role="status">
+          Restored {project.name}, with its history, members, and files.
+        </p>
+      )}
       {justForked && project.forkedFrom && project.role === 'owner' && (
         <p className="notice" role="status">
           Forked {project.forkedFrom.ownerHandle}/{project.forkedFrom.slug} v{project.forkedFrom.releaseNumber}. This copy is yours, and its history starts here.
@@ -151,6 +161,9 @@ async function LatestRelease({ project, release }: { project: Project; release: 
   const slug = project.slug;
   const { files } = await getRelease(project.id, release.number);
   const shown = [...files].sort(releaseFileOrder).slice(0, RELEASE_FILES_SHOWN);
+  // The release's own thumbnails, drawn from the exports it was made with.
+  const thumbnails = await getThumbnails(project.id, shown.filter((file) => hasModel(file.path)).map((file) => file.blob), release.number);
+  const folderOf = (path: string) => `Releases/v${release.number}${path.includes('/') ? `/${path.slice(0, path.lastIndexOf('/'))}` : ''}`;
   return (
     <section className="latest-release-section" aria-labelledby="latest-release-heading">
       <div className="latest-release-head">
@@ -167,7 +180,7 @@ async function LatestRelease({ project, release }: { project: Project; release: 
           </p>
         </div>
         <div className="latest-release-actions">
-          <a className="btn btn-primary btn-small" href={releaseDownloadPath(owner, slug, release.number)} download>
+          <a className="btn btn-primary btn-small" href={releaseDownloadPath(owner, slug, release.number)}>
             <DownloadIcon className="icon" />
             Download all
           </a>
@@ -179,8 +192,10 @@ async function LatestRelease({ project, release }: { project: Project; release: 
       <ul className="latest-release-files">
         {shown.map((file) => (
           <li key={file.itemId}>
-            <FileGlyph path={file.path} />
-            <PathText path={file.path} />
+            <FileGlyph path={file.path} thumbnailUrl={thumbnails[file.blob]} />
+            <Link href={treePath(owner, slug, folderOf(file.path))} className="latest-release-path" prefetch={false}>
+              <PathText path={file.path} />
+            </Link>
           </li>
         ))}
       </ul>

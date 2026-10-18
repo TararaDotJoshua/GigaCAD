@@ -34,12 +34,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         crumbs={[]}
         title="Your projects"
         actions={
-          needsHandle ? (
-            <button type="button" className="btn btn-primary" disabled title="Choose a handle first. Project addresses start with it.">
-              <PlusIcon className="icon" />
-              New project
-            </button>
-          ) : (
+          // Until there's a handle, choosing one (below) is the only next step.
+          needsHandle ? undefined : (
             <Link href="/new" className="btn btn-primary">
               <PlusIcon className="icon" />
               New project
@@ -104,6 +100,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 }
 
 function ProjectTable({ projects, label, showRole, leaveAs }: { projects: Project[]; label: string; showRole: boolean; leaveAs?: string }) {
+  // Scrolls sideways inside itself, never the page, whatever the names.
   return (
     <div className="table-wrap">
       <table className="data-table" aria-label={label}>

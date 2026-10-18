@@ -1,18 +1,25 @@
 import { formatBytes } from '@gigacad/core';
 import Link from 'next/link';
-import { deleteEntry, moveEntry } from '../../../../actions';
+import { notFound } from 'next/navigation';
+import { deleteEntry, moveEntry, replaceRootFile } from '../../../../actions';
 import { ActionButton } from '../../../../../../components/product/ActionButton';
 import { ActionForm } from '../../../../../../components/product/ActionForm';
 import { DownloadButton } from '../../../../../../components/product/DownloadButton';
+import { EntryContent } from '../../../../../../components/product/EntryContent';
 import { FavoriteButton } from '../../../../../../components/product/FavoriteButton';
+import { FileActions } from '../../../../../../components/product/FileActions';
+import { FileGlyph } from '../../../../../../components/product/FileGlyph';
 import { PageHead } from '../../../../../../components/product/PageHead';
-import { PreviewButton } from '../../../../../../components/product/PreviewButton';
+import { ProblemPanel } from '../../../../../../components/product/ProblemPanel';
 import { RelativeTime } from '../../../../../../components/product/RelativeTime';
 import { TagPicker } from '../../../../../../components/product/TagPicker';
 import { ReplaceFile } from '../../../../../../components/product/UploadFiles';
-import { previewFormat } from '../../../../../../lib/preview';
+import type { FileExport, Project } from '../../../../../../lib/api';
+import { dashboardPath } from '../../../../../../lib/hosts';
+import { hasModel } from '../../../../../../lib/models';
+import { isSolidWorks } from '../../../../../../lib/preview';
 import { projectPath, treePath } from '../../../../../../lib/paths';
-import { getEntry, getProject, getRootFolders, getTags, getViewer } from '../../../../../../lib/product';
+import { findEntry, getEntry, getEvents, getFileExports, getProject, getRootFolders, getTags, getThumbnails, getViewer } from '../../../../../../lib/product';
 import type { ProjectParams } from '../../layout';
 
 type EntryParams = ProjectParams & { entryId: string };
@@ -32,13 +39,20 @@ export async function generateMetadata({ params }: { params: Promise<EntryParams
 export default async function EntryPage({ params }: { params: Promise<EntryParams> }) {
   const { owner, project: slug, entryId } = await params;
   const project = await getProject(owner, slug);
-  const [detail, tags, folders, viewer] = await Promise.all([getEntry(project.id, entryId), getTags(project.id), getRootFolders(project.id), getViewer()]);
+  const detail = await findEntry(project.id, entryId);
+  if (!detail) return <DeletedEntry project={project} entryId={entryId} />;
+  const [tags, folders, viewer] = await Promise.all([getTags(project.id), getRootFolders(project.id), getViewer()]);
   const { entry, revisions, writable } = detail;
   const segments = entry.path.split('/');
   const parentPath = segments.slice(0, -1).join('/');
   // A folder can't move into itself or anything inside it.
   const destinations = folders.filter((folder) => entry.kind === 'file' || (folder.id !== entry.id && !folder.path.toLowerCase().startsWith(`${entry.path.toLowerCase()}/`)));
-  const format = previewFormat(entry.name);
+  // A SolidWorks part previews and downloads through its exports, as it does in the file list.
+  const blob = entry.blob;
+  const [exports, thumbnails] =
+    blob && hasModel(entry.name)
+      ? await Promise.all([isSolidWorks(entry.name) ? getFileExports(project.id, [blob]) : Promise.resolve<Record<string, FileExport[]>>({}), getThumbnails(project.id, [blob])])
+      : [{}, {}];
 
   return (
     <div className="page">
@@ -46,10 +60,15 @@ export default async function EntryPage({ params }: { params: Promise<EntryParam
         crumbs={[
           { label: owner, href: `/${owner}` },
           { label: project.name, href: projectPath(owner, slug) },
-          ...segments.slice(0, -1).map((name, index) => ({ label: name, href: treePath(owner, slug, segments.slice(0, index + 1).join('/')) })),
-          { label: entry.name },
+          ...segments.slice(0, -1).map((name, index) => ({ label: name, href: treePath(owner, slug, segments.slice(0, index + 1).join('/')), mono: true })),
+          { label: entry.name, mono: true },
         ]}
-        title={<span className="mono">{entry.name}</span>}
+        title={
+          <span className="entry-title">
+            {entry.kind === 'file' && <FileGlyph path={entry.name} thumbnailUrl={entry.blob ? thumbnails[entry.blob] : undefined} />}
+            <span className="mono">{entry.name}</span>
+          </span>
+        }
         meta={
           <>
             <span>{entry.kind === 'folder' ? 'Folder' : `Revision ${entry.revision}`}</span>
@@ -67,16 +86,16 @@ export default async function EntryPage({ params }: { params: Promise<EntryParam
             </Link>
           ) : (
             <span className="action">
-              {format && entry.blob && <PreviewButton projectId={project.id} sha256={entry.blob} path={entry.name} format={format} />}
               {viewer && entry.itemId && <FavoriteButton projectId={project.id} itemId={entry.itemId} favorite={detail.favorite} name={entry.name} />}
               {writable && entry.itemId && <TagPicker projectId={project.id} itemId={entry.itemId} name={entry.name} tags={tags} selected={detail.tags} />}
-              {entry.blob && <DownloadButton projectId={project.id} sha256={entry.blob} path={entry.name} />}
+              {entry.blob && <FileActions projectId={project.id} path={entry.name} blob={entry.blob} size={revisions[0]?.size} exports={exports[entry.blob] ?? []} />}
             </span>
           )
         }
       />
       <div className="page-grid">
         <div className="stack">
+          {entry.kind === 'file' && entry.blob && revisions[0] && <EntryContent project={project} name={entry.name} blob={entry.blob} size={revisions[0].size} />}
           {entry.kind === 'file' && (
             <section className="section">
               <h2>Revisions</h2>
@@ -109,6 +128,16 @@ export default async function EntryPage({ params }: { params: Promise<EntryParam
                         </td>
                         <td className="muted">{formatBytes(revision.size)}</td>
                         <td className="cell-action">
+                          {writable && revision.number !== entry.revision && revision.blob !== entry.blob && (
+                            <ActionButton
+                              action={replaceRootFile.bind(null, project.id, entry.id, revision.blob, entry.revision)}
+                              className="btn btn-secondary btn-small"
+                              confirm={`Make revision ${revision.number} current? It’s saved as revision ${(entry.revision ?? 0) + 1}; nothing is lost.`}
+                              pendingLabel="Saving…"
+                            >
+                              Make current
+                            </ActionButton>
+                          )}
                           <DownloadButton projectId={project.id} sha256={revision.blob} path={entry.name} />
                         </td>
                       </tr>
@@ -125,7 +154,7 @@ export default async function EntryPage({ params }: { params: Promise<EntryParam
               <section className="rail-card">
                 <h2>Replace</h2>
                 <p className="muted">Upload new contents. They become revision {(entry.revision ?? 0) + 1}.</p>
-                <ReplaceFile projectId={project.id} entryId={entry.id} name={entry.name} owner={{ handle: project.ownerHandle, isYou: viewer?.handle === project.ownerHandle }} />
+                <ReplaceFile projectId={project.id} entryId={entry.id} name={entry.name} revision={entry.revision} owner={{ handle: project.ownerHandle, isYou: viewer?.handle === project.ownerHandle }} />
               </section>
             )}
             <details className="rail-card rail-details">
@@ -174,3 +203,32 @@ export default async function EntryPage({ params }: { params: Promise<EntryParam
     </div>
   );
 }
+
+/**
+ * A root file or folder that isn't there anymore. If the project's feed says it was deleted, say
+ * so and link to the folder it was in, instead of a bare not-found page.
+ */
+async function DeletedEntry({ project, entryId }: { project: Project; entryId: string }) {
+  const events = await getEvents(project.id, 200).catch(() => []);
+  const deleted = events.find((event) => event.kind === 'directory_entry_deleted' && event.subjectId === entryId);
+  const path = typeof deleted?.payload?.path === 'string' ? deleted.payload.path : null;
+  if (!deleted || path === null) notFound();
+  const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+  const owner = project.ownerHandle;
+  return (
+    <ProblemPanel
+      title={deleted.payload?.kind === 'folder' ? 'This folder was deleted' : 'This file was deleted'}
+      home={dashboardPath()}
+      action={
+        <Link href={treePath(owner, project.slug, parent)} className="btn btn-primary">
+          {parent ? `Open ${parent.split('/').pop()}` : `Back to ${project.name}`}
+        </Link>
+      }
+    >
+      <p>
+        <span className="mono">{path}</span> was deleted <RelativeTime value={deleted.createdAt} />. Branches and releases keep their own copies of their files.
+      </p>
+    </ProblemPanel>
+  );
+}
+

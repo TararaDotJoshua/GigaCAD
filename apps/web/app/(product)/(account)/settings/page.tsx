@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { formatBytes, getPlan, isPlaceholderHandle } from '@gigacad/core';
-import { removeAvatar, restoreProject, saveProfile, signOutDevice } from '../../actions';
+import { removeAvatar, saveProfile, signOutDevice } from '../../actions';
 import { ActionButton } from '../../../../components/product/ActionButton';
 import { ActionForm } from '../../../../components/product/ActionForm';
 import { EmailForm, PasswordForm } from '../../../../components/product/AccountSecurity';
@@ -11,22 +11,27 @@ import { EmptyState } from '../../../../components/product/EmptyState';
 import { HandleField } from '../../../../components/product/HandleField';
 import { PageHead } from '../../../../components/product/PageHead';
 import { RelativeTime } from '../../../../components/product/RelativeTime';
+import { RestoreProjectButton } from '../../../../components/product/RestoreProjectButton';
 import { apiRequest, type DeletedProject, type DeviceToken } from '../../../../lib/api';
-import { getBilling, getMe } from '../../../../lib/product';
-import { getViewerEmail, requireAccessToken } from '../../../../lib/session';
+import { APP_URL } from '../../../../components/site';
+import { getBilling, getMe, getMyProjects } from '../../../../lib/product';
+import { getViewerEmails, requireAccessToken } from '../../../../lib/session';
 
 export const metadata = { title: 'Account' };
 
 export default async function AccountSettings({ searchParams }: { searchParams: Promise<{ email?: string }> }) {
   const token = await requireAccessToken();
-  const [me, billing, email, query, devices, deleted] = await Promise.all([
+  const [me, billing, emails, query, devices, deleted, projects] = await Promise.all([
     getMe(),
     getBilling(),
-    getViewerEmail(),
+    getViewerEmails(),
     searchParams,
     apiRequest<DeviceToken[]>(token, '/v1/me/tokens'),
     apiRequest<DeletedProject[]>(token, '/v1/me/deleted-projects'),
+    getMyProjects(),
   ]);
+  const placeholder = isPlaceholderHandle(me.handle);
+  const owned = projects.filter((project) => project.ownerHandle === me.handle).length;
   return (
     <div className="page page-narrow">
       <PageHead crumbs={[]} title="Account" />
@@ -44,10 +49,10 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
       <section className="section">
         <h2>Profile</h2>
         <p className="section-intro">
-          Anyone can see your profile{isPlaceholderHandle(me.handle) ? ' once you choose a handle' : <> at <Link href={`/${me.handle}`}>app.gigacad.site/{me.handle}</Link></>}.
+          Anyone can see your profile{placeholder ? ' once you choose a handle' : <> at <Link href={`/${me.handle}`}>{new URL(APP_URL).host}/{me.handle}</Link></>}.
         </p>
         <ActionForm action={saveProfile} submitLabel="Save profile" discardable>
-          <HandleField defaultValue={isPlaceholderHandle(me.handle) ? '' : me.handle} />
+          <HandleField defaultValue={placeholder ? '' : me.handle} saved={placeholder ? null : me.handle} projectCount={owned} />
           <label className="field">
             <span>Display name <em>optional</em></span>
             <input name="displayName" defaultValue={me.displayName ?? ''} maxLength={100} />
@@ -79,12 +84,12 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
 
       <section className="section">
         <h2>Email</h2>
-        <EmailForm current={email} />
+        <EmailForm current={emails.email} pending={emails.pending} />
       </section>
 
       <section className="section">
         <h2>Password</h2>
-        <PasswordForm email={email} />
+        <PasswordForm email={emails.email} />
       </section>
 
       <section className="section">
@@ -103,7 +108,10 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
       {deleted.length > 0 && (
         <section className="section" id="deleted">
           <h2>Deleted projects</h2>
-          <p className="section-intro">A deleted project can be restored for 30 days, with everything in it. After that it’s gone for good.</p>
+          <p className="section-intro">
+            A deleted project can be restored for 30 days, with everything in it, and its address stays reserved until then. Restoring counts its files toward your
+            storage again. After 30 days it’s gone for good.
+          </p>
           <div className="table-wrap">
             <table className="data-table">
               <thead>
@@ -127,9 +135,7 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
                     </td>
                     <td className="muted">{daysLeft(project.purgeAt)}</td>
                     <td className="cell-action">
-                      <ActionButton action={restoreProject.bind(null, project.id)} className="btn btn-secondary btn-small" pendingLabel="Restoring…">
-                        Restore
-                      </ActionButton>
+                      <RestoreProjectButton projectId={project.id} billingEnabled={billing.billingEnabled} />
                     </td>
                   </tr>
                 ))}
@@ -139,7 +145,7 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
         </section>
       )}
 
-      <section className="section">
+      <section className="section" id="devices">
         <h2>Devices</h2>
         <p className="section-intro">The GigaCAD drive, the SolidWorks add-in, and the giga CLI sign in with a device token. Sign out any you don’t recognize.</p>
         {devices.length === 0 ? (
@@ -160,11 +166,11 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
               <tbody>
                 {devices.map((device) => (
                   <tr key={device.id}>
-                    <td>{device.name}</td>
-                    <td className="muted">
+                    <td className="cell-wrap">{device.name}</td>
+                    <td className="muted cell-nowrap">
                       <RelativeTime value={device.createdAt} />
                     </td>
-                    <td className="muted">{device.lastUsedAt ? <RelativeTime value={device.lastUsedAt} /> : 'Never'}</td>
+                    <td className="muted cell-nowrap">{device.lastUsedAt ? <RelativeTime value={device.lastUsedAt} /> : 'Never'}</td>
                     <td className="cell-action">
                       <ActionButton
                         action={signOutDevice.bind(null, device.id)}
